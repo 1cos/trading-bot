@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trading Bot Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #0f0f0f;
+  --surface: #1a1a1a;
+  --surface2: #222222;
+  --border: rgba(255,255,255,0.08);
+  --text: #f0f0f0;
+  --muted: #888;
+  --green: #00c896;
+  --red: #ff4d4d;
+  --blue: #3987e5;
+  --amber: #f59e0b;
+  --radius: 10px;
+}
+body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; min-height: 100vh; }
+
+header { padding: 20px 24px; border-bottom: 0.5px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+header h1 { font-size: 18px; font-weight: 500; letter-spacing: -0.3px; }
+header h1 span { color: var(--green); }
+.badge { background: rgba(0,200,150,0.12); color: var(--green); font-size: 11px; padding: 3px 10px; border-radius: 20px; border: 0.5px solid rgba(0,200,150,0.3); }
+
+.main { display: grid; grid-template-columns: 300px 1fr; gap: 0; height: calc(100vh - 61px); }
+
+.sidebar { border-right: 0.5px solid var(--border); padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+
+.section-title { font-size: 11px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 12px; }
+
+.strategy-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.stab { padding: 8px; border-radius: var(--radius); border: 0.5px solid var(--border); background: var(--surface); cursor: pointer; text-align: center; font-size: 12px; color: var(--muted); transition: all 0.15s; }
+.stab.active { border-color: var(--blue); color: var(--blue); background: rgba(57,135,229,0.08); }
+
+.param-group { display: flex; flex-direction: column; gap: 14px; }
+.param { display: flex; flex-direction: column; gap: 6px; }
+.param label { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; }
+.param label span { color: var(--text); font-weight: 500; }
+input[type=range] { width: 100%; height: 4px; appearance: none; background: var(--surface2); border-radius: 2px; outline: none; cursor: pointer; }
+input[type=range]::-webkit-slider-thumb { appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--blue); cursor: pointer; }
+.param select { background: var(--surface2); color: var(--text); border: 0.5px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 13px; width: 100%; outline: none; cursor: pointer; }
+
+.run-btn { width: 100%; padding: 11px; border-radius: var(--radius); border: none; background: var(--blue); color: #fff; font-size: 14px; font-weight: 500; cursor: pointer; transition: opacity 0.15s; }
+.run-btn:hover { opacity: 0.85; }
+.run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.content { display: flex; flex-direction: column; overflow: hidden; }
+
+.metrics-bar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; padding: 16px 20px; border-bottom: 0.5px solid var(--border); }
+.metric { background: var(--surface); border-radius: var(--radius); padding: 12px 14px; }
+.metric .mlabel { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.metric .mval { font-size: 20px; font-weight: 500; }
+.metric .mval.pos { color: var(--green); }
+.metric .mval.neg { color: var(--red); }
+.metric .mval.neu { color: var(--blue); }
+
+.charts-area { flex: 1; display: grid; grid-template-rows: 1fr 1fr; gap: 0; overflow: hidden; }
+.chart-panel { padding: 16px 20px; border-bottom: 0.5px solid var(--border); display: flex; flex-direction: column; }
+.chart-panel h3 { font-size: 12px; color: var(--muted); margin-bottom: 12px; font-weight: 400; }
+.chart-wrap { flex: 1; position: relative; min-height: 0; }
+
+.loading { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted); font-size: 13px; flex-direction: column; gap: 8px; }
+.spinner { width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.empty { display: flex; align-items: center; justify-content: center; height: 100%; flex-direction: column; gap: 8px; color: var(--muted); font-size: 13px; }
+
+.trades-table { overflow-y: auto; max-height: 180px; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th { color: var(--muted); font-weight: 400; text-align: left; padding: 6px 8px; border-bottom: 0.5px solid var(--border); position: sticky; top: 0; background: var(--bg); }
+td { padding: 6px 8px; border-bottom: 0.5px solid var(--border); }
+.tag-long { color: var(--green); font-weight: 500; }
+.tag-short { color: var(--red); font-weight: 500; }
+.tag-win { color: var(--green); }
+.tag-loss { color: var(--red); }
+.tag-open { color: var(--amber); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Trading Bot <span>Dashboard</span></h1>
+  <span class="badge">Backtest Mode</span>
+</header>
+
+<div class="main">
+  <div class="sidebar">
+    <div>
+      <div class="section-title">Strategia</div>
+      <div class="strategy-tabs">
+        <div class="stab active" onclick="setStrategy('pdh_pdl', this)">PDH / PDL</div>
+        <div class="stab" onclick="setStrategy('orb', this)">ORB</div>
+        <div class="stab" onclick="setStrategy('ob', this)">Order Block</div>
+        <div class="stab" onclick="setStrategy('combined', this)">Combinata</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Strumento</div>
+      <select id="simbolo">
+        <option value="SPY">SPY — S&P 500 ETF</option>
+        <option value="QQQ">QQQ — Nasdaq ETF</option>
+        <option value="TSLA">TSLA — Tesla</option>
+        <option value="NVDA">NVDA — Nvidia</option>
+        <option value="AMZN">AMZN — Amazon</option>
+        <option value="META">META — Meta</option>
+        <option value="MSFT">MSFT — Microsoft</option>
+        <option value="GOOGL">GOOGL — Google</option>
+        <option value="MU">MU — Micron</option>
+      </select>
+    </div>
+
+    <div class="param-group" id="params-pdh_pdl">
+      <div class="section-title">Parametri PDH/PDL</div>
+      <div class="param">
+        <label>Body Min <span id="body_min_val">20%</span></label>
+        <input type="range" min="5" max="50" value="20" step="5" id="body_min" oninput="document.getElementById('body_min_val').textContent=this.value+'%'">
+      </div>
+      <div class="param">
+        <label>Body Max <span id="body_max_val">70%</span></label>
+        <input type="range" min="40" max="95" value="70" step="5" id="body_max" oninput="document.getElementById('body_max_val').textContent=this.value+'%'">
+      </div>
+      <div class="param">
+        <label>Stop Loss (ticks) <span id="sl_ticks_val">4</span></label>
+        <input type="range" min="2" max="12" value="4" step="1" id="sl_ticks" oninput="document.getElementById('sl_ticks_val').textContent=this.value">
+      </div>
+      <div class="param">
+        <label>Risk/Reward <span id="rr_val">2.0x</span></label>
+        <input type="range" min="10" max="50" value="20" step="5" id="rr" oninput="document.getElementById('rr_val').textContent=(this.value/10).toFixed(1)+'x'">
+      </div>
+    </div>
+
+    <div class="param-group" id="params-orb" style="display:none">
+      <div class="section-title">Parametri ORB</div>
+      <div class="param">
+        <label>Finestra ORB <span id="orb_min_val">5 min</span></label>
+        <input type="range" min="5" max="30" value="5" step="5" id="orb_min" oninput="document.getElementById('orb_min_val').textContent=this.value+' min'">
+      </div>
+      <div class="param">
+        <label>Max entrate/giorno <span id="max_entries_val">1</span></label>
+        <input type="range" min="1" max="3" value="1" step="1" id="max_entries" oninput="document.getElementById('max_entries_val').textContent=this.value">
+      </div>
+      <div class="param">
+        <label>Entrata max ore <span id="max_hour_val">11:30</span></label>
+        <input type="range" min="1000" max="1400" value="1130" step="30" id="max_hour" oninput="formatHour(this)">
+      </div>
+      <div class="param">
+        <label>Risk/Reward <span id="rr_orb_val">4.0x</span></label>
+        <input type="range" min="20" max="60" value="40" step="5" id="rr_orb" oninput="document.getElementById('rr_orb_val').textContent=(this.value/10).toFixed(1)+'x'">
+      </div>
+    </div>
+
+    <div class="param-group" id="params-ob" style="display:none">
+      <div class="section-title">Parametri Order Block</div>
+      <div class="param">
+        <label>Momentum min <span id="momentum_val">55%</span></label>
+        <input type="range" min="30" max="80" value="55" step="5" id="momentum" oninput="document.getElementById('momentum_val').textContent=this.value+'%'">
+      </div>
+      <div class="param">
+        <label>Lookback OB (candele) <span id="lookback_val">10</span></label>
+        <input type="range" min="3" max="20" value="10" step="1" id="lookback" oninput="document.getElementById('lookback_val').textContent=this.value">
+      </div>
+      <div class="param">
+        <label>Risk/Reward <span id="rr_ob_val">2.0x</span></label>
+        <input type="range" min="10" max="50" value="20" step="5" id="rr_ob" oninput="document.getElementById('rr_ob_val').textContent=(this.value/10).toFixed(1)+'x'">
+      </div>
+    </div>
+
+    <div class="param-group" id="params-combined" style="display:none">
+      <div class="section-title">Strategia Combinata</div>
+      <div class="param">
+        <label>Confluenze minime <span id="conf_val">2</span></label>
+        <input type="range" min="1" max="3" value="2" step="1" id="conf" oninput="document.getElementById('conf_val').textContent=this.value">
+      </div>
+      <div class="param">
+        <label>Momentum min <span id="mom_comb_val">50%</span></label>
+        <input type="range" min="30" max="80" value="50" step="5" id="mom_comb" oninput="document.getElementById('mom_comb_val').textContent=this.value+'%'">
+      </div>
+      <div class="param">
+        <label>Risk/Reward <span id="rr_comb_val">3.0x</span></label>
+        <input type="range" min="20" max="60" value="30" step="5" id="rr_comb" oninput="document.getElementById('rr_comb_val').textContent=(this.value/10).toFixed(1)+'x'">
+      </div>
+    </div>
+
+    <button class="run-btn" onclick="runBacktest()" id="runBtn">Esegui Backtest</button>
+  </div>
+
+  <div class="content">
+    <div class="metrics-bar">
+      <div class="metric"><div class="mlabel">Trade totali</div><div class="mval neu" id="m-trades">—</div></div>
+      <div class="metric"><div class="mlabel">Win Rate</div><div class="mval" id="m-winrate">—</div></div>
+      <div class="metric"><div class="mlabel">Profitto totale</div><div class="mval" id="m-profit">—</div></div>
+      <div class="metric"><div class="mlabel">Max vincita</div><div class="mval pos" id="m-maxwin">—</div></div>
+      <div class="metric"><div class="mlabel">Max perdita</div><div class="mval neg" id="m-maxloss">—</div></div>
+    </div>
+
+    <div class="charts-area">
+      <div class="chart-panel">
+        <h3>Curva del capitale (P&amp;L cumulativo)</h3>
+        <div class="chart-wrap">
+          <div class="empty" id="empty1"><div>Imposta i parametri e clicca "Esegui Backtest"</div></div>
+          <canvas id="pnlChart" style="display:none"></canvas>
+        </div>
+      </div>
+      <div class="chart-panel">
+        <h3>Ultimi trade</h3>
+        <div class="trades-table" id="tradesTable">
+          <div class="empty" id="empty2"><div>Nessun dato</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentStrategy = 'pdh_pdl';
+let pnlChartInstance = null;
+
+function setStrategy(s, el) {
+  currentStrategy = s;
+  document.querySelectorAll('.stab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  ['pdh_pdl','orb','ob','combined'].forEach(id => {
+    document.getElementById('params-'+id).style.display = id === s ? 'flex' : 'none';
+  });
+}
+
+function formatHour(input) {
+  const v = parseInt(input.value);
+  const h = Math.floor(v/100);
+  const m = v % 100;
+  document.getElementById('max_hour_val').textContent = h+':'+(m<10?'0':'')+m;
+}
+
+function getParams() {
+  return {
+    strategy: currentStrategy,
+    simbolo: document.getElementById('simbolo').value,
+    body_min: parseInt(document.getElementById('body_min').value) / 100,
+    body_max: parseInt(document.getElementById('body_max').value) / 100,
+    sl_ticks: parseInt(document.getElementById('sl_ticks').value),
+    rr: parseInt(document.getElementById('rr').value) / 10,
+    orb_min: parseInt(document.getElementById('orb_min').value),
+    max_entries: parseInt(document.getElementById('max_entries').value),
+    rr_orb: parseInt(document.getElementById('rr_orb').value) / 10,
+    momentum: parseInt(document.getElementById('momentum').value) / 100,
+    lookback: parseInt(document.getElementById('lookback').value),
+    rr_ob: parseInt(document.getElementById('rr_ob').value) / 10,
+    conf: parseInt(document.getElementById('conf').value),
+    mom_comb: parseInt(document.getElementById('mom_comb').value) / 100,
+    rr_comb: parseInt(document.getElementById('rr_comb').value) / 10,
+  };
+}
+
+async function runBacktest() {
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true;
+  btn.textContent = 'Elaborazione...';
+
+  document.getElementById('empty1').style.display = 'flex';
+  document.getElementById('pnlChart').style.display = 'none';
+  document.getElementById('tradesTable').innerHTML = '<div class="loading"><div class="spinner"></div><div>Caricamento dati CSV...</div></div>';
+
+  try {
+    const params = getParams();
+    const csvUrl = `${params.simbolo}_5m.csv`;
+
+    let csvText;
+    try {
+      const resp = await fetch(csvUrl);
+      if (!resp.ok) throw new Error('CSV non trovato');
+      csvText = await resp.text();
+    } catch(e) {
+      csvText = null;
+    }
+
+    let candles;
+    if (csvText) {
+      candles = parseCSV(csvText);
+    } else {
+      candles = generateMockData(params.simbolo);
+    }
+
+    const result = runStrategy(candles, params);
+    displayResults(result, params);
+
+  } catch(err) {
+    document.getElementById('tradesTable').innerHTML = `<div class="empty"><div style="color:var(--red)">Errore: ${err.message}</div></div>`;
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Esegui Backtest';
+}
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n').slice(3);
+  return lines.map(line => {
+    const parts = line.split(',');
+    if (parts.length < 5) return null;
+    const dt = new Date(parts[0]);
+    return { time: dt, open: +parts[4], high: +parts[2], low: +parts[3], close: +parts[1], volume: +parts[5] };
+  }).filter(c => c && !isNaN(c.close) && c.close > 0);
+}
+
+function generateMockData(simbolo) {
+  const bases = { SPY: 720, QQQ: 480, TSLA: 280, NVDA: 120, AMZN: 200, META: 550, MSFT: 420, GOOGL: 160, MU: 95 };
+  const base = bases[simbolo] || 100;
+  const candles = [];
+  let price = base;
+  const start = new Date('2026-04-24T09:30:00-04:00');
+
+  for (let day = 0; day < 60; day++) {
+    const d = new Date(start);
+    d.setDate(d.getDate() + day);
+    if (d.getDay() === 0 || d.getDay() === 6) continue;
+    const trend = (Math.random() - 0.48) * 0.003;
+    for (let min = 0; min < 78; min++) {
+      const t = new Date(d);
+      t.setMinutes(t.getMinutes() + min * 5);
+      const vol = (Math.random() - 0.5) * base * 0.008;
+      const open = price;
+      const close = price + vol + trend * base;
+      const high = Math.max(open, close) + Math.random() * base * 0.003;
+      const low = Math.min(open, close) - Math.random() * base * 0.003;
+      candles.push({ time: t, open, high, low, close, volume: Math.floor(Math.random() * 500000) });
+      price = close;
+    }
+  }
+  return candles;
+}
+
+function getDailyHighLow(candles) {
+  const daily = {};
+  candles.forEach(c => {
+    const d = c.time.toISOString().split('T')[0];
+    if (!daily[d]) daily[d] = { high: -Infinity, low: Infinity };
+    daily[d].high = Math.max(daily[d].high, c.high);
+    daily[d].low = Math.min(daily[d].low, c.low);
+  });
+  return daily;
+}
+
+function getDateStr(t) { return t.toISOString().split('T')[0]; }
+function getHHMM(t) { return t.getHours() * 100 + t.getMinutes(); }
+function bodyRatio(c) { return (c.high - c.low) === 0 ? 0 : Math.abs(c.close - c.open) / (c.high - c.low); }
+function isEngulfing(c, prev) { return c.close > c.open && prev.close < prev.open && c.close > prev.open && c.open < prev.close; }
+
+function runStrategy(candles, params) {
+  const { strategy } = params;
+  let signals = [];
+
+  if (strategy === 'pdh_pdl') signals = strategyPDHPDL(candles, params);
+  else if (strategy === 'orb') signals = strategyORB(candles, params);
+  else if (strategy === 'ob') signals = strategyOB(candles, params);
+  else signals = strategyCombined(candles, params);
+
+  return backtest(signals, candles);
+}
+
+function strategyPDHPDL(candles, params) {
+  const daily = getDailyHighLow(candles);
+  const dates = Object.keys(daily).sort();
+  const signals = [];
+  let brokenHigh = false, brokenLow = false, pdh = null, pdl = null;
+  let lastDate = null;
+
+  candles.forEach((c, i) => {
+    if (i === 0) return;
+    const d = getDateStr(c.time);
+    const di = dates.indexOf(d);
+    if (di < 1) return;
+    const prevDate = dates[di - 1];
+    if (!prevDate) return;
+    const PDH = daily[prevDate].high;
+    const PDL = daily[prevDate].low;
+    const hhmm = getHHMM(c.time);
+    if (hhmm < 930 || hhmm > 1600) return;
+
+    if (d !== lastDate) { lastDate = d; brokenHigh = false; brokenLow = false; }
+
+    const prev = candles[i - 1];
+    if (prev.close < PDH && c.close > PDH) { brokenHigh = true; pdh = PDH; brokenLow = false; }
+    if (prev.close > PDL && c.close < PDL) { brokenLow = true; pdl = PDL; brokenHigh = false; }
+
+    const br = bodyRatio(c);
+    if (brokenHigh && pdh && c.low <= pdh && c.high >= pdh && c.close > pdh && br >= params.body_min && br <= params.body_max) {
+      const risk = c.close - c.low;
+      if (risk > 0) {
+        signals.push({ time: c.time, type: 'LONG', entry: c.close, stop: c.low, target: c.close + risk * params.rr, setup: 'PDH' });
+        brokenHigh = false;
+      }
+    }
+    if (brokenLow && pdl && c.low <= pdl && c.high >= pdl && c.close < pdl && br >= params.body_min && br <= params.body_max) {
+      const risk = c.high - c.close;
+      if (risk > 0) {
+        signals.push({ time: c.time, type: 'SHORT', entry: c.close, stop: c.high, target: c.close - risk * params.rr, setup: 'PDL' });
+        brokenLow = false;
+      }
+    }
+  });
+  return signals;
+}
+
+function strategyORB(candles, params) {
+  const signals = [];
+  const byDay = {};
+  candles.forEach(c => {
+    const d = getDateStr(c.time);
+    if (!byDay[d]) byDay[d] = [];
+    byDay[d].push(c);
+  });
+
+  Object.entries(byDay).forEach(([d, dc]) => {
+    const orbCandles = dc.filter(c => { const h = getHHMM(c.time); return h >= 930 && h < 930 + params.orb_min; });
+    if (!orbCandles.length) return;
+    const orbHigh = Math.max(...orbCandles.map(c => c.high));
+    const orbLow = Math.min(...orbCandles.map(c => c.low));
+
+    let broken = false;
+    let entryCount = 0;
+    const maxH = params.max_entries > 0 ? parseInt(String(params.max_entries)) : 99;
+    const maxHHMM = 1130;
+
+    dc.forEach((c, i) => {
+      if (i === 0) return;
+      if (entryCount >= maxH) return;
+      const hhmm = getHHMM(c.time);
+      if (hhmm < 935 || hhmm > maxHHMM) return;
+      const prev = dc[i - 1];
+      if (prev.close > orbHigh) broken = true;
+      if (!broken) return;
+
+      if (c.low <= orbHigh && c.close > orbHigh && bodyRatio(c) >= 0.35) {
+        const risk = c.close - c.low;
+        if (risk > 0 && risk <= 2.5) {
+          signals.push({ time: c.time, type: 'LONG', entry: c.close, stop: c.low, target: c.close + risk * params.rr_orb, setup: 'ORB' });
+          broken = false; entryCount++;
+        }
+      } else if (isEngulfing(c, prev) && c.close > orbHigh) {
+        const risk = c.close - c.low;
+        if (risk > 0 && risk <= 2.5) {
+          signals.push({ time: c.time, type: 'LONG', entry: c.close, stop: c.low, target: c.close + risk * params.rr_orb, setup: 'ORB-ENG' });
+          broken = false; entryCount++;
+        }
+      }
+    });
+  });
+  return signals;
+}
+
+function strategyOB(candles, params) {
+  const signals = [];
+  for (let i = 1; i < candles.length - params.lookback; i++) {
+    const c = candles[i];
+    if (c.close >= c.open) continue;
+    if (bodyRatio(c) < params.momentum) continue;
+    const obHigh = c.high, obLow = c.low;
+    let maxFuture = -Infinity;
+    for (let j = i + 1; j < Math.min(i + params.lookback, candles.length); j++) {
+      maxFuture = Math.max(maxFuture, candles[j].high);
+    }
+    if (maxFuture <= obHigh * 1.001) continue;
+
+    for (let j = i + 1; j < Math.min(i + 50, candles.length); j++) {
+      const r = candles[j];
+      const hhmm = getHHMM(r.time);
+      if (hhmm < 935 || hhmm > 1530) continue;
+      if (r.low <= obHigh && r.close > obHigh && bodyRatio(r) >= params.momentum) {
+        const risk = r.close - obLow;
+        if (risk > 0) {
+          signals.push({ time: r.time, type: 'LONG', entry: r.close, stop: obLow, target: r.close + risk * params.rr_ob, setup: 'OB' });
+          break;
+        }
+      }
+      if (j > i + 1 && isEngulfing(r, candles[j - 1]) && r.close > obHigh) {
+        const risk = r.close - obLow;
+        if (risk > 0) {
+          signals.push({ time: r.time, type: 'LONG', entry: r.close, stop: obLow, target: r.close + risk * params.rr_ob, setup: 'OB-ENG' });
+          break;
+        }
+      }
+    }
+  }
+  return signals;
+}
+
+function strategyCombined(candles, params) {
+  const pdh = strategyPDHPDL(candles, { ...params, rr: params.rr_comb, body_min: params.mom_comb - 0.1, body_max: 0.95 });
+  const ob = strategyOB(candles, { ...params, rr_ob: params.rr_comb, momentum: params.mom_comb });
+  const orb = strategyORB(candles, { ...params, rr_orb: params.rr_comb, max_entries: 1 });
+  const all = [...pdh, ...ob, ...orb].sort((a, b) => a.time - b.time);
+
+  if (params.conf <= 1) return all;
+  const merged = [];
+  all.forEach(s => {
+    const nearby = all.filter(s2 => s2 !== s && Math.abs(s2.time - s.time) < 15 * 60 * 1000 && Math.abs(s2.entry - s.entry) < s.entry * 0.005);
+    if (nearby.length >= params.conf - 1) {
+      if (!merged.find(m => Math.abs(m.time - s.time) < 5 * 60 * 1000)) merged.push(s);
+    }
+  });
+  return merged;
+}
+
+function backtest(signals, candles) {
+  const trades = signals.map(s => {
+    const future = candles.filter(c => c.time > s.time);
+    let esito = 'APERTO', uscita = s.entry;
+    for (const c of future) {
+      if (s.type === 'LONG') {
+        if (c.low <= s.stop) { esito = 'STOP'; uscita = s.stop; break; }
+        if (c.high >= s.target) { esito = 'TARGET'; uscita = s.target; break; }
+      } else {
+        if (c.high >= s.stop) { esito = 'STOP'; uscita = s.stop; break; }
+        if (c.low <= s.target) { esito = 'TARGET'; uscita = s.target; break; }
+      }
+    }
+    const pnl = s.type === 'LONG' ? uscita - s.entry : s.entry - uscita;
+    return { ...s, uscita, esito, pnl };
+  });
+
+  const closed = trades.filter(t => t.esito !== 'APERTO');
+  const wins = closed.filter(t => t.esito === 'TARGET');
+  const winRate = closed.length > 0 ? (wins.length / closed.length * 100) : 0;
+  const totalPnl = closed.reduce((s, t) => s + t.pnl, 0);
+  const maxWin = closed.length ? Math.max(...closed.map(t => t.pnl)) : 0;
+  const maxLoss = closed.length ? Math.min(...closed.map(t => t.pnl)) : 0;
+
+  let cum = 0;
+  const equity = closed.map(t => { cum += t.pnl; return { time: t.time, cum: cum }; });
+
+  return { trades, closed, winRate, totalPnl, maxWin, maxLoss, equity };
+}
+
+function displayResults(r, params) {
+  const wr = r.winRate;
+  document.getElementById('m-trades').textContent = r.closed.length;
+  const wrEl = document.getElementById('m-winrate');
+  wrEl.textContent = wr.toFixed(1) + '%';
+  wrEl.className = 'mval ' + (wr >= 40 ? 'pos' : wr >= 30 ? 'neu' : 'neg');
+  const profEl = document.getElementById('m-profit');
+  profEl.textContent = (r.totalPnl >= 0 ? '+' : '') + '$' + r.totalPnl.toFixed(2);
+  profEl.className = 'mval ' + (r.totalPnl >= 0 ? 'pos' : 'neg');
+  document.getElementById('m-maxwin').textContent = '+$' + r.maxWin.toFixed(2);
+  document.getElementById('m-maxloss').textContent = '$' + r.maxLoss.toFixed(2);
+
+  document.getElementById('empty1').style.display = 'none';
+  const canvas = document.getElementById('pnlChart');
+  canvas.style.display = 'block';
+
+  if (pnlChartInstance) pnlChartInstance.destroy();
+
+  const labels = r.equity.map(e => e.time.toLocaleDateString('it-IT', { month: 'short', day: 'numeric' }));
+  const data = r.equity.map(e => +e.cum.toFixed(2));
+  const isPos = r.totalPnl >= 0;
+  const color = isPos ? '#00c896' : '#ff4d4d';
+
+  pnlChartInstance = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data,
+        borderColor: color,
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        pointHoverBackgroundColor: color,
+        fill: true,
+        backgroundColor: (ctx) => {
+          const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, ctx.chart.height);
+          g.addColorStop(0, isPos ? 'rgba(0,200,150,0.18)' : 'rgba(255,77,77,0.18)');
+          g.addColorStop(1, 'rgba(0,0,0,0)');
+          return g;
+        },
+        tension: 0.3
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: {
+        callbacks: { label: ctx => ' P&L: $' + ctx.raw.toFixed(2) }
+      }},
+      scales: {
+        x: { ticks: { color: '#666', font: { size: 11 }, maxTicksLimit: 10 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y: { ticks: { color: '#666', font: { size: 11 }, callback: v => '$' + v.toFixed(0) }, grid: { color: 'rgba(255,255,255,0.06)' } }
+      }
+    }
+  });
+
+  const recent = [...r.trades].reverse().slice(0, 30);
+  if (recent.length === 0) {
+    document.getElementById('tradesTable').innerHTML = '<div class="empty"><div>Nessun trade trovato</div></div>';
+    return;
+  }
+  const rows = recent.map(t => `
+    <tr>
+      <td>${t.time.toLocaleDateString('it-IT', { month: 'short', day: 'numeric' })}</td>
+      <td>${t.time.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</td>
+      <td class="${t.type==='LONG'?'tag-long':'tag-short'}">${t.type}</td>
+      <td>${t.setup}</td>
+      <td>$${t.entry.toFixed(2)}</td>
+      <td>$${t.stop.toFixed(2)}</td>
+      <td>$${t.target.toFixed(2)}</td>
+      <td class="${t.esito==='TARGET'?'tag-win':t.esito==='STOP'?'tag-loss':'tag-open'}">${t.esito}</td>
+      <td class="${t.pnl>=0?'tag-win':'tag-loss'}">${t.pnl>=0?'+':''}$${t.pnl.toFixed(2)}</td>
+    </tr>`).join('');
+
+  document.getElementById('tradesTable').innerHTML = `
+    <table>
+      <thead><tr><th>Data</th><th>Ora</th><th>Tipo</th><th>Setup</th><th>Entry</th><th>Stop</th><th>Target</th><th>Esito</th><th>P&L</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+</script>
+</body>
+</html>
