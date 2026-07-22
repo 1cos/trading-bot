@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trading Bot Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #0f0f0f; --surface: #1a1a1a; --surface2: #222;
+  --border: rgba(255,255,255,0.08); --text: #f0f0f0; --muted: #888;
+  --green: #00c896; --red: #ff4d4d; --blue: #3987e5; --amber: #f59e0b;
+  --purple: #a78bfa; --radius: 10px;
+}
+body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; min-height: 100vh; }
+header { padding: 16px 24px; border-bottom: 0.5px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+header h1 { font-size: 17px; font-weight: 500; }
+header h1 span { color: var(--green); }
+.badge { background: rgba(0,200,150,0.12); color: var(--green); font-size: 11px; padding: 3px 10px; border-radius: 20px; border: 0.5px solid rgba(0,200,150,0.3); }
+.main { display: grid; grid-template-columns: 310px 1fr; height: calc(100vh - 53px); }
+.sidebar { border-right: 0.5px solid var(--border); padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+.section-title { font-size: 10px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
+.strategy-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.stab { padding: 7px; border-radius: 8px; border: 0.5px solid var(--border); background: var(--surface); cursor: pointer; text-align: center; font-size: 12px; color: var(--muted); transition: all 0.15s; }
+.stab.active { border-color: var(--blue); color: var(--blue); background: rgba(57,135,229,0.08); }
+.param { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+.param label { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; }
+.param label span { color: var(--text); font-weight: 500; }
+input[type=range] { width: 100%; height: 4px; appearance: none; background: var(--surface2); border-radius: 2px; outline: none; cursor: pointer; }
+input[type=range]::-webkit-slider-thumb { appearance: none; width: 13px; height: 13px; border-radius: 50%; background: var(--blue); cursor: pointer; }
+select { background: var(--surface2); color: var(--text); border: 0.5px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 12px; width: 100%; outline: none; cursor: pointer; }
+
+.trigger-group { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; }
+.trig-btn { padding: 6px 4px; border-radius: 7px; border: 0.5px solid var(--border); background: var(--surface); cursor: pointer; text-align: center; font-size: 11px; color: var(--muted); transition: all 0.15s; }
+.trig-btn.active { border-color: var(--purple); color: var(--purple); background: rgba(167,139,250,0.08); }
+
+.wick-visual { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--surface); border-radius: 8px; border: 0.5px solid var(--border); margin-bottom: 8px; }
+.candle-preview { display: flex; flex-direction: column; align-items: center; gap: 1px; width: 24px; }
+.wick-top { background: var(--muted); border-radius: 1px; transition: all 0.2s; }
+.candle-body { background: var(--green); border-radius: 2px; transition: all 0.2s; width: 10px; }
+.wick-bot { background: var(--amber); border-radius: 1px; transition: all 0.2s; }
+.wick-label { font-size: 11px; color: var(--muted); line-height: 1.4; }
+.wick-label strong { color: var(--text); display: block; font-size: 12px; }
+
+.run-btn { width: 100%; padding: 11px; border-radius: var(--radius); border: none; background: var(--blue); color: #fff; font-size: 14px; font-weight: 500; cursor: pointer; transition: opacity 0.15s; margin-top: 4px; }
+.run-btn:hover { opacity: 0.85; }
+.run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.content { display: flex; flex-direction: column; overflow: hidden; }
+.metrics-bar { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; padding: 14px 18px; border-bottom: 0.5px solid var(--border); }
+.metric { background: var(--surface); border-radius: var(--radius); padding: 10px 12px; }
+.metric .mlabel { font-size: 10px; color: var(--muted); margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+.metric .mval { font-size: 18px; font-weight: 500; }
+.metric .mval.pos { color: var(--green); }
+.metric .mval.neg { color: var(--red); }
+.metric .mval.neu { color: var(--blue); }
+.metric .mval.warn { color: var(--amber); }
+
+.charts-area { flex: 1; display: grid; grid-template-rows: 1fr 1fr; overflow: hidden; }
+.chart-panel { padding: 14px 18px; border-bottom: 0.5px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.chart-panel h3 { font-size: 11px; color: var(--muted); margin-bottom: 10px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.5px; }
+.chart-wrap { flex: 1; position: relative; min-height: 0; }
+
+.trigger-breakdown { display: flex; gap: 16px; margin-bottom: 6px; }
+.tbd { font-size: 11px; color: var(--muted); }
+.tbd strong { color: var(--text); }
+
+.empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted); font-size: 13px; }
+.loading { display: flex; align-items: center; justify-content: center; height: 60px; color: var(--muted); font-size: 12px; gap: 8px; }
+.spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.trades-table { overflow-y: auto; height: 100%; }
+table { width: 100%; border-collapse: collapse; font-size: 11px; }
+th { color: var(--muted); font-weight: 400; text-align: left; padding: 5px 8px; border-bottom: 0.5px solid var(--border); position: sticky; top: 0; background: var(--bg); font-size: 10px; text-transform: uppercase; }
+td { padding: 5px 8px; border-bottom: 0.5px solid rgba(255,255,255,0.04); }
+.tag-long { color: var(--green); font-weight: 500; }
+.tag-short { color: var(--red); font-weight: 500; }
+.tag-win { color: var(--green); }
+.tag-loss { color: var(--red); }
+.tag-open { color: var(--amber); }
+.tag-wick { color: var(--purple); font-size: 10px; }
+.tag-eng { color: var(--amber); font-size: 10px; }
+.divider { height: 0.5px; background: var(--border); margin: 4px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Trading Bot <span>Dashboard</span></h1>
+  <span class="badge">Backtest Mode</span>
+</header>
+<div class="main">
+  <div class="sidebar">
+    <div>
+      <div class="section-title">Strategia</div>
+      <div class="strategy-tabs">
+        <div class="stab active" onclick="setStrategy('pdh_pdl',this)">PDH / PDL</div>
+        <div class="stab" onclick="setStrategy('orb',this)">ORB</div>
+        <div class="stab" onclick="setStrategy('ob',this)">Order Block</div>
+        <div class="stab" onclick="setStrategy('combined',this)">Combinata</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Strumento</div>
+      <select id="simbolo">
+        <option value="SPY">SPY — S&P 500 ETF</option>
+        <option value="QQQ">QQQ — Nasdaq ETF</option>
+        <option value="TSLA">TSLA — Tesla</option>
+        <option value="NVDA">NVDA — Nvidia</option>
+        <option value="AMZN">AMZN — Amazon</option>
+        <option value="META">META — Meta</option>
+        <option value="MSFT">MSFT — Microsoft</option>
+        <option value="GOOGL">GOOGL — Google</option>
+        <option value="MU">MU — Micron</option>
+      </select>
+    </div>
+
+    <div>
+      <div class="section-title">Trigger di entrata</div>
+      <div class="trigger-group">
+        <div class="trig-btn active" onclick="setTrigger('both',this)" id="trig-both">Wick + Eng</div>
+        <div class="trig-btn" onclick="setTrigger('wick',this)" id="trig-wick">Solo Wick</div>
+        <div class="trig-btn" onclick="setTrigger('engulfing',this)" id="trig-engulfing">Solo Eng</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Proporzione Wick / Body</div>
+      <div class="wick-visual">
+        <div class="candle-preview">
+          <div class="wick-top" id="wick-top-preview" style="width:2px;height:4px;"></div>
+          <div class="candle-body" id="body-preview" style="height:14px;"></div>
+          <div class="wick-bot" id="wick-bot-preview" style="width:2px;height:18px;"></div>
+        </div>
+        <div class="wick-label">
+          <strong id="wick-ratio-label">Wick 60% / Body 40%</strong>
+          Wick inferiore (LONG) o superiore (SHORT) deve essere almeno questa % della candela
+        </div>
+      </div>
+      <div class="param">
+        <label>Wick minima <span id="wick_min_val">60%</span></label>
+        <input type="range" min="20" max="85" value="60" step="5" id="wick_min" oninput="updateWickPreview()">
+      </div>
+      <div class="param">
+        <label>Body massimo <span id="body_max_val">40%</span></label>
+        <input type="range" min="10" max="70" value="40" step="5" id="body_max" oninput="updateWickPreview()">
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Filtro tempo</div>
+      <div class="param">
+        <label>Salta i primi <span id="skip_min_val">0 min (entra da 09:30)</span></label>
+        <input type="range" min="0" max="60" value="0" step="5" id="skip_min" oninput="updateSkipLabel()">
+      </div>
+      <div class="param">
+        <label>Ultima entrata <span id="last_entry_val">15:30</span></label>
+        <input type="range" min="1000" max="1530" value="1530" step="30" id="last_entry" oninput="updateLastEntry()">
+      </div>
+    </div>
+
+    <div id="params-pdh_pdl">
+      <div class="section-title">Parametri PDH / PDL</div>
+      <div class="param">
+        <label>Stop Loss (ticks) <span id="sl_ticks_val">4</span></label>
+        <input type="range" min="2" max="16" value="4" step="1" id="sl_ticks" oninput="document.getElementById('sl_ticks_val').textContent=this.value">
+      </div>
+      <div class="param">
+        <label>Risk / Reward <span id="rr_val">2.0x</span></label>
+        <input type="range" min="10" max="60" value="20" step="5" id="rr" oninput="document.getElementById('rr_val').textContent=(this.value/10).toFixed(1)+'x'">
+      </div>
+    </div>
+
+    <div id="params-orb" style="display:none">
+      <div class="section-title">Parametri ORB</div>
+      <div class="param">
+        <label>Finestra ORB <span id="orb_min_val">5 min</span></label>
+        <input type="range" min="5" max="30" value="5" step="5" id="orb_min" oninput="document.getElementById('orb_min_val').textContent=this.value+' min'">
+      </div>
+      <div class="param">
+        <label>Max entrate/giorno <span id="max_entries_val">1</span></label>
+        <input type="range" min="1" max="4" value="1" step="1" id="max_entries" oninput="document.getElementById('max_entries_val').textContent=this.value">
+      </div>
+      <div class="param">
+        <label>Risk / Reward <span id="rr_orb_val">4.0x</span></label>
+        <input type="range" min="15" max="60" value="40" step="5" id="rr_orb" oninput="document.getElementById('rr_orb_val').textContent=(this.value/10).toFixed(1)+'x'">
+      </div>
+    </div>
+
+    <div id="params-ob" style="display:none">
+      <div class="section-title">Parametri Order Block</div>
+      <div class="param">
+        <label>Momentum OB min <span id="momentum_val">55%</span></label>
+        <input type="range" min="30" max="85" value="55" step="5" id="momentum" oninput="document.getElementById('momentum_val').textContent=this.value+'%'">
+      </div>
+      <div class="param">
+        <label>Lookback OB (candele) <span id="lookback_val">10</span></label>
+        <input type="range" min="3" max="30" value="10" step="1" id="lookback" oninput="document.getElementById('lookback_val').textContent=this.value">
+      </div>
+      <div class="param">
+        <label>Risk / Reward <span id="rr_ob_val">2.0x</span></label>
+        <input type="range" min="10" max="50" value="20" step="5" id="rr_ob" oninput="document.getElementById('rr_ob_val').textContent=(this.value/10).toFixed(1)+'x'">
+      </div>
+    </div>
+
+    <div id="params-combined" style="display:none">
+      <div class="section-title">Strategia Combinata</div>
+      <div class="param">
+        <label>Confluenze minime <span id="conf_val">2</span></label>
+        <input type="range" min="1" max="3" value="2" step="1" id="conf" oninput="document.getElementById('conf_val').textContent=this.value">
+      </div>
+      <div class="param">
+        <label>Risk / Reward <span id="rr_comb_val">3.0x</span></label>
+        <input type="range" min="15" max="60" value="30" step="5" id="rr_comb" oninput="document.getElementById('rr_comb_val').textContent=(this.value/10).toFixed(1)+'x'">
+      </div>
+    </div>
+
+    <button class="run-btn" onclick="runBacktest()" id="runBtn">Esegui Backtest</button>
+  </div>
+
+  <div class="content">
+    <div class="metrics-bar">
+      <div class="metric"><div class="mlabel">Trade chiusi</div><div class="mval neu" id="m-trades">—</div></div>
+      <div class="metric"><div class="mlabel">Win Rate</div><div class="mval" id="m-winrate">—</div></div>
+      <div class="metric"><div class="mlabel">Profitto totale</div><div class="mval" id="m-profit">—</div></div>
+      <div class="metric"><div class="mlabel">Profitto medio</div><div class="mval" id="m-avg">—</div></div>
+      <div class="metric"><div class="mlabel">Max vincita</div><div class="mval pos" id="m-maxwin">—</div></div>
+      <div class="metric"><div class="mlabel">Max perdita</div><div class="mval neg" id="m-maxloss">—</div></div>
+    </div>
+
+    <div class="charts-area">
+      <div class="chart-panel">
+        <h3>Curva del capitale — P&amp;L cumulativo</h3>
+        <div id="trigger-stats" class="trigger-breakdown" style="display:none"></div>
+        <div class="chart-wrap">
+          <div class="empty" id="empty1">Imposta i parametri e clicca "Esegui Backtest"</div>
+          <canvas id="pnlChart" style="display:none"></canvas>
+        </div>
+      </div>
+      <div class="chart-panel" style="overflow:hidden">
+        <h3>Ultimi 40 trade</h3>
+        <div class="trades-table" id="tradesTable">
+          <div class="empty" id="empty2">Nessun dato</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentStrategy = 'pdh_pdl';
+let currentTrigger = 'both';
+let pnlChartInstance = null;
+
+function setStrategy(s, el) {
+  currentStrategy = s;
+  document.querySelectorAll('.stab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  ['pdh_pdl','orb','ob','combined'].forEach(id => {
+    document.getElementById('params-'+id).style.display = id === s ? 'block' : 'none';
+  });
+}
+
+function setTrigger(t, el) {
+  currentTrigger = t;
+  document.querySelectorAll('.trig-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function updateWickPreview() {
+  const wickPct = parseInt(document.getElementById('wick_min').value);
+  const bodyPct = parseInt(document.getElementById('body_max').value);
+  document.getElementById('wick_min_val').textContent = wickPct + '%';
+  document.getElementById('body_max_val').textContent = bodyPct + '%';
+  document.getElementById('wick-ratio-label').textContent = `Wick ${wickPct}% / Body ${bodyPct}%`;
+  const total = 60;
+  const bodyH = Math.round(total * (bodyPct / 100));
+  const wickBotH = Math.round(total * (wickPct / 100));
+  const wickTopH = Math.max(2, total - bodyH - wickBotH);
+  document.getElementById('wick-top-preview').style.height = wickTopH + 'px';
+  document.getElementById('body-preview').style.height = bodyH + 'px';
+  document.getElementById('wick-bot-preview').style.height = wickBotH + 'px';
+}
+
+function updateSkipLabel() {
+  const v = parseInt(document.getElementById('skip_min').value);
+  const h = 9, m = 30 + v;
+  const totalM = h * 60 + m;
+  const fh = Math.floor(totalM / 60), fm = totalM % 60;
+  document.getElementById('skip_min_val').textContent = v === 0
+    ? '0 min (entra da 09:30)'
+    : `${v} min (entra da ${fh}:${fm<10?'0':''}${fm})`;
+}
+
+function updateLastEntry() {
+  const v = parseInt(document.getElementById('last_entry').value);
+  const h = Math.floor(v / 100), m = v % 100;
+  document.getElementById('last_entry_val').textContent = `${h}:${m<10?'0':''}${m}`;
+}
+
+function getParams() {
+  return {
+    strategy: currentStrategy,
+    trigger: currentTrigger,
+    simbolo: document.getElementById('simbolo').value,
+    wick_min: parseInt(document.getElementById('wick_min').value) / 100,
+    body_max: parseInt(document.getElementById('body_max').value) / 100,
+    skip_min: parseInt(document.getElementById('skip_min').value),
+    last_entry: parseInt(document.getElementById('last_entry').value),
+    sl_ticks: parseInt(document.getElementById('sl_ticks').value),
+    rr: parseInt(document.getElementById('rr').value) / 10,
+    orb_min: parseInt(document.getElementById('orb_min').value),
+    max_entries: parseInt(document.getElementById('max_entries').value),
+    rr_orb: parseInt(document.getElementById('rr_orb').value) / 10,
+    momentum: parseInt(document.getElementById('momentum').value) / 100,
+    lookback: parseInt(document.getElementById('lookback').value),
+    rr_ob: parseInt(document.getElementById('rr_ob').value) / 10,
+    conf: parseInt(document.getElementById('conf').value),
+    rr_comb: parseInt(document.getElementById('rr_comb').value) / 10,
+  };
+}
+
+async function runBacktest() {
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true; btn.textContent = 'Elaborazione...';
+  document.getElementById('empty1').style.display = 'flex';
+  document.getElementById('pnlChart').style.display = 'none';
+  document.getElementById('trigger-stats').style.display = 'none';
+  document.getElementById('tradesTable').innerHTML = '<div class="loading"><div class="spinner"></div>Caricamento CSV...</div>';
+
+  try {
+    const params = getParams();
+    let candles;
+    try {
+      const resp = await fetch(params.simbolo + '_5m.csv');
+      if (!resp.ok) throw new Error('CSV non trovato');
+      candles = parseCSV(await resp.text());
+    } catch(e) {
+      candles = generateMockData(params.simbolo);
+    }
+    const result = runStrategy(candles, params);
+    displayResults(result, params);
+  } catch(err) {
+    document.getElementById('tradesTable').innerHTML = `<div class="empty" style="color:var(--red)">Errore: ${err.message}</div>`;
+  }
+  btn.disabled = false; btn.textContent = 'Esegui Backtest';
+}
+
+function parseCSV(text) {
+  return text.trim().split('\n').slice(3).map(line => {
+    const p = line.split(',');
+    if (p.length < 5) return null;
+    const dt = new Date(p[0]);
+    return { time: dt, open: +p[4], high: +p[2], low: +p[3], close: +p[1], volume: +p[5] };
+  }).filter(c => c && !isNaN(c.close) && c.close > 0);
+}
+
+function generateMockData(simbolo) {
+  const bases = { SPY:720, QQQ:480, TSLA:280, NVDA:120, AMZN:200, META:550, MSFT:420, GOOGL:160, MU:95 };
+  const base = bases[simbolo] || 100;
+  const candles = []; let price = base;
+  const start = new Date('2026-04-24T09:30:00-04:00');
+  for (let day = 0; day < 60; day++) {
+    const d = new Date(start); d.setDate(d.getDate() + day);
+    if (d.getDay() === 0 || d.getDay() === 6) continue;
+    const trend = (Math.random() - 0.48) * 0.003;
+    for (let min = 0; min < 78; min++) {
+      const t = new Date(d); t.setMinutes(t.getMinutes() + min * 5);
+      const vol = (Math.random() - 0.5) * base * 0.008;
+      const open = price, close = price + vol + trend * base;
+      const high = Math.max(open, close) + Math.random() * base * 0.004;
+      const low = Math.min(open, close) - Math.random() * base * 0.004;
+      candles.push({ time: t, open, high, low, close, volume: Math.floor(Math.random() * 500000) });
+      price = close;
+    }
+  }
+  return candles;
+}
+
+function getDailyHL(candles) {
+  const daily = {};
+  candles.forEach(c => {
+    const d = getDateStr(c.time);
+    if (!daily[d]) daily[d] = { high: -Infinity, low: Infinity };
+    daily[d].high = Math.max(daily[d].high, c.high);
+    daily[d].low = Math.min(daily[d].low, c.low);
+  });
+  return daily;
+}
+
+function getDateStr(t) { return t.toISOString().split('T')[0]; }
+function getHHMM(t) { return t.getHours() * 100 + t.getMinutes(); }
+
+function checkCandle(c, zone_high, params) {
+  const total = c.high - c.low;
+  if (total === 0) return null;
+  const body = Math.abs(c.close - c.open);
+  const wickBot = Math.min(c.open, c.close) - c.low;
+  const bodyRat = body / total;
+  const wickBotRat = wickBot / total;
+  const closeAbove = c.close > zone_high;
+  const wickEnters = c.low < zone_high;
+  if (!closeAbove || !wickEnters) return null;
+  if (bodyRat > params.body_max) return null;
+  if (wickBotRat < params.wick_min) return null;
+  return 'WICK';
+}
+
+function checkEngulfing(c, prev, zone_high) {
+  if (c.close <= c.open) return null;
+  if (prev.close >= prev.open) return null;
+  if (c.close <= prev.open) return null;
+  if (c.open >= prev.close) return null;
+  if (c.close <= zone_high) return null;
+  return 'ENG';
+}
+
+function inSession(hhmm, params) {
+  const startHHMM = 930 + Math.floor(params.skip_min / 60) * 100 + (params.skip_min % 60);
+  const adjStart = 930 + params.skip_min;
+  const startH = Math.floor(adjStart / 60) * 100 + (adjStart % 60);
+  return hhmm >= startH && hhmm <= params.last_entry;
+}
+
+function tryEntry(c, prev, zone_high, zone_stop, params, rr) {
+  const hhmm = getHHMM(c.time);
+  if (!inSession(hhmm, params)) return null;
+  const t = params.trigger;
+  let trigger = null;
+  if (t === 'wick' || t === 'both') trigger = checkCandle(c, zone_high, params);
+  if (!trigger && (t === 'engulfing' || t === 'both')) trigger = checkEngulfing(c, prev, zone_high);
+  if (!trigger) return null;
+  const risk = c.close - zone_stop;
+  if (risk <= 0) return null;
+  return { entry: c.close, stop: zone_stop, target: c.close + risk * rr, trigger };
+}
+
+function strategyPDHPDL(candles, params) {
+  const daily = getDailyHL(candles);
+  const dates = Object.keys(daily).sort();
+  const signals = [];
+  let brokenH = false, brokenL = false, pdh = null, pdl = null, lastDate = null;
+
+  candles.forEach((c, i) => {
+    if (i === 0) return;
+    const d = getDateStr(c.time);
+    const di = dates.indexOf(d);
+    if (di < 1) return;
+    const prev = candles[i - 1];
+    const PDH = daily[dates[di - 1]].high;
+    const PDL = daily[dates[di - 1]].low;
+    if (d !== lastDate) { lastDate = d; brokenH = false; brokenL = false; }
+    if (prev.close < PDH && c.close > PDH) { brokenH = true; pdh = PDH; brokenL = false; }
+    if (prev.close > PDL && c.close < PDL) { brokenL = true; pdl = PDL; brokenH = false; }
+
+    if (brokenH && pdh) {
+      const e = tryEntry(c, prev, pdh, c.low, params, params.rr);
+      if (e) { signals.push({ time: c.time, type: 'LONG', setup: 'PDH', ...e }); brokenH = false; }
+    }
+    if (brokenL && pdl) {
+      const total = c.high - c.low;
+      if (total > 0) {
+        const body = Math.abs(c.close - c.open) / total;
+        const wickTop = (c.high - Math.max(c.open, c.close)) / total;
+        const hhmm = getHHMM(c.time);
+        if (inSession(hhmm, params) && c.close < pdl && c.high > pdl && wickTop >= params.wick_min && body <= params.body_max) {
+          const risk = c.high - c.close;
+          if (risk > 0) {
+            signals.push({ time: c.time, type: 'SHORT', setup: 'PDL', entry: c.close, stop: c.high, target: c.close - risk * params.rr, trigger: 'WICK' });
+            brokenL = false;
+          }
+        }
+      }
+    }
+  });
+  return signals;
+}
+
+function strategyORB(candles, params) {
+  const signals = [];
+  const byDay = {};
+  candles.forEach(c => { const d = getDateStr(c.time); if (!byDay[d]) byDay[d] = []; byDay[d].push(c); });
+
+  Object.values(byDay).forEach(dc => {
+    const orbC = dc.filter(c => { const h = getHHMM(c.time); return h >= 930 && h < 930 + params.orb_min; });
+    if (!orbC.length) return;
+    const orbHigh = Math.max(...orbC.map(c => c.high));
+    let broken = false, count = 0;
+
+    dc.forEach((c, i) => {
+      if (i === 0 || count >= params.max_entries) return;
+      const prev = dc[i - 1];
+      if (prev.close > orbHigh) broken = true;
+      if (!broken) return;
+      const e = tryEntry(c, prev, orbHigh, c.low, params, params.rr_orb);
+      if (e) { signals.push({ time: c.time, type: 'LONG', setup: 'ORB', ...e }); broken = false; count++; }
+    });
+  });
+  return signals;
+}
+
+function strategyOB(candles, params) {
+  const signals = [];
+  for (let i = 1; i < candles.length - params.lookback; i++) {
+    const c = candles[i];
+    if (c.close >= c.open) continue;
+    const body = Math.abs(c.close - c.open) / (c.high - c.low || 1);
+    if (body < params.momentum) continue;
+    const obHigh = c.high, obLow = c.low;
+    let maxF = -Infinity;
+    for (let j = i + 1; j < Math.min(i + params.lookback, candles.length); j++) maxF = Math.max(maxF, candles[j].high);
+    if (maxF <= obHigh * 1.001) continue;
+
+    for (let j = i + 1; j < Math.min(i + 50, candles.length); j++) {
+      const r = candles[j], prev = candles[j - 1];
+      const e = tryEntry(r, prev, obHigh, obLow, params, params.rr_ob);
+      if (e) { signals.push({ time: r.time, type: 'LONG', setup: 'OB', ...e }); break; }
+    }
+  }
+  return signals;
+}
+
+function strategyCombined(candles, params) {
+  const all = [
+    ...strategyPDHPDL(candles, { ...params, rr: params.rr_comb }),
+    ...strategyORB(candles, { ...params, rr_orb: params.rr_comb }),
+    ...strategyOB(candles, { ...params, rr_ob: params.rr_comb })
+  ].sort((a, b) => a.time - b.time);
+  if (params.conf <= 1) return all;
+  const merged = [];
+  all.forEach(s => {
+    const nearby = all.filter(s2 => s2 !== s && Math.abs(s2.time - s.time) < 15 * 60 * 1000 && Math.abs(s2.entry - s.entry) < s.entry * 0.005);
+    if (nearby.length >= params.conf - 1 && !merged.find(m => Math.abs(m.time - s.time) < 5 * 60 * 1000)) merged.push(s);
+  });
+  return merged;
+}
+
+function runStrategy(candles, params) {
+  let signals = [];
+  if (params.strategy === 'pdh_pdl') signals = strategyPDHPDL(candles, params);
+  else if (params.strategy === 'orb') signals = strategyORB(candles, params);
+  else if (params.strategy === 'ob') signals = strategyOB(candles, params);
+  else signals = strategyCombined(candles, params);
+
+  const trades = signals.map(s => {
+    const future = candles.filter(c => c.time > s.time);
+    let esito = 'APERTO', uscita = s.entry;
+    for (const c of future) {
+      if (s.type === 'LONG') {
+        if (c.low <= s.stop) { esito = 'STOP'; uscita = s.stop; break; }
+        if (c.high >= s.target) { esito = 'TARGET'; uscita = s.target; break; }
+      } else {
+        if (c.high >= s.stop) { esito = 'STOP'; uscita = s.stop; break; }
+        if (c.low <= s.target) { esito = 'TARGET'; uscita = s.target; break; }
+      }
+    }
+    const pnl = s.type === 'LONG' ? uscita - s.entry : s.entry - uscita;
+    return { ...s, uscita, esito, pnl };
+  });
+
+  const closed = trades.filter(t => t.esito !== 'APERTO');
+  const wins = closed.filter(t => t.esito === 'TARGET');
+  const wr = closed.length > 0 ? wins.length / closed.length * 100 : 0;
+  const totalPnl = closed.reduce((s, t) => s + t.pnl, 0);
+  const avgPnl = closed.length ? totalPnl / closed.length : 0;
+  const maxWin = closed.length ? Math.max(...closed.map(t => t.pnl)) : 0;
+  const maxLoss = closed.length ? Math.min(...closed.map(t => t.pnl)) : 0;
+  let cum = 0;
+  const equity = closed.map(t => { cum += t.pnl; return { time: t.time, cum }; });
+
+  const wickTrades = closed.filter(t => t.trigger === 'WICK');
+  const engTrades = closed.filter(t => t.trigger === 'ENG');
+
+  return { trades, closed, wr, totalPnl, avgPnl, maxWin, maxLoss, equity, wickTrades, engTrades };
+}
+
+function displayResults(r, params) {
+  document.getElementById('m-trades').textContent = r.closed.length;
+  const wrEl = document.getElementById('m-winrate');
+  wrEl.textContent = r.wr.toFixed(1) + '%';
+  wrEl.className = 'mval ' + (r.wr >= 45 ? 'pos' : r.wr >= 33 ? 'warn' : 'neg');
+  const pEl = document.getElementById('m-profit');
+  pEl.textContent = (r.totalPnl >= 0 ? '+' : '') + '$' + r.totalPnl.toFixed(2);
+  pEl.className = 'mval ' + (r.totalPnl >= 0 ? 'pos' : 'neg');
+  const aEl = document.getElementById('m-avg');
+  aEl.textContent = (r.avgPnl >= 0 ? '+' : '') + '$' + r.avgPnl.toFixed(2);
+  aEl.className = 'mval ' + (r.avgPnl >= 0 ? 'pos' : 'neg');
+  document.getElementById('m-maxwin').textContent = '+$' + r.maxWin.toFixed(2);
+  document.getElementById('m-maxloss').textContent = '$' + r.maxLoss.toFixed(2);
+
+  if (params.trigger === 'both' && r.wickTrades.length && r.engTrades.length) {
+    const ww = r.wickTrades.filter(t => t.esito==='TARGET').length;
+    const ew = r.engTrades.filter(t => t.esito==='TARGET').length;
+    const wwr = (ww/r.wickTrades.length*100).toFixed(0);
+    const ewr = (ew/r.engTrades.length*100).toFixed(0);
+    const ts = document.getElementById('trigger-stats');
+    ts.style.display = 'flex';
+    ts.innerHTML = `
+      <div class="tbd"><span class="tag-wick">WICK</span> <strong>${r.wickTrades.length} trade</strong> — WR ${wwr}% — P&L $${r.wickTrades.reduce((s,t)=>s+t.pnl,0).toFixed(2)}</div>
+      <div class="tbd"><span class="tag-eng">ENG</span> <strong>${r.engTrades.length} trade</strong> — WR ${ewr}% — P&L $${r.engTrades.reduce((s,t)=>s+t.pnl,0).toFixed(2)}</div>`;
+  } else {
+    document.getElementById('trigger-stats').style.display = 'none';
+  }
+
+  document.getElementById('empty1').style.display = 'none';
+  const canvas = document.getElementById('pnlChart');
+  canvas.style.display = 'block';
+  if (pnlChartInstance) pnlChartInstance.destroy();
+
+  const labels = r.equity.map(e => e.time.toLocaleDateString('it-IT', { month: 'short', day: 'numeric' }));
+  const data = r.equity.map(e => +e.cum.toFixed(2));
+  const color = r.totalPnl >= 0 ? '#00c896' : '#ff4d4d';
+
+  pnlChartInstance = new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets: [{ data, borderColor: color, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: color, fill: true, backgroundColor: ctx => { const g = ctx.chart.ctx.createLinearGradient(0,0,0,ctx.chart.height); g.addColorStop(0, r.totalPnl>=0?'rgba(0,200,150,0.15)':'rgba(255,77,77,0.15)'); g.addColorStop(1,'rgba(0,0,0,0)'); return g; }, tension: 0.3 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' P&L: $'+ctx.raw.toFixed(2) } } }, scales: { x: { ticks: { color: '#555', font: { size: 10 }, maxTicksLimit: 12 }, grid: { color: 'rgba(255,255,255,0.03)' } }, y: { ticks: { color: '#555', font: { size: 10 }, callback: v => '$'+v.toFixed(0) }, grid: { color: 'rgba(255,255,255,0.05)' } } } }
+  });
+
+  const recent = [...r.trades].reverse().slice(0, 40);
+  if (!recent.length) { document.getElementById('tradesTable').innerHTML = '<div class="empty">Nessun trade trovato con questi parametri</div>'; return; }
+  document.getElementById('tradesTable').innerHTML = `
+    <table>
+      <thead><tr><th>Data</th><th>Ora</th><th>Tipo</th><th>Setup</th><th>Trigger</th><th>Entry</th><th>Stop</th><th>Target</th><th>Esito</th><th>P&L</th></tr></thead>
+      <tbody>${recent.map(t => `<tr>
+        <td>${t.time.toLocaleDateString('it-IT',{month:'short',day:'numeric'})}</td>
+        <td>${t.time.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}</td>
+        <td class="${t.type==='LONG'?'tag-long':'tag-short'}">${t.type}</td>
+        <td>${t.setup}</td>
+        <td class="${t.trigger==='WICK'?'tag-wick':'tag-eng'}">${t.trigger}</td>
+        <td>$${t.entry.toFixed(2)}</td>
+        <td>$${t.stop.toFixed(2)}</td>
+        <td>$${t.target.toFixed(2)}</td>
+        <td class="${t.esito==='TARGET'?'tag-win':t.esito==='STOP'?'tag-loss':'tag-open'}">${t.esito}</td>
+        <td class="${t.pnl>=0?'tag-win':'tag-loss'}">${t.pnl>=0?'+':''}$${t.pnl.toFixed(2)}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+}
+
+updateWickPreview();
+</script>
+</body>
+</html>

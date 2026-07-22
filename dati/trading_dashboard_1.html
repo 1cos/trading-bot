@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trading Bot Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #0f0f0f; --surface: #1a1a1a; --surface2: #222;
+  --border: rgba(255,255,255,0.08); --text: #f0f0f0; --muted: #888;
+  --green: #00c896; --red: #ff4d4d; --blue: #3987e5; --amber: #f59e0b;
+  --purple: #a78bfa; --radius: 10px;
+}
+body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; min-height: 100vh; }
+header { padding: 16px 24px; border-bottom: 0.5px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+header h1 { font-size: 17px; font-weight: 500; }
+header h1 span { color: var(--green); }
+.badge { background: rgba(0,200,150,0.12); color: var(--green); font-size: 11px; padding: 3px 10px; border-radius: 20px; border: 0.5px solid rgba(0,200,150,0.3); }
+.main { display: grid; grid-template-columns: 310px 1fr; height: calc(100vh - 53px); }
+.sidebar { border-right: 0.5px solid var(--border); padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.section-title { font-size: 10px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
+.tabs2 { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.tabs3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; }
+.tabs4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 5px; }
+.tab { padding: 7px 4px; border-radius: 8px; border: 0.5px solid var(--border); background: var(--surface); cursor: pointer; text-align: center; font-size: 11px; color: var(--muted); transition: all 0.15s; }
+.tab.active-blue { border-color: var(--blue); color: var(--blue); background: rgba(57,135,229,0.08); }
+.tab.active-purple { border-color: var(--purple); color: var(--purple); background: rgba(167,139,250,0.08); }
+.tab.active-amber { border-color: var(--amber); color: var(--amber); background: rgba(245,158,11,0.08); }
+.tab.active-green { border-color: var(--green); color: var(--green); background: rgba(0,200,150,0.08); }
+
+.param { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+.param label { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; }
+.param label span { color: var(--text); font-weight: 500; }
+input[type=range] { width: 100%; height: 4px; appearance: none; background: var(--surface2); border-radius: 2px; outline: none; cursor: pointer; }
+input[type=range]::-webkit-slider-thumb { appearance: none; width: 13px; height: 13px; border-radius: 50%; background: var(--blue); cursor: pointer; }
+select { background: var(--surface2); color: var(--text); border: 0.5px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 12px; width: 100%; outline: none; cursor: pointer; }
+
+.instrument-box { background: var(--surface); border: 0.5px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 4px; }
+.instrument-box .iname { font-size: 13px; font-weight: 500; color: var(--text); }
+.instrument-box .idetail { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.instrument-box .ipnl { font-size: 11px; color: var(--green); margin-top: 4px; font-weight: 500; }
+
+.wick-visual { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--surface); border-radius: 8px; border: 0.5px solid var(--border); margin-bottom: 8px; }
+.candle-preview { display: flex; flex-direction: column; align-items: center; gap: 1px; width: 24px; }
+.wick-top { background: var(--muted); border-radius: 1px; transition: all 0.2s; }
+.candle-body { background: var(--green); border-radius: 2px; transition: all 0.2s; width: 10px; }
+.wick-bot { background: var(--amber); border-radius: 1px; transition: all 0.2s; }
+.wick-label { font-size: 11px; color: var(--muted); line-height: 1.4; }
+.wick-label strong { color: var(--text); display: block; font-size: 12px; }
+
+.run-btn { width: 100%; padding: 11px; border-radius: var(--radius); border: none; background: var(--blue); color: #fff; font-size: 14px; font-weight: 500; cursor: pointer; transition: opacity 0.15s; margin-top: 4px; }
+.run-btn:hover { opacity: 0.85; }
+.run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.content { display: flex; flex-direction: column; overflow: hidden; }
+.metrics-bar { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; padding: 14px 18px; border-bottom: 0.5px solid var(--border); }
+.metric { background: var(--surface); border-radius: var(--radius); padding: 10px 12px; }
+.metric .mlabel { font-size: 10px; color: var(--muted); margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+.metric .mval { font-size: 18px; font-weight: 500; }
+.metric .mval.pos { color: var(--green); }
+.metric .mval.neg { color: var(--red); }
+.metric .mval.neu { color: var(--blue); }
+.metric .mval.warn { color: var(--amber); }
+.metric .msub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+.charts-area { flex: 1; display: grid; grid-template-rows: 1fr 1fr; overflow: hidden; }
+.chart-panel { padding: 14px 18px; border-bottom: 0.5px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.chart-panel h3 { font-size: 11px; color: var(--muted); margin-bottom: 6px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.5px; }
+.chart-wrap { flex: 1; position: relative; min-height: 0; }
+.trigger-breakdown { display: flex; gap: 16px; margin-bottom: 6px; }
+.tbd { font-size: 11px; color: var(--muted); }
+.tbd strong { color: var(--text); }
+.empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted); font-size: 13px; }
+.loading { display: flex; align-items: center; justify-content: center; height: 60px; color: var(--muted); font-size: 12px; gap: 8px; }
+.spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.trades-table { overflow-y: auto; height: 100%; }
+table { width: 100%; border-collapse: collapse; font-size: 11px; }
+th { color: var(--muted); font-weight: 400; text-align: left; padding: 5px 8px; border-bottom: 0.5px solid var(--border); position: sticky; top: 0; background: var(--bg); font-size: 10px; text-transform: uppercase; }
+td { padding: 5px 8px; border-bottom: 0.5px solid rgba(255,255,255,0.04); }
+.tag-long { color: var(--green); font-weight: 500; }
+.tag-short { color: var(--red); font-weight: 500; }
+.tag-win { color: var(--green); }
+.tag-loss { color: var(--red); }
+.tag-open { color: var(--amber); }
+.tag-wick { color: var(--purple); font-size: 10px; }
+.tag-eng { color: var(--amber); font-size: 10px; }
+.divider { height: 0.5px; background: var(--border); }
+
+.preset-bar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.preset-chip { padding: 5px 10px; border-radius: 20px; border: 0.5px solid var(--border); background: var(--surface); cursor: pointer; font-size: 11px; color: var(--muted); transition: all 0.15s; display: flex; align-items: center; gap: 5px; }
+.preset-chip:hover { border-color: var(--blue); color: var(--blue); }
+.preset-chip .del { color: var(--red); font-size: 13px; line-height: 1; opacity: 0.6; }
+.preset-chip .del:hover { opacity: 1; }
+.preset-save-row { display: flex; gap: 6px; }
+.preset-input { flex: 1; background: var(--surface2); color: var(--text); border: 0.5px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 12px; outline: none; }
+.preset-input:focus { border-color: var(--blue); }
+.preset-save-btn { padding: 6px 12px; border-radius: 6px; border: 0.5px solid var(--border); background: var(--surface); color: var(--green); font-size: 12px; cursor: pointer; white-space: nowrap; }
+.preset-save-btn:hover { border-color: var(--green); background: rgba(0,200,150,0.08); }
+.preset-empty { font-size: 11px; color: var(--muted); font-style: italic; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Trading Bot <span>Dashboard</span></h1>
+  <span class="badge" id="mode-badge">Futures Mode</span>
+</header>
+<div class="main">
+  <div class="sidebar">
+
+    <div>
+      <div class="section-title">Modalità</div>
+      <div class="tabs3">
+        <div class="tab active-amber" onclick="setMode('futures',this)">Futures</div>
+        <div class="tab" onclick="setMode('options',this)">Opzioni</div>
+        <div class="tab" onclick="setMode('equity',this)">Azioni</div>
+      </div>
+    </div>
+
+    <div id="futures-config">
+      <div class="section-title">Strumento Futures</div>
+      <div class="tabs2">
+        <div class="tab active-green" onclick="setFutures('MES',this)">MES — $5/pt</div>
+        <div class="tab" onclick="setFutures('MNQ',this)">MNQ — $2/pt</div>
+      </div>
+      <div class="instrument-box" id="futures-info" style="margin-top:8px">
+        <div class="iname">Micro E-mini S&P 500 (MES)</div>
+        <div class="idetail">1 punto = $5 · Tick = 0.25pt = $1.25</div>
+        <div class="ipnl" id="futures-example">Es: +3pt × $5 = +$15 per contratto</div>
+      </div>
+      <div class="param" style="margin-top:8px">
+        <label>Contratti <span id="fut_contracts_val">1</span></label>
+        <input type="range" min="1" max="10" value="1" step="1" id="fut_contracts" oninput="document.getElementById('fut_contracts_val').textContent=this.value; updateFuturesExample()">
+      </div>
+    </div>
+
+    <div id="options-config" style="display:none">
+      <div class="section-title">Configurazione Opzioni</div>
+      <div class="tabs2">
+        <div class="tab active-green" onclick="setStrike('ATM',this)">ATM ~0.50Δ</div>
+        <div class="tab" onclick="setStrike('OTM',this)">OTM ~0.30Δ</div>
+      </div>
+      <div class="param" style="margin-top:10px">
+        <label>Premio per contratto <span id="premium_val">$2.50</span></label>
+        <input type="range" min="50" max="600" value="250" step="25" id="premium" oninput="updatePremium()">
+      </div>
+      <div class="param">
+        <label>Numero contratti <span id="opt_contracts_val">5</span></label>
+        <input type="range" min="1" max="20" value="5" step="1" id="opt_contracts" oninput="document.getElementById('opt_contracts_val').textContent=this.value; updatePremium()">
+      </div>
+      <div class="instrument-box" id="options-info">
+        <div class="iname">Rischio per trade</div>
+        <div class="idetail" id="opt-risk-detail">5 contratti × $250 = $1,250 a rischio</div>
+        <div class="ipnl" id="opt-pnl-example">Target 2x → +$2,500 · Stop → -$1,250</div>
+      </div>
+    </div>
+
+    <div id="equity-config" style="display:none">
+      <div class="section-title">Configurazione Azioni</div>
+      <div class="param">
+        <label>Azioni per trade <span id="shares_val">100</span></label>
+        <input type="range" min="10" max="500" value="100" step="10" id="shares" oninput="document.getElementById('shares_val').textContent=this.value">
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div>
+      <div class="section-title">Strategia</div>
+      <div class="tabs4">
+        <div class="tab active-blue" onclick="setStrategy('pdh_pdl',this)">PDH/PDL</div>
+        <div class="tab" onclick="setStrategy('orb',this)">ORB</div>
+        <div class="tab" onclick="setStrategy('ob',this)">OB</div>
+        <div class="tab" onclick="setStrategy('combined',this)">Comb.</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Strumento</div>
+      <select id="simbolo">
+        <option value="SPY">SPY — S&P 500 ETF</option>
+        <option value="QQQ">QQQ — Nasdaq ETF</option>
+        <option value="TSLA">TSLA — Tesla</option>
+        <option value="NVDA">NVDA — Nvidia</option>
+        <option value="AMZN">AMZN — Amazon</option>
+        <option value="META">META — Meta</option>
+        <option value="MSFT">MSFT — Microsoft</option>
+        <option value="GOOGL">GOOGL — Google</option>
+        <option value="MU">MU — Micron</option>
+      </select>
+    </div>
+
+    <div>
+      <div class="section-title">Trigger di entrata</div>
+      <div class="tabs3">
+        <div class="tab active-purple" onclick="setTrigger('both',this)">Wick + Eng</div>
+        <div class="tab" onclick="setTrigger('wick',this)">Solo Wick</div>
+        <div class="tab" onclick="setTrigger('engulfing',this)">Solo Eng</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Proporzione Wick / Body</div>
+      <div class="wick-visual">
+        <div class="candle-preview">
+          <div class="wick-top" id="wick-top-preview" style="width:2px;height:4px;"></div>
+          <div class="candle-body" id="body-preview" style="height:14px;"></div>
+          <div class="wick-bot" id="wick-bot-preview" style="width:2px;height:18px;"></div>
+        </div>
+        <div class="wick-label">
+          <strong id="wick-ratio-label">Wick 60% / Body 40%</strong>
+          Wick nella direzione del retest
+        </div>
+      </div>
+      <div class="param">
+        <label>Wick minima <span id="wick_min_val">60%</span></label>
+        <input type="range" min="20" max="85" value="60" step="5" id="wick_min" oninput="updateWickPreview()">
+      </div>
+      <div class="param">
+        <label>Body massimo <span id="body_max_val">40%</span></label>
+        <input type="range" min="10" max="70" value="40" step="5" id="body_max" oninput="updateWickPreview()">
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Filtro tempo</div>
+      <div class="param">
+        <label>Salta i primi <span id="skip_min_val">0 min</span></label>
+        <input type="range" min="0" max="60" value="0" step="5" id="skip_min" oninput="updateSkipLabel()">
+      </div>
+      <div class="param">
+        <label>Ultima entrata <span id="last_entry_val">15:30</span></label>
+        <input type="range" min="1000" max="1530" value="1530" step="30" id="last_entry" oninput="updateLastEntry()">
+      </div>
+    </div>
+
+    <div id="params-pdh_pdl">
+      <div class="section-title">Parametri PDH / PDL</div>
+      <div class="param">
+        <label>Stop Loss (ticks) <span id="sl_ticks_val">4</span></label>
+        <input type="range" min="2" max="16" value="4" step="1" id="sl_ticks" oninput="document.getElementById('sl_ticks_val').textContent=this.value">
+      </div>
+      <div class="param">
+        <label>Risk / Reward <span id="rr_val">2.0x</span></label>
+        <input type="range" min="10" max="60" value="20" step="5" id="rr" oninput="document.getElementById('rr_val').textContent=(this.value/10).toFixed(1)+'x'">
+      </div>
+    </div>
+
+    <div id="params-orb" style="display:none">
+      <div class="section-title">Parametri ORB</div>
+      <div class="param">
+        <label>Finestra ORB <span id="orb_min_val">5 min</span></label>
+        <input type="range" min="5" max="30" value="5" step="5" id="orb_min" oninput="document.getElementById('orb_min_val').textContent=this.value+' min'">
+      </div>
+      <div class="param">
+        <label>Max entrate/giorno <span id="max_entries_val">1</span></label>
+        <input type="range" min="1" max="4" value="1" step="1" id="max_entries" oninput="document.getElementById('max_entries_val').textContent=this.value">
+      </div>
+      <div class="param">
+        <label>Risk / Reward <span id="rr_orb_val">4.0x</span></label>
+        <input type="range" min="15" max="60" value="40" step="5" id="rr_orb" oninput="document.getElementById('rr_orb_val').textContent=(this.value/10).toFixed(1)+'x'">
+      </div>
+    </div>
+
+    <div id="params-ob" style="display:none">
+      <div class="section-title">Parametri Order Block</div>
+      <div class="param">
+        <label>Momentum OB min <span id="momentum_val">55%</span></label>
+        <input type="range" min="30" max="85" value="55" step="5" id="momentum" oninput="document.getElementById('momentum_val').textContent=this.value+'%'">
+      </div>
+      <div class="param">
+        <label>Lookback OB (candele) <span id="lookback_val">10</span></label>
+        <input type="range" min="3" max="30" value="10" step="1" id="lookback" oninput="document.getElementById('lookback_val').textContent=this.value">
+      </div>
+      <div class="param">
+        <label>Risk / Reward <span id="rr_ob_val">2.0x</span></label>
+        <input type="range" min="10" max="50" value="20" step="5" id="rr_ob" oninput="document.getElementById('rr_ob_val').textContent=(this.value/10).toFixed(1)+'x'">
+      </div>
+    </div>
+
+    <div id="params-combined" style="display:none">
+      <div class="section-title">Strategia Combinata</div>
+      <div class="param">
+        <label>Confluenze minime <span id="conf_val">2</span></label>
+        <input type="range" min="1" max="3" value="2" step="1" id="conf" oninput="document.getElementById('conf_val').textContent=this.value">
+      </div>
+      <div class="param">
+        <label>Risk / Reward <span id="rr_comb_val">3.0x</span></label>
+        <input type="range" min="15" max="60" value="30" step="5" id="rr_comb" oninput="document.getElementById('rr_comb_val').textContent=(this.value/10).toFixed(1)+'x'">
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div>
+      <div class="section-title">I miei preset</div>
+      <div class="preset-bar" id="preset-bar">
+        <span class="preset-empty">Nessun preset salvato</span>
+      </div>
+      <div class="preset-save-row" style="margin-top:8px">
+        <input class="preset-input" id="preset-name" placeholder="Nome preset (es. OB SPY mattina)" maxlength="30">
+        <button class="preset-save-btn" onclick="savePreset()">Salva</button>
+      </div>
+    </div>
+
+    <button class="run-btn" onclick="runBacktest()" id="runBtn">Esegui Backtest</button>
+  </div>
+
+  <div class="content">
+    <div class="metrics-bar">
+      <div class="metric"><div class="mlabel">Trade chiusi</div><div class="mval neu" id="m-trades">—</div></div>
+      <div class="metric"><div class="mlabel">Win Rate</div><div class="mval" id="m-winrate">—</div></div>
+      <div class="metric"><div class="mlabel">P&L totale $</div><div class="mval" id="m-profit">—</div><div class="msub" id="m-profit-sub"></div></div>
+      <div class="metric"><div class="mlabel">P&L medio/trade</div><div class="mval" id="m-avg">—</div></div>
+      <div class="metric"><div class="mlabel">Max vincita</div><div class="mval pos" id="m-maxwin">—</div></div>
+      <div class="metric"><div class="mlabel">Max perdita</div><div class="mval neg" id="m-maxloss">—</div></div>
+    </div>
+
+    <div class="charts-area">
+      <div class="chart-panel">
+        <h3>Curva del capitale — P&amp;L cumulativo in $</h3>
+        <div id="trigger-stats" class="trigger-breakdown" style="display:none"></div>
+        <div class="chart-wrap">
+          <div class="empty" id="empty1">Imposta i parametri e clicca "Esegui Backtest"</div>
+          <canvas id="pnlChart" style="display:none"></canvas>
+        </div>
+      </div>
+      <div class="chart-panel" style="overflow:hidden">
+        <h3>Ultimi 40 trade</h3>
+        <div class="trades-table" id="tradesTable">
+          <div class="empty" id="empty2">Nessun dato</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentStrategy = 'pdh_pdl';
+let currentTrigger = 'both';
+let currentMode = 'futures';
+let currentFutures = 'MES';
+let currentStrike = 'ATM';
+let pnlChartInstance = null;
+
+const FUTURES_CONFIG = {
+  MES: { name: 'Micro E-mini S&P 500', pointValue: 5, tick: 0.25, tickValue: 1.25 },
+  MNQ: { name: 'Micro E-mini Nasdaq', pointValue: 2, tick: 0.25, tickValue: 0.50 }
+};
+const DELTA = { ATM: 0.50, OTM: 0.30 };
+
+function setMode(m, el) {
+  currentMode = m;
+  document.querySelectorAll('.tabs3 .tab').forEach(t => { if(t.parentElement.children[0]===document.querySelector('.tabs3 .tab')) t.className='tab'; });
+  el.className = 'tab active-amber';
+  document.getElementById('futures-config').style.display = m === 'futures' ? 'block' : 'none';
+  document.getElementById('options-config').style.display = m === 'options' ? 'block' : 'none';
+  document.getElementById('equity-config').style.display = m === 'equity' ? 'block' : 'none';
+  const badges = { futures: 'Futures Mode', options: 'Options Mode', equity: 'Equity Mode' };
+  document.getElementById('mode-badge').textContent = badges[m];
+}
+
+function setFutures(f, el) {
+  currentFutures = f;
+  document.querySelectorAll('#futures-config .tab').forEach(t => t.className = 'tab');
+  el.className = 'tab active-green';
+  const cfg = FUTURES_CONFIG[f];
+  document.getElementById('futures-info').querySelector('.iname').textContent = cfg.name + ' (' + f + ')';
+  document.getElementById('futures-info').querySelector('.idetail').textContent = `1 punto = $${cfg.pointValue} · Tick = ${cfg.tick}pt = $${cfg.tickValue}`;
+  updateFuturesExample();
+}
+
+function updateFuturesExample() {
+  const cfg = FUTURES_CONFIG[currentFutures];
+  const c = parseInt(document.getElementById('fut_contracts').value);
+  document.getElementById('futures-example').textContent = `Es: +3pt × $${cfg.pointValue} × ${c} = +$${3 * cfg.pointValue * c} per trade`;
+}
+
+function setStrike(s, el) {
+  currentStrike = s;
+  document.querySelectorAll('#options-config .tabs2 .tab').forEach(t => t.className = 'tab');
+  el.className = 'tab active-green';
+  updatePremium();
+}
+
+function updatePremium() {
+  const p = parseInt(document.getElementById('premium').value) / 100;
+  const c = parseInt(document.getElementById('opt_contracts').value);
+  document.getElementById('premium_val').textContent = '$' + p.toFixed(2);
+  const risk = p * 100 * c;
+  document.getElementById('opt-risk-detail').textContent = `${c} contratti × $${(p*100).toFixed(0)} = $${risk.toFixed(0)} a rischio`;
+  document.getElementById('opt-pnl-example').textContent = `Delta ${DELTA[currentStrike]} · Target 2x → +$${(risk).toFixed(0)} · Stop → -$${risk.toFixed(0)}`;
+}
+
+function setStrategy(s, el) {
+  currentStrategy = s;
+  document.querySelectorAll('.tabs4 .tab').forEach(t => t.className = 'tab');
+  el.className = 'tab active-blue';
+  ['pdh_pdl','orb','ob','combined'].forEach(id => {
+    document.getElementById('params-'+id).style.display = id === s ? 'block' : 'none';
+  });
+}
+
+function setTrigger(t, el) {
+  currentTrigger = t;
+  document.querySelectorAll('.tabs3 .tab').forEach(b => {
+    if(b.parentElement === el.parentElement) b.className = 'tab';
+  });
+  el.className = 'tab active-purple';
+}
+
+function updateWickPreview() {
+  const w = parseInt(document.getElementById('wick_min').value);
+  const b = parseInt(document.getElementById('body_max').value);
+  document.getElementById('wick_min_val').textContent = w + '%';
+  document.getElementById('body_max_val').textContent = b + '%';
+  document.getElementById('wick-ratio-label').textContent = `Wick ${w}% / Body ${b}%`;
+  const total = 60;
+  const bodyH = Math.round(total * b / 100);
+  const wickBotH = Math.round(total * w / 100);
+  const wickTopH = Math.max(2, total - bodyH - wickBotH);
+  document.getElementById('wick-top-preview').style.height = wickTopH + 'px';
+  document.getElementById('body-preview').style.height = bodyH + 'px';
+  document.getElementById('wick-bot-preview').style.height = wickBotH + 'px';
+}
+
+function updateSkipLabel() {
+  const v = parseInt(document.getElementById('skip_min').value);
+  const tot = 9*60 + 30 + v;
+  const fh = Math.floor(tot/60), fm = tot%60;
+  document.getElementById('skip_min_val').textContent = v === 0 ? '0 min (da 09:30)' : `${v} min (da ${fh}:${fm<10?'0':''}${fm})`;
+}
+
+function updateLastEntry() {
+  const v = parseInt(document.getElementById('last_entry').value);
+  const h = Math.floor(v/100), m = v%100;
+  document.getElementById('last_entry_val').textContent = `${h}:${m<10?'0':''}${m}`;
+}
+
+function calcPnlDollars(pnlPoints, signal, params) {
+  if (currentMode === 'futures') {
+    const cfg = FUTURES_CONFIG[currentFutures];
+    const contracts = parseInt(document.getElementById('fut_contracts').value);
+    // P&L preciso: punti × valore punto × contratti
+    return Math.round(pnlPoints * cfg.pointValue * contracts * 100) / 100;
+
+  } else if (currentMode === 'options') {
+    const premium = parseInt(document.getElementById('premium').value) / 100; // es. 2.50
+    const contracts = parseInt(document.getElementById('opt_contracts').value);
+    const delta = DELTA[currentStrike];
+    const riskPerTrade = premium * 100 * contracts; // es. 2.50 × 100 × 5 = $1,250
+
+    if (pnlPoints < 0) {
+      // STOP → perdi tutto il premio pagato
+      return -riskPerTrade;
+    } else {
+      // TARGET → il movimento del sottostante × delta × 100 × contratti
+      const optionGain = pnlPoints * delta * 100 * contracts;
+      return Math.round(optionGain * 100) / 100;
+    }
+
+  } else {
+    const shares = parseInt(document.getElementById('shares').value);
+    return Math.round(pnlPoints * shares * 100) / 100;
+  }
+}
+
+function getParams() {
+  return {
+    strategy: currentStrategy, trigger: currentTrigger, mode: currentMode,
+    simbolo: document.getElementById('simbolo').value,
+    wick_min: parseInt(document.getElementById('wick_min').value) / 100,
+    body_max: parseInt(document.getElementById('body_max').value) / 100,
+    skip_min: parseInt(document.getElementById('skip_min').value),
+    last_entry: parseInt(document.getElementById('last_entry').value),
+    sl_ticks: parseInt(document.getElementById('sl_ticks').value),
+    rr: parseInt(document.getElementById('rr').value) / 10,
+    orb_min: parseInt(document.getElementById('orb_min').value),
+    max_entries: parseInt(document.getElementById('max_entries').value),
+    rr_orb: parseInt(document.getElementById('rr_orb').value) / 10,
+    momentum: parseInt(document.getElementById('momentum').value) / 100,
+    lookback: parseInt(document.getElementById('lookback').value),
+    rr_ob: parseInt(document.getElementById('rr_ob').value) / 10,
+    conf: parseInt(document.getElementById('conf').value),
+    rr_comb: parseInt(document.getElementById('rr_comb').value) / 10,
+  };
+}
+
+async function runBacktest() {
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true; btn.textContent = 'Elaborazione...';
+  document.getElementById('empty1').style.display = 'flex';
+  document.getElementById('pnlChart').style.display = 'none';
+  document.getElementById('trigger-stats').style.display = 'none';
+  document.getElementById('tradesTable').innerHTML = '<div class="loading"><div class="spinner"></div>Caricamento CSV...</div>';
+  try {
+    const params = getParams();
+    let candles;
+    try {
+      const resp = await fetch(params.simbolo + '_5m.csv');
+      if (!resp.ok) throw new Error('x');
+      candles = parseCSV(await resp.text());
+    } catch(e) { candles = generateMockData(params.simbolo); }
+    displayResults(runStrategy(candles, params), params);
+  } catch(err) {
+    document.getElementById('tradesTable').innerHTML = `<div class="empty" style="color:var(--red)">Errore: ${err.message}</div>`;
+  }
+  btn.disabled = false; btn.textContent = 'Esegui Backtest';
+}
+
+function parseCSV(text) {
+  return text.trim().split('\n').slice(3).map(l => {
+    const p = l.split(','); if (p.length < 5) return null;
+    return { time: new Date(p[0]), open: +p[4], high: +p[2], low: +p[3], close: +p[1], volume: +p[5] };
+  }).filter(c => c && !isNaN(c.close) && c.close > 0);
+}
+
+function generateMockData(simbolo) {
+  const bases = { SPY:720, QQQ:480, TSLA:280, NVDA:120, AMZN:200, META:550, MSFT:420, GOOGL:160, MU:95 };
+  const base = bases[simbolo] || 100;
+  const candles = []; let price = base;
+  const start = new Date('2026-04-24T09:30:00-04:00');
+  for (let day = 0; day < 60; day++) {
+    const d = new Date(start); d.setDate(d.getDate() + day);
+    if (d.getDay() === 0 || d.getDay() === 6) continue;
+    const trend = (Math.random() - 0.48) * 0.003;
+    for (let min = 0; min < 78; min++) {
+      const t = new Date(d); t.setMinutes(t.getMinutes() + min * 5);
+      const vol = (Math.random() - 0.5) * base * 0.008;
+      const open = price, close = price + vol + trend * base;
+      const high = Math.max(open, close) + Math.random() * base * 0.004;
+      const low = Math.min(open, close) - Math.random() * base * 0.004;
+      candles.push({ time: t, open, high, low, close });
+      price = close;
+    }
+  }
+  return candles;
+}
+
+function getDateStr(t) { return t.toISOString().split('T')[0]; }
+function getHHMM(t) { return t.getHours() * 100 + t.getMinutes(); }
+function getDailyHL(candles) {
+  const d = {};
+  candles.forEach(c => { const k = getDateStr(c.time); if (!d[k]) d[k] = { high:-Infinity, low:Infinity }; d[k].high = Math.max(d[k].high, c.high); d[k].low = Math.min(d[k].low, c.low); });
+  return d;
+}
+
+function inSession(hhmm, params) {
+  const skip = params.skip_min;
+  const startTot = 9*60 + 30 + skip;
+  const startHHMM = Math.floor(startTot/60)*100 + startTot%60;
+  return hhmm >= startHHMM && hhmm <= params.last_entry;
+}
+
+function checkWick(c, zoneHigh, params) {
+  const total = c.high - c.low; if (!total) return null;
+  const body = Math.abs(c.close - c.open) / total;
+  const wickBot = (Math.min(c.open, c.close) - c.low) / total;
+  if (c.close <= zoneHigh || c.low >= zoneHigh) return null;
+  if (body > params.body_max || wickBot < params.wick_min) return null;
+  return 'WICK';
+}
+
+function checkEng(c, prev, zoneHigh) {
+  if (c.close <= c.open || prev.close >= prev.open) return null;
+  if (c.close <= prev.open || c.open >= prev.close || c.close <= zoneHigh) return null;
+  return 'ENG';
+}
+
+function tryEntry(c, prev, zoneHigh, stop, params, rr) {
+  if (!inSession(getHHMM(c.time), params)) return null;
+  let trigger = null;
+  if (params.trigger !== 'engulfing') trigger = checkWick(c, zoneHigh, params);
+  if (!trigger && params.trigger !== 'wick') trigger = checkEng(c, prev, zoneHigh);
+  if (!trigger) return null;
+  const risk = c.close - stop; if (risk <= 0) return null;
+  return { entry: c.close, stop, target: c.close + risk * rr, trigger };
+}
+
+function strategyPDHPDL(candles, params) {
+  const daily = getDailyHL(candles), dates = Object.keys(daily).sort(), signals = [];
+  let bH = false, bL = false, pdh = null, pdl = null, lastD = null;
+  candles.forEach((c, i) => {
+    if (!i) return;
+    const d = getDateStr(c.time), di = dates.indexOf(d);
+    if (di < 1) return;
+    const prev = candles[i-1], PDH = daily[dates[di-1]].high, PDL = daily[dates[di-1]].low;
+    if (d !== lastD) { lastD = d; bH = false; bL = false; }
+    if (prev.close < PDH && c.close > PDH) { bH = true; pdh = PDH; bL = false; }
+    if (prev.close > PDL && c.close < PDL) { bL = true; pdl = PDL; bH = false; }
+    if (bH && pdh) { const e = tryEntry(c, prev, pdh, c.low, params, params.rr); if (e) { signals.push({ time:c.time, type:'LONG', setup:'PDH', ...e }); bH=false; } }
+    if (bL && pdl) {
+      const tot = c.high-c.low; if (!tot) return;
+      const body = Math.abs(c.close-c.open)/tot, wickTop = (c.high-Math.max(c.open,c.close))/tot;
+      const hhmm = getHHMM(c.time);
+      if (inSession(hhmm,params) && c.close<pdl && c.high>pdl && wickTop>=params.wick_min && body<=params.body_max) {
+        const risk = c.high-c.close; if(risk>0) { signals.push({time:c.time,type:'SHORT',setup:'PDL',entry:c.close,stop:c.high,target:c.close-risk*params.rr,trigger:'WICK'}); bL=false; }
+      }
+    }
+  });
+  return signals;
+}
+
+function strategyORB(candles, params) {
+  const signals = [], byDay = {};
+  candles.forEach(c => { const d=getDateStr(c.time); if(!byDay[d]) byDay[d]=[]; byDay[d].push(c); });
+  Object.values(byDay).forEach(dc => {
+    const orb = dc.filter(c => { const h=getHHMM(c.time); return h>=930 && h<930+params.orb_min; });
+    if (!orb.length) return;
+    const orbH = Math.max(...orb.map(c=>c.high));
+    let broken=false, count=0;
+    dc.forEach((c,i) => {
+      if (!i || count>=params.max_entries) return;
+      const prev=dc[i-1]; if(prev.close>orbH) broken=true; if(!broken) return;
+      const e=tryEntry(c,prev,orbH,c.low,params,params.rr_orb);
+      if(e){signals.push({time:c.time,type:'LONG',setup:'ORB',...e});broken=false;count++;}
+    });
+  });
+  return signals;
+}
+
+function strategyOB(candles, params) {
+  const signals = [];
+  for (let i=1; i<candles.length-params.lookback; i++) {
+    const c=candles[i]; if(c.close>=c.open) continue;
+    const tot=c.high-c.low; if(!tot) continue;
+    if(Math.abs(c.close-c.open)/tot < params.momentum) continue;
+    const obH=c.high, obL=c.low;
+    let maxF=-Infinity;
+    for(let j=i+1;j<Math.min(i+params.lookback,candles.length);j++) maxF=Math.max(maxF,candles[j].high);
+    if(maxF<=obH*1.001) continue;
+    for(let j=i+1;j<Math.min(i+50,candles.length);j++) {
+      const r=candles[j],prev=candles[j-1];
+      const e=tryEntry(r,prev,obH,obL,params,params.rr_ob);
+      if(e){signals.push({time:r.time,type:'LONG',setup:'OB',...e});break;}
+    }
+  }
+  return signals;
+}
+
+function strategyCombined(candles, params) {
+  const all=[
+    ...strategyPDHPDL(candles,{...params,rr:params.rr_comb}),
+    ...strategyORB(candles,{...params,rr_orb:params.rr_comb}),
+    ...strategyOB(candles,{...params,rr_ob:params.rr_comb})
+  ].sort((a,b)=>a.time-b.time);
+  if(params.conf<=1) return all;
+  const merged=[];
+  all.forEach(s=>{
+    const nearby=all.filter(s2=>s2!==s&&Math.abs(s2.time-s.time)<15*60*1000&&Math.abs(s2.entry-s.entry)<s.entry*0.005);
+    if(nearby.length>=params.conf-1&&!merged.find(m=>Math.abs(m.time-s.time)<5*60*1000)) merged.push(s);
+  });
+  return merged;
+}
+
+function runStrategy(candles, params) {
+  let signals=[];
+  if(params.strategy==='pdh_pdl') signals=strategyPDHPDL(candles,params);
+  else if(params.strategy==='orb') signals=strategyORB(candles,params);
+  else if(params.strategy==='ob') signals=strategyOB(candles,params);
+  else signals=strategyCombined(candles,params);
+
+  const trades=signals.map(s=>{
+    const future=candles.filter(c=>c.time>s.time);
+    let esito='APERTO', uscita=s.entry;
+    for(const c of future){
+      if(s.type==='LONG'){
+        if(c.low<=s.stop){esito='STOP';uscita=s.stop;break;}
+        if(c.high>=s.target){esito='TARGET';uscita=s.target;break;}
+      } else {
+        if(c.high>=s.stop){esito='STOP';uscita=s.stop;break;}
+        if(c.low<=s.target){esito='TARGET';uscita=s.target;break;}
+      }
+    }
+    // Calcola P&L solo per trade chiusi
+    let pnlPts = 0, pnlUSD = 0;
+    if(esito !== 'APERTO'){
+      pnlPts = s.type==='LONG' ? uscita-s.entry : s.entry-uscita;
+      pnlUSD = calcPnlDollars(pnlPts, s, params);
+    }
+    return {...s, uscita, esito, pnlPts, pnlUSD};
+  });
+
+  // Solo trade chiusi per le statistiche
+  const closed = trades.filter(t=>t.esito!=='APERTO');
+  const aperti = trades.filter(t=>t.esito==='APERTO');
+  const wins = closed.filter(t=>t.esito==='TARGET');
+  const losses = closed.filter(t=>t.esito==='STOP');
+  const wr = closed.length ? wins.length/closed.length*100 : 0;
+  const totalUSD = closed.reduce((s,t)=>s+t.pnlUSD, 0);
+  const avgUSD = closed.length ? totalUSD/closed.length : 0;
+  const maxWin = wins.length ? Math.max(...wins.map(t=>t.pnlUSD)) : 0;
+  const maxLoss = losses.length ? Math.min(...losses.map(t=>t.pnlUSD)) : 0;
+  let cum=0;
+  const equity=closed.map(t=>{cum+=t.pnlUSD;return{time:t.time,cum};});
+  const wickT=closed.filter(t=>t.trigger==='WICK');
+  const engT=closed.filter(t=>t.trigger==='ENG');
+  return{trades,closed,aperti,wr,totalUSD,avgUSD,maxWin,maxLoss,equity,wickT,engT};
+}
+
+function fmt$(v){return(v>=0?'+':'')+v.toLocaleString('it-IT',{style:'currency',currency:'USD',minimumFractionDigits:0,maximumFractionDigits:0});}
+
+function displayResults(r, params) {
+  document.getElementById('m-trades').textContent=r.closed.length;
+  const wrEl=document.getElementById('m-winrate');
+  wrEl.textContent=r.wr.toFixed(1)+'%';
+  wrEl.className='mval '+(r.wr>=45?'pos':r.wr>=33?'warn':'neg');
+  const pEl=document.getElementById('m-profit');
+  pEl.textContent=fmt$(Math.round(r.totalUSD));
+  pEl.className='mval '+(r.totalUSD>=0?'pos':'neg');
+  const modeLabels={futures:`${currentFutures} · ${document.getElementById('fut_contracts').value} contratti`,options:`${currentStrike} · ${document.getElementById('opt_contracts').value} contratti`,equity:`${document.getElementById('shares').value} azioni`};
+  document.getElementById('m-profit-sub').textContent=modeLabels[currentMode]||'';
+  const aEl=document.getElementById('m-avg');
+  aEl.textContent=fmt$(Math.round(r.avgUSD));
+  aEl.className='mval '+(r.avgUSD>=0?'pos':'neg');
+  document.getElementById('m-maxwin').textContent=fmt$(Math.round(r.maxWin));
+  document.getElementById('m-maxloss').textContent=fmt$(Math.round(r.maxLoss));
+
+  if(params.trigger==='both'&&r.wickT.length&&r.engT.length){
+    const wwr=(r.wickT.filter(t=>t.esito==='TARGET').length/r.wickT.length*100).toFixed(0);
+    const ewr=(r.engT.filter(t=>t.esito==='TARGET').length/r.engT.length*100).toFixed(0);
+    const wPnl=r.wickT.reduce((s,t)=>s+t.pnlUSD,0), ePnl=r.engT.reduce((s,t)=>s+t.pnlUSD,0);
+    const ts=document.getElementById('trigger-stats');
+    ts.style.display='flex';
+    ts.innerHTML=`<div class="tbd"><span class="tag-wick">WICK</span> <strong>${r.wickT.length} trade</strong> — WR ${wwr}% — ${fmt$(Math.round(wPnl))}</div><div class="tbd"><span class="tag-eng">ENG</span> <strong>${r.engT.length} trade</strong> — WR ${ewr}% — ${fmt$(Math.round(ePnl))}</div>`;
+  } else { document.getElementById('trigger-stats').style.display='none'; }
+
+  document.getElementById('empty1').style.display='none';
+  const canvas=document.getElementById('pnlChart');
+  canvas.style.display='block';
+  if(pnlChartInstance) pnlChartInstance.destroy();
+  const labels=r.equity.map(e=>e.time.toLocaleDateString('it-IT',{month:'short',day:'numeric'}));
+  const data=r.equity.map(e=>Math.round(e.cum));
+  const color=r.totalUSD>=0?'#00c896':'#ff4d4d';
+  pnlChartInstance=new Chart(canvas,{
+    type:'line',
+    data:{labels,datasets:[{data,borderColor:color,borderWidth:2,pointRadius:0,pointHoverRadius:4,pointHoverBackgroundColor:color,fill:true,backgroundColor:ctx=>{const g=ctx.chart.ctx.createLinearGradient(0,0,0,ctx.chart.height);g.addColorStop(0,r.totalUSD>=0?'rgba(0,200,150,0.15)':'rgba(255,77,77,0.15)');g.addColorStop(1,'rgba(0,0,0,0)');return g;},tension:0.3}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` P&L: ${fmt$(ctx.raw)}`}}},scales:{x:{ticks:{color:'#555',font:{size:10},maxTicksLimit:12},grid:{color:'rgba(255,255,255,0.03)'}},y:{ticks:{color:'#555',font:{size:10},callback:v=>fmt$(v)},grid:{color:'rgba(255,255,255,0.05)'}}}}
+  });
+
+  const recent=[...r.trades].reverse().slice(0,40);
+  if(!recent.length){document.getElementById('tradesTable').innerHTML='<div class="empty">Nessun trade trovato</div>';return;}
+  const apertiBadge = r.aperti.length ? `<span style="font-size:11px;color:var(--amber);margin-left:8px">${r.aperti.length} in attesa di chiusura (esclusi dal P&L)</span>` : '';
+  document.getElementById('tradesTable').innerHTML=`
+    <div style="padding:4px 8px 6px;font-size:10px;color:var(--muted);border-bottom:0.5px solid var(--border);display:flex;align-items:center">
+      <span>Trade chiusi: <strong style="color:var(--text)">${r.closed.length}</strong></span>
+      ${apertiBadge}
+    </div>
+    <table>
+      <thead><tr><th>Data</th><th>Ora</th><th>Tipo</th><th>Setup</th><th>Trigger</th><th>Entry</th><th>Stop</th><th>Target</th><th>Esito</th><th>P&L pts</th><th>P&L $</th></tr></thead>
+      <tbody>${recent.map(t=>`<tr style="${t.esito==='APERTO'?'opacity:0.45':''}">
+        <td>${t.time.toLocaleDateString('it-IT',{month:'short',day:'numeric'})}</td>
+        <td>${t.time.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}</td>
+        <td class="${t.type==='LONG'?'tag-long':'tag-short'}">${t.type}</td>
+        <td>${t.setup}</td>
+        <td class="${t.trigger==='WICK'?'tag-wick':'tag-eng'}">${t.trigger}</td>
+        <td>$${t.entry.toFixed(2)}</td>
+        <td>$${t.stop.toFixed(2)}</td>
+        <td>$${t.target.toFixed(2)}</td>
+        <td class="${t.esito==='TARGET'?'tag-win':t.esito==='STOP'?'tag-loss':'tag-open'}">${t.esito}</td>
+        <td class="${t.esito==='APERTO'?'tag-open':t.pnlPts>=0?'tag-win':'tag-loss'}">${t.esito==='APERTO'?'—':((t.pnlPts>=0?'+':'')+t.pnlPts.toFixed(2))}</td>
+        <td style="font-weight:500" class="${t.esito==='APERTO'?'tag-open':t.pnlUSD>=0?'tag-win':'tag-loss'}">${t.esito==='APERTO'?'—':fmt$(Math.round(t.pnlUSD))}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+}
+
+updateWickPreview();
+updateFuturesExample();
+updatePremium();
+loadPresetsUI();
+
+function getAllSliderValues() {
+  const ids = ['wick_min','body_max','skip_min','last_entry','sl_ticks','rr','orb_min','max_entries','rr_orb','momentum','lookback','rr_ob','conf','rr_comb','fut_contracts','premium','opt_contracts','shares'];
+  const vals = {};
+  ids.forEach(id => { const el = document.getElementById(id); if(el) vals[id] = el.value; });
+  return vals;
+}
+
+function setAllSliderValues(vals) {
+  Object.entries(vals).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = val;
+    const ev = new Event('input');
+    el.dispatchEvent(ev);
+  });
+}
+
+function getSelectValues() {
+  return { simbolo: document.getElementById('simbolo').value };
+}
+
+function savePreset() {
+  const name = document.getElementById('preset-name').value.trim();
+  if (!name) { document.getElementById('preset-name').focus(); return; }
+  const preset = {
+    name,
+    strategy: currentStrategy,
+    trigger: currentTrigger,
+    mode: currentMode,
+    futures: currentFutures,
+    strike: currentStrike,
+    sliders: getAllSliderValues(),
+    selects: getSelectValues(),
+    savedAt: new Date().toLocaleDateString('it-IT')
+  };
+  const presets = JSON.parse(localStorage.getItem('trading_presets') || '[]');
+  const existing = presets.findIndex(p => p.name === name);
+  if (existing >= 0) presets[existing] = preset;
+  else presets.push(preset);
+  localStorage.setItem('trading_presets', JSON.stringify(presets));
+  document.getElementById('preset-name').value = '';
+  loadPresetsUI();
+  showToast(`Preset "${name}" salvato!`);
+}
+
+function loadPreset(name) {
+  const presets = JSON.parse(localStorage.getItem('trading_presets') || '[]');
+  const preset = presets.find(p => p.name === name);
+  if (!preset) return;
+
+  // Strategia
+  document.querySelectorAll('.tabs4 .tab').forEach(t => t.className = 'tab');
+  const stratMap = { pdh_pdl:0, orb:1, ob:2, combined:3 };
+  const stratTabs = document.querySelectorAll('.tabs4 .tab');
+  if (stratTabs[stratMap[preset.strategy]]) { stratTabs[stratMap[preset.strategy]].className = 'tab active-blue'; currentStrategy = preset.strategy; ['pdh_pdl','orb','ob','combined'].forEach(id => { document.getElementById('params-'+id).style.display = id === preset.strategy ? 'block' : 'none'; }); }
+
+  // Modalità
+  currentMode = preset.mode || 'futures';
+  document.getElementById('futures-config').style.display = currentMode==='futures'?'block':'none';
+  document.getElementById('options-config').style.display = currentMode==='options'?'block':'none';
+  document.getElementById('equity-config').style.display = currentMode==='equity'?'block':'none';
+  const badges = { futures:'Futures Mode', options:'Options Mode', equity:'Equity Mode' };
+  document.getElementById('mode-badge').textContent = badges[currentMode];
+
+  // Futures
+  currentFutures = preset.futures || 'MES';
+  currentStrike = preset.strike || 'ATM';
+  currentTrigger = preset.trigger || 'both';
+
+  // Sliders
+  setAllSliderValues(preset.sliders || {});
+
+  // Select
+  if (preset.selects?.simbolo) document.getElementById('simbolo').value = preset.selects.simbolo;
+
+  updateWickPreview();
+  updateFuturesExample();
+  updatePremium();
+  showToast(`Preset "${name}" caricato!`);
+}
+
+function deletePreset(name, e) {
+  e.stopPropagation();
+  const presets = JSON.parse(localStorage.getItem('trading_presets') || '[]');
+  const filtered = presets.filter(p => p.name !== name);
+  localStorage.setItem('trading_presets', JSON.stringify(filtered));
+  loadPresetsUI();
+  showToast(`Preset "${name}" eliminato`);
+}
+
+function loadPresetsUI() {
+  const presets = JSON.parse(localStorage.getItem('trading_presets') || '[]');
+  const bar = document.getElementById('preset-bar');
+  if (!presets.length) {
+    bar.innerHTML = '<span class="preset-empty">Nessun preset salvato</span>';
+    return;
+  }
+  bar.innerHTML = presets.map(p => `
+    <div class="preset-chip" onclick="loadPreset('${p.name.replace(/'/g,"\\'")}')">
+      <span>${p.name}</span>
+      <span class="del" onclick="deletePreset('${p.name.replace(/'/g,"\\'")}', event)">×</span>
+    </div>`).join('');
+}
+
+function showToast(msg) {
+  let t = document.getElementById('toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toast';
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#1a1a1a;border:0.5px solid rgba(0,200,150,0.4);color:#00c896;padding:10px 18px;border-radius:10px;font-size:13px;z-index:999;transition:opacity 0.3s;';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.style.opacity = '0', 2000);
+}
+</script>
+</body>
+</html>
