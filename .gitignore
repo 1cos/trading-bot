@@ -1,0 +1,28 @@
+# Secrets — mai committare
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Output temporanei del comparatore
+tools/output/
+*.compare.csv
+*_feed_comparison.csv
+
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+*.swp
