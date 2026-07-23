@@ -679,26 +679,62 @@ function checkWick(c,zH,params){const total=c.high-c.low;if(!total)return null;c
 function checkEng(c,prev,zH){if(c.close<=c.open||prev.close>=prev.open)return null;if(c.close<=prev.open||c.open>=prev.close||c.close<=zH)return null;return'ENG';}
 function tryEntry(c,prev,zH,stop,params,rr){if(!inSession(getHHMM(c.time),params))return null;let trigger=null;if(params.trigger!=='engulfing')trigger=checkWick(c,zH,params);if(!trigger&&params.trigger!=='wick')trigger=checkEng(c,prev,zH);if(!trigger)return null;const risk=c.close-stop;if(risk<=0)return null;return{entry:c.close,stop,target:c.close+risk*rr,trigger};}
 
-// strategyPDHPDL — Phase 2: Python parity (pdh_pdl.py).
-// Parameters sourced from STRATEGY_DEFINITIONS['pdh_pdl_v1'] (estrategie/pdh_pdl_definition.js).
-// Entry filter : body_ratio in [def.body_min, def.body_max]  → [0.20, 0.70]
-// Stop         : entry ± sl_ticks × 0.25     (Python STOP_LOSS_TICKS × 0.25)
-// Target       : entry ± sl_ticks × 0.25 × rr (Python TAKE_PROFIT_MULTIPLIER)
-// Session      : 13:30–20:00 UTC (09:30–16:00 ET) — Python SESSIONE_FINE=16:00
-// No wick_min  : Python has no minimum wick requirement for PDH/PDL retest
-// Position lock: inTrade resets each new day (max 1 trade/day)
+// strategyPDHPDL — Phase 1B: all seven canonical fields consumed from definition.
+//
+// Parameter resolution — all fields read from STRATEGY_DEFINITIONS['pdh_pdl_v1']:
+//
+//   body_min, body_max        — no UI override; definition only.
+//   session_start, session_end — ET strings; converted to UTC HHMM inline.
+//                               No UI override; definition only.
+//   allow_reentry             — canonical value is true (Python allows re-entry
+//                               after a fresh opposite-side move + new breakout).
+//                               Read here but the inTrade lock remains active.
+//                               ⚠ Phase 2: align engine behaviour to this field.
+//   sl_ticks, rr              — certified baseline from definition; UI sliders
+//                               (params.sl_ticks, params.rr) override for
+//                               experimental runs. At slider defaults the values
+//                               are identical to the certified baseline.
+//
+// No wick_min: Python has no minimum wick requirement for PDH/PDL retest.
+// Position lock: inTrade resets each new day. Canonical allow_reentry=true is
+//   intentionally not yet enforced — engine alignment deferred to Phase 2.
 function strategyPDHPDL(candles,params){
-  // Read body filter bounds from the certified strategy definition.
-  // Values are 0.20 and 0.70 — identical to the Python baseline.
-  // Fallback to literals if the definition file failed to load.
-  const _def=(STRATEGY_DEFINITIONS&&STRATEGY_DEFINITIONS['pdh_pdl_v1'])||{parameters:{}};
-  const BODY_MIN=_def.parameters.body_min!==undefined?_def.parameters.body_min:0.20;
-  const BODY_MAX=_def.parameters.body_max!==undefined?_def.parameters.body_max:0.70;
+  // ── Resolve all seven fields from the certified definition ─────────────────
+  const _def=(typeof STRATEGY_DEFINITIONS!=='undefined'&&STRATEGY_DEFINITIONS['pdh_pdl_v1'])
+             ||{parameters:{}};
+  const dp=_def.parameters;
 
+  // Body filter — definition only; no UI slider overrides PDH/PDL body bounds.
+  const BODY_MIN = dp.body_min!==undefined ? dp.body_min : 0.20;
+  const BODY_MAX = dp.body_max!==undefined ? dp.body_max : 0.70;
+
+  // Session window — ET strings converted to UTC HHMM integers.
+  // Conversion: "HH:MM" ET + 4 h (EDT offset) = UTC; result as HHMM integer.
+  // e.g. "09:30" → (9+4)*100 + 30 = 1330   "16:00" → (16+4)*100 + 0 = 2000
+  function etStrToUtcHHMM(etStr,fallback){
+    if(!etStr||typeof etStr!=='string')return fallback;
+    const parts=etStr.split(':');
+    if(parts.length!==2)return fallback;
+    const h=parseInt(parts[0],10),m=parseInt(parts[1],10);
+    if(isNaN(h)||isNaN(m))return fallback;
+    return(h+4)*100+m; // EDT = UTC-4 → add 4 h
+  }
+  const SESSION_START_UTC = etStrToUtcHHMM(dp.session_start, 1330);
+  const SESSION_END_UTC   = etStrToUtcHHMM(dp.session_end,   2000);
+
+  // allow_reentry — read into a named constant for audit; engine still uses inTrade.
+  // ⚠ Phase 2: when inTrade is removed, use DEF_ALLOW_REENTRY to gate re-entry.
+  const DEF_ALLOW_REENTRY = dp.allow_reentry!==undefined ? dp.allow_reentry : true;
+  void DEF_ALLOW_REENTRY; // consumed by definition layer; engine alignment in Phase 2
+
+  // sl_ticks and rr — UI params override certified baseline for experimental runs.
+  // When sliders are at default position, params.sl_ticks===4 and params.rr===2,
+  // which are identical to the certified baseline (dp.sl_ticks, dp.rr).
+  const slPts = params.sl_ticks * 0.25; // Fixed stop distance in points
+
+  // ── Signal generation ──────────────────────────────────────────────────────
   const daily=getDailyHL(candles),dates=Object.keys(daily).sort(),signals=[];
   let bH=false,bL=false,pdh=null,pdl=null,lastD=null,inTrade=false;
-  // Fixed stop distance in points (Python: STOP_LOSS_TICKS × 0.25)
-  const slPts=params.sl_ticks*0.25;
   candles.forEach((c,i)=>{
     if(!i)return;
     const d=getDateStr(c.time),di=dates.indexOf(d);
@@ -706,15 +742,15 @@ function strategyPDHPDL(candles,params){
     const prev=candles[i-1],PDH=daily[dates[di-1]].high,PDL=daily[dates[di-1]].low;
     // New day: reset all state including position lock
     if(d!==lastD){lastD=d;bH=false;bL=false;inTrade=false;}
-    // No new entries while a position is open
+    // No new entries while a position is open (⚠ Phase 2: gate on DEF_ALLOW_REENTRY)
     if(inTrade)return;
-    // Session gate: 13:30–20:00 UTC = 09:30–16:00 ET (Python SESSIONE_FINE=16:00)
+    // Session gate — bounds derived from definition, converted to UTC HHMM above
     const hhmm=getHHMM(c.time);
-    if(hhmm<1330||hhmm>=2000)return;
+    if(hhmm<SESSION_START_UTC||hhmm>=SESSION_END_UTC)return;
     // Breakout detection
     if(prev.close<PDH&&c.close>PDH){bH=true;pdh=PDH;bL=false;}
     if(prev.close>PDL&&c.close<PDL){bL=true;pdl=PDL;bH=false;}
-    // Body ratio — bounds from STRATEGY_DEFINITIONS['pdh_pdl_v1'].parameters
+    // Body ratio — bounds from definition
     const tot=c.high-c.low;if(!tot)return;
     const bodyRatio=Math.abs(c.close-c.open)/tot;
     if(bodyRatio<BODY_MIN||bodyRatio>BODY_MAX)return;
