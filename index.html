@@ -662,6 +662,10 @@ function isSameDay(a,b){return a.getUTCFullYear()===b.getUTCFullYear()&&a.getUTC
 // NY market: 09:30-16:00 ET = 13:30-20:00 UTC (EDT, UTC-4).
 // last_entry UI slider is still expressed in ET (e.g. 1530 = 15:30 ET).
 // We convert ET→UTC by adding 400 (4 hours). skip_min shifts start forward.
+// inSession — used by ORB/OB/Combined strategies.
+// PDH/PDL strategy has its own inline session gate (13:30–20:00 UTC).
+// hhmm is UTC (from getHHMM which uses getUTCHours).
+// last_entry slider is in ET; convert to UTC by +400.
 function inSession(hhmm,params){
   const skip=params.skip_min;
   const startTot=13*60+30+skip;                              // 13:30 UTC = 09:30 ET + skip
@@ -674,12 +678,18 @@ function checkWick(c,zH,params){const total=c.high-c.low;if(!total)return null;c
 function checkEng(c,prev,zH){if(c.close<=c.open||prev.close>=prev.open)return null;if(c.close<=prev.open||c.open>=prev.close||c.close<=zH)return null;return'ENG';}
 function tryEntry(c,prev,zH,stop,params,rr){if(!inSession(getHHMM(c.time),params))return null;let trigger=null;if(params.trigger!=='engulfing')trigger=checkWick(c,zH,params);if(!trigger&&params.trigger!=='wick')trigger=checkEng(c,prev,zH);if(!trigger)return null;const risk=c.close-stop;if(risk<=0)return null;return{entry:c.close,stop,target:c.close+risk*rr,trigger};}
 
-// strategyPDHPDL — position lock: max 1 open signal per day.
-// inTrade flag blocks new entries until end-of-day reset.
-// This mirrors Python pdh_pdl.py behavior where only one trade fires per day.
+// strategyPDHPDL — Phase 2: Python parity (pdh_pdl.py).
+// Entry filter : body_ratio in [0.20, 0.70]  (Python BODY_MIN/BODY_MAX)
+// Stop         : entry ± sl_ticks × 0.25     (Python STOP_LOSS_TICKS × 0.25)
+// Target       : entry ± sl_ticks × 0.25 × rr (Python TAKE_PROFIT_MULTIPLIER)
+// Session      : 13:30–20:00 UTC (09:30–16:00 ET) — Python SESSIONE_FINE=16:00
+// No wick_min  : Python has no minimum wick requirement for PDH/PDL retest
+// Position lock: inTrade resets each new day (max 1 trade/day)
 function strategyPDHPDL(candles,params){
   const daily=getDailyHL(candles),dates=Object.keys(daily).sort(),signals=[];
   let bH=false,bL=false,pdh=null,pdl=null,lastD=null,inTrade=false;
+  // Fixed stop distance in points (Python: STOP_LOSS_TICKS × 0.25)
+  const slPts=params.sl_ticks*0.25;
   candles.forEach((c,i)=>{
     if(!i)return;
     const d=getDateStr(c.time),di=dates.indexOf(d);
@@ -689,22 +699,30 @@ function strategyPDHPDL(candles,params){
     if(d!==lastD){lastD=d;bH=false;bL=false;inTrade=false;}
     // No new entries while a position is open
     if(inTrade)return;
+    // Session gate: 13:30–20:00 UTC = 09:30–16:00 ET (Python SESSIONE_FINE=16:00)
+    const hhmm=getHHMM(c.time);
+    if(hhmm<1330||hhmm>=2000)return;
     // Breakout detection
     if(prev.close<PDH&&c.close>PDH){bH=true;pdh=PDH;bL=false;}
     if(prev.close>PDL&&c.close<PDL){bL=true;pdl=PDL;bH=false;}
-    // LONG entry
+    // Body ratio (Python body_valido: 0.20 ≤ ratio ≤ 0.70)
+    const tot=c.high-c.low;if(!tot)return;
+    const bodyRatio=Math.abs(c.close-c.open)/tot;
+    if(bodyRatio<0.20||bodyRatio>0.70)return;
+    // RETEST LONG — Python: Low≤PDH≤High AND Close>PDH AND body valid
     if(bH&&pdh){
-      const e=tryEntry(c,prev,pdh,c.low,params,params.rr);
-      if(e){signals.push({time:c.time,type:'LONG',setup:'PDH',...e});bH=false;inTrade=true;return;}
+      if(c.low<=pdh&&pdh<=c.high&&c.close>pdh){
+        const entry=c.close,stop=Math.round((entry-slPts)*100)/100,target=Math.round((entry+slPts*params.rr)*100)/100;
+        signals.push({time:c.time,type:'LONG',setup:'PDH',entry,stop,target,trigger:'BODY'});
+        bH=false;inTrade=true;return;
+      }
     }
-    // SHORT entry
+    // RETEST SHORT — Python: Low≤PDL≤High AND Close<PDL AND body valid
     if(bL&&pdl){
-      const tot=c.high-c.low;if(!tot)return;
-      const body=Math.abs(c.close-c.open)/tot,wickTop=(c.high-Math.max(c.open,c.close))/tot;
-      const hhmm=getHHMM(c.time);
-      if(inSession(hhmm,params)&&c.close<pdl&&c.high>pdl&&wickTop>=params.wick_min&&body<=params.body_max){
-        const risk=c.high-c.close;
-        if(risk>0){signals.push({time:c.time,type:'SHORT',setup:'PDL',entry:c.close,stop:c.high,target:c.close-risk*params.rr,trigger:'WICK'});bL=false;inTrade=true;}
+      if(c.low<=pdl&&pdl<=c.high&&c.close<pdl){
+        const entry=c.close,stop=Math.round((entry+slPts)*100)/100,target=Math.round((entry-slPts*params.rr)*100)/100;
+        signals.push({time:c.time,type:'SHORT',setup:'PDL',entry,stop,target,trigger:'BODY'});
+        bL=false;inTrade=true;
       }
     }
   });
