@@ -1,0 +1,579 @@
+/*
+ * mobile.css — Trading Bot Dashboard
+ * Phase 1: Mobile Shell + Navigation
+ * Loaded only when JS detects max-width: 767px
+ * Desktop layout (≥768px) is NEVER touched by this file.
+ */
+
+/* ── Reset mobile scroll ── */
+body.mobile-active {
+  overflow-x: hidden;
+}
+
+/* ── Hide the desktop two-column layout ── */
+body.mobile-active .main {
+  display: none !important;
+}
+
+/* ── Hide desktop header ── */
+body.mobile-active header {
+  display: none !important;
+}
+
+/* ── Hide desktop notification panel ── */
+body.mobile-active .notif-panel {
+  display: none !important;
+}
+
+/* ── Mobile Root Shell ── */
+#mobile-shell {
+  display: none;
+  flex-direction: column;
+  height: 100dvh;
+  height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  background: var(--bg);
+  overflow: hidden;
+  position: fixed;
+  inset: 0;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+body.mobile-active #mobile-shell {
+  display: flex;
+}
+
+/* ── Mobile Header ── */
+#mob-header {
+  flex-shrink: 0;
+  background: var(--surface);
+  border-bottom: 0.5px solid var(--border);
+  padding: 0 16px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+#mob-header h1 {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+#mob-header h1 span {
+  color: var(--green);
+}
+
+.mob-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#mob-db-status {
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 10px;
+}
+
+#mob-notif-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface2);
+  border: 0.5px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  position: relative;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#mob-notif-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  background: var(--red);
+  border-radius: 50%;
+  display: none;
+}
+
+/* ── Context Bar ── */
+#mob-context-bar {
+  flex-shrink: 0;
+  background: var(--surface2);
+  border-bottom: 0.5px solid var(--border);
+  padding: 0 12px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#mob-mode-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--amber);
+  border: 0.5px solid rgba(245, 158, 11, 0.3);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+#mob-symbol-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: rgba(57, 135, 229, 0.1);
+  color: var(--blue);
+  border: 0.5px solid rgba(57, 135, 229, 0.25);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+#mob-run-btn {
+  margin-left: auto;
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 8px;
+  background: var(--blue);
+  color: #fff;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+  min-width: 44px;
+}
+
+#mob-run-btn:active {
+  opacity: 0.8;
+}
+
+#mob-run-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Screen Container ── */
+#mob-screen-container {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  min-height: 0;
+}
+
+.mob-screen {
+  display: none;
+  height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.mob-screen.active {
+  display: block;
+}
+
+/* ── Bottom Navigation ── */
+#mob-bottom-nav {
+  flex-shrink: 0;
+  background: var(--surface);
+  border-top: 0.5px solid var(--border);
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  height: 56px;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.mob-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+  min-height: 44px;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s;
+  padding: 6px 4px;
+}
+
+.mob-tab.active {
+  color: var(--green);
+}
+
+.mob-tab svg {
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+
+.mob-tab.active svg {
+  stroke: var(--green);
+}
+
+/* ── CHART SCREEN ── */
+#mob-chart-screen {
+  padding: 12px 12px 20px;
+}
+
+.mob-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+  gap: 12px;
+  color: var(--muted);
+}
+
+.mob-empty-icon {
+  font-size: 40px;
+  line-height: 1;
+}
+
+.mob-empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.mob-empty-desc {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+  max-width: 260px;
+}
+
+.mob-empty-cta {
+  margin-top: 8px;
+  padding: 10px 20px;
+  border-radius: 8px;
+  background: var(--blue);
+  color: #fff;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Equity chart panel */
+.mob-chart-panel {
+  background: var(--surface);
+  border-radius: 12px;
+  border: 0.5px solid var(--border);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.mob-chart-panel-header {
+  padding: 10px 14px 8px;
+  border-bottom: 0.5px solid var(--border);
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-weight: 500;
+}
+
+.mob-chart-wrap {
+  position: relative;
+  height: 200px;
+  padding: 8px 4px 4px;
+}
+
+/* Trigger stats below chart */
+.mob-trigger-breakdown {
+  padding: 8px 14px;
+  display: none;
+  gap: 16px;
+  border-top: 0.5px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.mob-trigger-breakdown.visible {
+  display: flex;
+}
+
+/* Metrics grid — 2 column on mobile */
+.mob-metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.mob-metric {
+  background: var(--surface);
+  border-radius: 10px;
+  border: 0.5px solid var(--border);
+  padding: 12px 12px;
+}
+
+.mob-metric .mlabel {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.mob-metric .mval {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.mob-metric .msub {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+/* ── SETUP SCREEN ── */
+#mob-setup-screen {
+  padding: 0 0 24px;
+}
+
+/* The sidebar DOM node gets moved here — style adjustments */
+#mob-setup-screen .sidebar {
+  /* Override desktop sidebar fixed width/border */
+  border-right: none !important;
+  height: auto !important;
+  overflow-y: visible !important;
+  padding: 12px 16px !important;
+  gap: 14px;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+/* Enlarge sliders touch target */
+#mob-setup-screen input[type="range"] {
+  height: 44px !important;
+  padding: 14px 0;
+  cursor: pointer;
+}
+
+/* Enlarge tab buttons in setup */
+#mob-setup-screen .tab {
+  min-height: 44px;
+  padding: 10px 4px;
+  font-size: 12px;
+}
+
+/* Enlarge select */
+#mob-setup-screen select {
+  min-height: 44px;
+  font-size: 14px;
+}
+
+/* Run button in setup screen */
+#mob-setup-screen .run-btn {
+  min-height: 50px;
+  font-size: 15px;
+  border-radius: 12px;
+  margin-top: 8px;
+}
+
+/* ── TRADES SCREEN ── */
+#mob-trades-screen {
+  padding: 12px 12px 20px;
+}
+
+.mob-trades-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding: 0 2px;
+}
+
+.mob-trades-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.mob-trades-subtitle {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Simple trade rows for Phase 1 */
+.mob-trades-table-wrap {
+  background: var(--surface);
+  border-radius: 12px;
+  border: 0.5px solid var(--border);
+  overflow: hidden;
+}
+
+.mob-trades-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.mob-trades-table-wrap th {
+  color: var(--muted);
+  font-weight: 400;
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 0.5px solid var(--border);
+  background: var(--bg);
+  font-size: 10px;
+  text-transform: uppercase;
+  position: sticky;
+  top: 0;
+}
+
+.mob-trades-table-wrap td {
+  padding: 9px 10px;
+  border-bottom: 0.5px solid rgba(255, 255, 255, 0.04);
+  vertical-align: middle;
+}
+
+.mob-trades-table-wrap tr.clickable {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mob-trades-table-wrap tr.clickable:active td {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* ── RESULTS SCREEN ── */
+#mob-results-screen {
+  padding: 12px 12px 20px;
+}
+
+.mob-results-section {
+  background: var(--surface);
+  border-radius: 12px;
+  border: 0.5px solid var(--border);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.mob-results-section-header {
+  padding: 10px 14px;
+  border-bottom: 0.5px solid var(--border);
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-weight: 500;
+}
+
+.mob-results-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 14px;
+  border-bottom: 0.5px solid rgba(255, 255, 255, 0.04);
+}
+
+.mob-results-row:last-child {
+  border-bottom: none;
+}
+
+.mob-results-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.mob-results-value {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Shared color classes (reused from desktop) */
+.mob-results-value.pos { color: var(--green); }
+.mob-results-value.neg { color: var(--red); }
+.mob-results-value.neu { color: var(--blue); }
+.mob-results-value.warn { color: var(--amber); }
+
+/* Mini equity chart in results */
+.mob-results-chart-wrap {
+  height: 140px;
+  padding: 8px 4px 4px;
+  position: relative;
+}
+
+/* ── Shared mobile utility ── */
+.mob-section-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 8px;
+}
+
+/* No horizontal scroll anywhere on mobile */
+body.mobile-active * {
+  max-width: 100%;
+}
+
+/* Notif panel in mobile — simple full-screen modal */
+body.mobile-active #mob-notif-panel {
+  display: block;
+  position: fixed;
+  inset: 0;
+  background: var(--surface);
+  z-index: 200;
+  overflow-y: auto;
+  padding: 16px;
+  padding-top: calc(16px + env(safe-area-inset-top));
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+}
+
+body.mobile-active #mob-notif-panel.open {
+  transform: translateX(0);
+}
+
+.mob-notif-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.mob-notif-close {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface2);
+  border: 0.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 18px;
+  cursor: pointer;
+  color: var(--muted);
+  -webkit-tap-highlight-color: transparent;
+}

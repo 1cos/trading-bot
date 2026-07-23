@@ -136,6 +136,7 @@ tr.clickable:hover td{background:rgba(255,255,255,0.03);}
 .install-banner{background:var(--surface);border:0.5px solid var(--border);border-radius:10px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;}
 .install-btn{background:var(--blue);color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer;white-space:nowrap;}
 </style>
+<link rel="stylesheet" href="mobile.css">
 </head>
 <body>
 <header>
@@ -680,5 +681,6 @@ updatePremium();
 // Chiudi modal cliccando fuori
 document.getElementById('trade-modal').addEventListener('click',e=>{if(e.target===document.getElementById('trade-modal'))closeModal();});
 </script>
+<script src="mobile.js"></script>
 </body>
 </html>
