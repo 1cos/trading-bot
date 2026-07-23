@@ -76,7 +76,7 @@ export interface FetchResult {
   filtered_count: number; // barre dopo filtro regular hours
 }
 
-// ─── Risultato confronto per simbolo ────────────────────────────────────────
+// ─── Risultato confronto per simbolo (dry_run) ──────────────────────────────
 
 export interface CompareResult {
   symbol: string;
@@ -119,20 +119,54 @@ export interface VolumeDiffSummary {
   zero_in_database: number;
 }
 
+// ─── Risultato scrittura per simbolo (write mode) ───────────────────────────
+
+export interface WriteResult {
+  symbol:        string;
+  rows_before:   number;   // righe in DB prima dell'upsert (nella finestra data)
+  inserted:      number;   // righe nuove scritte
+  updated:       number;   // righe esistenti con almeno un campo OHLCV/volume cambiato
+  unchanged:     number;   // righe già identiche, nessuna modifica applicata
+  skipped:       number;   // barre invalide non scritte
+  rows_after:    number;   // righe in DB dopo l'upsert (nella finestra data)
+  invalid_bars:  ValidationError[];
+  warnings:      string[];
+  example_row:   DatabaseBar | null;  // prima riga scritta o aggiornata (per verifica)
+}
+
 // ─── Output finale della Edge Function ──────────────────────────────────────
 
 export type FunctionStatus = "success" | "partial" | "error";
+export type FunctionMode   = "dry_run" | "write";
 
-export interface FunctionOutput {
-  status: FunctionStatus;
-  mode: "dry_run";
-  provider: string;
-  symbols: string[];
+/** Output per mode=dry_run */
+export interface DryRunOutput {
+  status:    FunctionStatus;
+  mode:      "dry_run";
+  provider:  string;
+  symbols:   string[];
   timeframe: string;
-  date: string;
-  results: CompareResult[];
-  errors: string[];
+  date:      string;
+  results:   CompareResult[];
+  errors:    string[];
 }
+
+/** Output per mode=write */
+export interface WriteOutput {
+  status:       FunctionStatus;
+  mode:         "write";
+  provider:     string;
+  symbols:      string[];
+  timeframe:    string;
+  date:         string;
+  rows_before:  number;   // COUNT(*) totale prima
+  rows_after:   number;   // COUNT(*) totale dopo
+  results:      WriteResult[];
+  errors:       string[];
+}
+
+/** Union — usata nella firma dell'handler */
+export type FunctionOutput = DryRunOutput | WriteOutput;
 
 // ─── Costanti mercato USA ────────────────────────────────────────────────────
 
