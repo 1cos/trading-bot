@@ -1,0 +1,10 @@
+# supabase/config.toml
+# Configurazione minima per deploy edge functions via CLI
+# project_id viene passato via --project-ref al deploy
+
+[api]
+enabled = true
+
+[functions.market-data-ingest]
+verify_jwt = false
+# JWT verification disabled — funzione usa X-Function-Secret header invece
