@@ -578,25 +578,77 @@ function updateLastEntry(){const v=parseInt(document.getElementById('last_entry'
 function getParams(){return{strategy:currentStrategy,trigger:currentTrigger,mode:currentMode,simbolo:document.getElementById('simbolo').value,wick_min:parseInt(document.getElementById('wick_min').value)/100,body_max:parseInt(document.getElementById('body_max').value)/100,skip_min:parseInt(document.getElementById('skip_min').value),last_entry:parseInt(document.getElementById('last_entry').value),sl_ticks:parseInt(document.getElementById('sl_ticks').value),rr:parseInt(document.getElementById('rr').value)/10,orb_min:parseInt(document.getElementById('orb_min').value),max_entries:parseInt(document.getElementById('max_entries').value),rr_orb:parseInt(document.getElementById('rr_orb').value)/10,momentum:parseInt(document.getElementById('momentum').value)/100,lookback:parseInt(document.getElementById('lookback').value),rr_ob:parseInt(document.getElementById('rr_ob').value)/10,conf:parseInt(document.getElementById('conf').value),rr_comb:parseInt(document.getElementById('rr_comb').value)/10};}
 
 // ── Backtest ──
+
+// Carica candele reali da public.candles (Supabase).
+// Query deterministica: ORDER BY ts ASC, nessun CSV, nessun mock.
+async function loadCandlesFromDB(simbolo, timeframe){
+  // Supabase REST API: max 1000 righe per request — usa pagination per dataset grandi
+  const PAGE = 1000;
+  let allRows = [];
+  let from = 0;
+  while(true){
+    const url = SUPA_URL + '/rest/v1/candles'
+      + '?simbolo=eq.' + encodeURIComponent(simbolo)
+      + '&timeframe=eq.' + encodeURIComponent(timeframe)
+      + '&select=ts,open,high,low,close,volume'
+      + '&order=ts.asc'
+      + '&limit=' + PAGE
+      + '&offset=' + from;
+    const r = await fetch(url, {
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY}
+    });
+    if(!r.ok){
+      const txt = await r.text();
+      throw new Error('Supabase error ' + r.status + ': ' + txt);
+    }
+    const rows = await r.json();
+    if(!Array.isArray(rows)) throw new Error('Risposta DB non valida');
+    allRows = allRows.concat(rows);
+    if(rows.length < PAGE) break; // ultima pagina
+    from += PAGE;
+  }
+  return allRows;
+}
+
 async function runBacktest(){
   const btn=document.getElementById('runBtn');btn.disabled=true;btn.textContent='Elaborazione...';
   document.getElementById('empty1').style.display='flex';document.getElementById('pnlChart').style.display='none';document.getElementById('trigger-stats').style.display='none';
-  document.getElementById('tradesTable').innerHTML='<div class="loading-inline"><div class="spinner"></div>Caricamento CSV...</div>';
+  document.getElementById('tradesTable').innerHTML='<div class="loading-inline"><div class="spinner"></div>Caricamento candele da DB...</div>';
   try{
     const params=getParams();
-    try{const resp=await fetch(params.simbolo+'_5m.csv');if(!resp.ok)throw new Error('x');allCandles=parseCSV(await resp.text());}
-    catch(e){allCandles=generateMockData(params.simbolo);}
+    // Carica SOLO da Supabase public.candles — nessun CSV, nessun mock
+    const rows = await loadCandlesFromDB(params.simbolo, '5m');
+    if(!rows.length){
+      document.getElementById('tradesTable').innerHTML=
+        `<div class="empty" style="color:var(--amber);text-align:center;padding:24px;line-height:1.6">
+          ⚠️ Nessuna candela trovata in DB per <strong>${params.simbolo} / 5m</strong>.<br>
+          <span style="font-size:11px;color:var(--muted)">Esegui prima l'ingestione dati tramite la Edge Function market-data-ingest.</span>
+        </div>`;
+      btn.disabled=false;btn.textContent='Esegui Backtest';
+      return;
+    }
+    // Normalizza righe DB → formato {time, open, high, low, close, volume}
+    allCandles = rows.map(r=>({
+      time:   new Date(r.ts),
+      open:   Number(r.open),
+      high:   Number(r.high),
+      low:    Number(r.low),
+      close:  Number(r.close),
+      volume: r.volume !== null ? Number(r.volume) : null
+    })).filter(c=>!isNaN(c.close) && c.close > 0);
+    if(!allCandles.length){
+      document.getElementById('tradesTable').innerHTML=
+        `<div class="empty" style="color:var(--red)">Errore: candele non valide nel DB per ${params.simbolo}/5m</div>`;
+      btn.disabled=false;btn.textContent='Esegui Backtest';
+      return;
+    }
     const result=runStrategy(allCandles,params);
     lastTrades=result.trades;
     displayResults(result,params);
-    addNotifica('📊 Backtest completato',`${result.closed.length} trade · WR ${result.wr.toFixed(1)}% · ${fmt$(Math.round(result.totalUSD))}`);
+    addNotifica('📊 Backtest completato',`${result.closed.length} trade · WR ${result.wr.toFixed(1)}% · ${fmt$(Math.round(result.totalUSD))} · ${allCandles.length} candele DB`);
   }catch(err){document.getElementById('tradesTable').innerHTML=`<div class="empty" style="color:var(--red)">Errore: ${err.message}</div>`;}
   btn.disabled=false;btn.textContent='Esegui Backtest';
 }
-
-function parseCSV(text){return text.trim().split('\n').slice(3).map(l=>{const p=l.split(',');if(p.length<5)return null;return{time:new Date(p[0]),open:+p[4],high:+p[2],low:+p[3],close:+p[1],volume:+p[5]};}).filter(c=>c&&!isNaN(c.close)&&c.close>0);}
-
-function generateMockData(simbolo){const bases={SPY:720,QQQ:480,TSLA:280,NVDA:120,AMZN:200,META:550,MSFT:420,GOOGL:160,MU:95};const base=bases[simbolo]||100;const candles=[];let price=base;const start=new Date('2026-04-24T09:30:00-04:00');for(let day=0;day<60;day++){const d=new Date(start);d.setDate(d.getDate()+day);if(d.getDay()===0||d.getDay()===6)continue;const trend=(Math.random()-0.48)*0.003;for(let min=0;min<78;min++){const t=new Date(d);t.setMinutes(t.getMinutes()+min*5);const vol=(Math.random()-0.5)*base*0.008;const open=price,close=price+vol+trend*base;const high=Math.max(open,close)+Math.random()*base*0.004;const low=Math.min(open,close)-Math.random()*base*0.004;candles.push({time:t,open,high,low,close});price=close;}}return candles;}
 
 function getDailyHL(candles){const d={};candles.forEach(c=>{const k=getDateStr(c.time);if(!d[k])d[k]={high:-Infinity,low:Infinity};d[k].high=Math.max(d[k].high,c.high);d[k].low=Math.min(d[k].low,c.low);});return d;}
 function getDateStr(t){return t.toISOString().split('T')[0];}
