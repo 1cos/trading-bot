@@ -679,95 +679,110 @@ function checkWick(c,zH,params){const total=c.high-c.low;if(!total)return null;c
 function checkEng(c,prev,zH){if(c.close<=c.open||prev.close>=prev.open)return null;if(c.close<=prev.open||c.open>=prev.close||c.close<=zH)return null;return'ENG';}
 function tryEntry(c,prev,zH,stop,params,rr){if(!inSession(getHHMM(c.time),params))return null;let trigger=null;if(params.trigger!=='engulfing')trigger=checkWick(c,zH,params);if(!trigger&&params.trigger!=='wick')trigger=checkEng(c,prev,zH);if(!trigger)return null;const risk=c.close-stop;if(risk<=0)return null;return{entry:c.close,stop,target:c.close+risk*rr,trigger};}
 
-// strategyPDHPDL — Phase 1B: all seven canonical fields consumed from definition.
+// strategyPDHPDL — Phase 2: aligned with Python baseline (pdh_pdl.py).
 //
-// Parameter resolution — all fields read from STRATEGY_DEFINITIONS['pdh_pdl_v1']:
+// Parameter resolution — all seven fields from STRATEGY_DEFINITIONS['pdh_pdl_v1']:
 //
-//   body_min, body_max        — no UI override; definition only.
-//   session_start, session_end — ET strings; converted to UTC HHMM inline.
-//                               No UI override; definition only.
-//   allow_reentry             — canonical value is true (Python allows re-entry
-//                               after a fresh opposite-side move + new breakout).
-//                               Read here but the inTrade lock remains active.
-//                               ⚠ Phase 2: align engine behaviour to this field.
-//   sl_ticks, rr              — certified baseline from definition; UI sliders
-//                               (params.sl_ticks, params.rr) override for
-//                               experimental runs. At slider defaults the values
-//                               are identical to the certified baseline.
+//   body_min, body_max   — definition only; no UI override.
+//   session_start/end    — ET strings; converted using America/New_York IANA timezone
+//                          (Intl.DateTimeFormat) so session gate is correct in both
+//                          EDT (UTC-4) and EST (UTC-5). No UI override.
+//   allow_reentry        — true; no per-trade lock. Fresh breakout required for re-entry.
+//   sl_ticks, rr         — UI params override certified baseline for experiments.
+//                          When absent in params, certified baseline is used.
 //
-// No wick_min: Python has no minimum wick requirement for PDH/PDL retest.
-// Position lock: inTrade resets each new day. Canonical allow_reentry=true is
-//   intentionally not yet enforced — engine alignment deferred to Phase 2.
+// State machine (exact Python parity):
+//   broken_pdh / broken_pdl persist between candles and across session gaps.
+//   Reset only on CALENDAR DAY boundary (America/New_York date).
+//   Session gate (09:30–16:00 ET inclusive) checked BEFORE breakout detection.
+//   Breakout and retest may fire on the SAME candle.
+//   After a signal fires, only the signalling direction's flag resets.
+//   No inTrade lock — allow_reentry=true is now enforced.
+//   PDH/PDL = previous calendar day's high/low (ET date grouping).
+//
+// Functions unchanged: strategyORB, strategyOB, strategyCombined.
+// Application EOD force-close (runStrategy simulation loop) unchanged.
 function strategyPDHPDL(candles,params){
   // ── Resolve all seven fields from the certified definition ─────────────────
   const _def=(typeof STRATEGY_DEFINITIONS!=='undefined'&&STRATEGY_DEFINITIONS['pdh_pdl_v1'])
              ||{parameters:{}};
   const dp=_def.parameters;
 
-  // Body filter — definition only; no UI slider overrides PDH/PDL body bounds.
-  const BODY_MIN = dp.body_min!==undefined ? dp.body_min : 0.20;
-  const BODY_MAX = dp.body_max!==undefined ? dp.body_max : 0.70;
+  const BODY_MIN=dp.body_min!==undefined?dp.body_min:0.20;
+  const BODY_MAX=dp.body_max!==undefined?dp.body_max:0.70;
 
-  // Session window — ET strings converted to UTC HHMM integers.
-  // Conversion: "HH:MM" ET + 4 h (EDT offset) = UTC; result as HHMM integer.
-  // e.g. "09:30" → (9+4)*100 + 30 = 1330   "16:00" → (16+4)*100 + 0 = 2000
-  function etStrToUtcHHMM(etStr,fallback){
-    if(!etStr||typeof etStr!=='string')return fallback;
-    const parts=etStr.split(':');
-    if(parts.length!==2)return fallback;
-    const h=parseInt(parts[0],10),m=parseInt(parts[1],10);
-    if(isNaN(h)||isNaN(m))return fallback;
-    return(h+4)*100+m; // EDT = UTC-4 → add 4 h
-  }
-  const SESSION_START_UTC = etStrToUtcHHMM(dp.session_start, 1330);
-  const SESSION_END_UTC   = etStrToUtcHHMM(dp.session_end,   2000);
+  // Session window — parsed as ET integer HHMM; both bounds inclusive (Python parity).
+  // "09:30" → 930,  "16:00" → 1600.
+  function etStrToHHMM(s,fallback){if(!s||typeof s!=='string')return fallback;const p=s.split(':');if(p.length!==2)return fallback;const h=parseInt(p[0],10),m=parseInt(p[1],10);return(isNaN(h)||isNaN(m))?fallback:h*100+m;}
+  const SESSION_START_ET=etStrToHHMM(dp.session_start,930);
+  const SESSION_END_ET  =etStrToHHMM(dp.session_end,  1600);
 
-  // allow_reentry — read into a named constant for audit; engine still uses inTrade.
-  // ⚠ Phase 2: when inTrade is removed, use DEF_ALLOW_REENTRY to gate re-entry.
-  const DEF_ALLOW_REENTRY = dp.allow_reentry!==undefined ? dp.allow_reentry : true;
-  void DEF_ALLOW_REENTRY; // consumed by definition layer; engine alignment in Phase 2
+  // allow_reentry — enforced: no inTrade lock in Phase 2.
+  // Fresh breakout required before each re-entry on the same level.
+  void (dp.allow_reentry!==undefined?dp.allow_reentry:true);
 
-  // sl_ticks and rr — UI params override certified baseline for experimental runs.
-  // When sliders are at default position, params.sl_ticks===4 and params.rr===2,
-  // which are identical to the certified baseline (dp.sl_ticks, dp.rr).
-  const slPts = params.sl_ticks * 0.25; // Fixed stop distance in points
+  // sl_ticks / rr — UI params override certified baseline for experimental runs.
+  const SL_TICKS=(params.sl_ticks!==undefined)?params.sl_ticks:(dp.sl_ticks||4);
+  const RR      =(params.rr      !==undefined)?params.rr      :(dp.rr      ||2);
+  const slPts   =SL_TICKS*0.25;
 
-  // ── Signal generation ──────────────────────────────────────────────────────
-  const daily=getDailyHL(candles),dates=Object.keys(daily).sort(),signals=[];
-  let bH=false,bL=false,pdh=null,pdl=null,lastD=null,inTrade=false;
+  // ── ET timezone helpers — America/New_York (correct in EDT and EST) ─────────
+  // Intl.DateTimeFormat is available in all modern browsers and Node ≥ 13.
+  const _etHHMMFmt=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',hour12:false});
+  const _etDateFmt=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'});
+  function getETHHMM(t){const p=_etHHMMFmt.formatToParts(t);return parseInt(p.find(x=>x.type==='hour').value,10)*100+parseInt(p.find(x=>x.type==='minute').value,10);}
+  function getETDate(t){return _etDateFmt.format(t);}
+
+  // ── PDH/PDL keyed by ET calendar date ──────────────────────────────────────
+  // Python calcola_pdh_pdl groups by Date (NY date), takes max(High)/min(Low).
+  const dailyHL={};
+  candles.forEach(c=>{const k=getETDate(c.time);if(!dailyHL[k])dailyHL[k]={high:-Infinity,low:Infinity};if(c.high>dailyHL[k].high)dailyHL[k].high=c.high;if(c.low<dailyHL[k].low)dailyHL[k].low=c.low;});
+  const etDates=Object.keys(dailyHL).sort();
+
+  // ── Signal generation — Python trova_segnali state machine ─────────────────
+  const signals=[];
+  let broken_pdh=false,broken_pdl=false,pdh_rotto=null,pdl_rotto=null,lastDate=null;
+
   candles.forEach((c,i)=>{
     if(!i)return;
-    const d=getDateStr(c.time),di=dates.indexOf(d);
-    if(di<1)return;
-    const prev=candles[i-1],PDH=daily[dates[di-1]].high,PDL=daily[dates[di-1]].low;
-    // New day: reset all state including position lock
-    if(d!==lastD){lastD=d;bH=false;bL=false;inTrade=false;}
-    // No new entries while a position is open (⚠ Phase 2: gate on DEF_ALLOW_REENTRY)
-    if(inTrade)return;
-    // Session gate — bounds derived from definition, converted to UTC HHMM above
-    const hhmm=getHHMM(c.time);
-    if(hhmm<SESSION_START_UTC||hhmm>=SESSION_END_UTC)return;
-    // Breakout detection
-    if(prev.close<PDH&&c.close>PDH){bH=true;pdh=PDH;bL=false;}
-    if(prev.close>PDL&&c.close<PDL){bL=true;pdl=PDL;bH=false;}
-    // Body ratio — bounds from definition
+    const etDate=getETDate(c.time);
+    const di=etDates.indexOf(etDate);
+    if(di<1)return; // no previous day data
+    const PDH=dailyHL[etDates[di-1]].high,PDL=dailyHL[etDates[di-1]].low;
+    const prev=candles[i-1];
+
+    // New calendar day (ET): reset breakout state — Python: if data_corrente != ts.date()
+    if(etDate!==lastDate){lastDate=etDate;broken_pdh=false;broken_pdl=false;pdh_rotto=null;pdl_rotto=null;}
+
+    // Session gate — Python in_sessione: '09:30' <= hhmm <= '16:00' (both inclusive)
+    const etHHMM=getETHHMM(c.time);
+    if(etHHMM<SESSION_START_ET||etHHMM>SESSION_END_ET)return;
+
+    // Breakout detection — Python: prev['Close'] < pdh and row['Close'] > pdh
+    if(prev.close<PDH&&c.close>PDH){broken_pdh=true;pdh_rotto=PDH;broken_pdl=false;pdl_rotto=null;}
+    if(prev.close>PDL&&c.close<PDL){broken_pdl=true;pdl_rotto=PDL;broken_pdh=false;pdh_rotto=null;}
+
+    // Body filter
     const tot=c.high-c.low;if(!tot)return;
     const bodyRatio=Math.abs(c.close-c.open)/tot;
     if(bodyRatio<BODY_MIN||bodyRatio>BODY_MAX)return;
-    // RETEST LONG — Python: Low≤PDH≤High AND Close>PDH AND body valid
-    if(bH&&pdh){
-      if(c.low<=pdh&&pdh<=c.high&&c.close>pdh){
-        const entry=c.close,stop=Math.round((entry-slPts)*100)/100,target=Math.round((entry+slPts*params.rr)*100)/100;
-        signals.push({time:c.time,type:'LONG',setup:'PDH',entry,stop,target,trigger:'BODY'});
-        bH=false;inTrade=true;return;
+
+    // Retest LONG — Python: broken_pdh AND Low≤pdh_rotto≤High AND Close>pdh_rotto
+    if(broken_pdh&&pdh_rotto!==null){
+      if(c.low<=pdh_rotto&&pdh_rotto<=c.high&&c.close>pdh_rotto){
+        const entry=Math.round(c.close*100)/100,stop=Math.round((entry-slPts)*100)/100,target=Math.round((entry+slPts*RR)*100)/100;
+        signals.push({time:c.time,type:'LONG',setup:'PDH',level:pdh_rotto,entry,stop,target,trigger:'BODY'});
+        broken_pdh=false; // reset only this flag; broken_pdl unchanged
+        return; // Python: signal fires, move to next candle
       }
     }
-    // RETEST SHORT — Python: Low≤PDL≤High AND Close<PDL AND body valid
-    if(bL&&pdl){
-      if(c.low<=pdl&&pdl<=c.high&&c.close<pdl){
-        const entry=c.close,stop=Math.round((entry+slPts)*100)/100,target=Math.round((entry-slPts*params.rr)*100)/100;
-        signals.push({time:c.time,type:'SHORT',setup:'PDL',entry,stop,target,trigger:'BODY'});
-        bL=false;inTrade=true;
+
+    // Retest SHORT — Python: broken_pdl AND Low≤pdl_rotto≤High AND Close<pdl_rotto
+    if(broken_pdl&&pdl_rotto!==null){
+      if(c.low<=pdl_rotto&&pdl_rotto<=c.high&&c.close<pdl_rotto){
+        const entry=Math.round(c.close*100)/100,stop=Math.round((entry+slPts)*100)/100,target=Math.round((entry-slPts*RR)*100)/100;
+        signals.push({time:c.time,type:'SHORT',setup:'PDL',level:pdl_rotto,entry,stop,target,trigger:'BODY'});
+        broken_pdl=false;
       }
     }
   });

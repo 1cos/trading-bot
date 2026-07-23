@@ -1,20 +1,20 @@
 /**
  * test_pdh_pdl_definition.js
  *
- * Phase 1B — strategy specification layer tests.
+ * Phase 2 — strategy definition and engine tests.
  *
  * Covers:
- *   T1.  Definition shape: all seven fields present with correct types/values.
+ *   T1.  Definition shape: all seven fields, correct types/values, version=2.0.0.
  *   T2.  allow_reentry is true in the canonical definition.
- *   T3.  session_start/session_end convert correctly to UTC HHMM.
+ *   T3.  Session strings parse to ET HHMM integers (no UTC offset applied).
  *   T4.  Mutating a definition field changes the resolved engine constant.
- *   T5.  Trade output identical to the Phase 1 baseline (LONG signal, Dataset A).
- *   T6.  Trade output identical to the Phase 1 baseline (SHORT signal, Dataset B).
- *   T7.  Body ratio boundaries 0.19/0.20/0.70/0.71 — new === old.
- *   T8.  Fallback to hardcoded literals when definition is missing.
- *   T9.  inTrade position lock still active — max 1 signal per day.
- *   T10. Candle geometry smoke: session gate uses SESSION_START/END_UTC constants.
- *   T11. ORB / OB / Combined not registered in Phase 1B.
+ *   T5.  Phase 2 LONG output === hardcoded oracle (JSON equality).
+ *   T6.  Phase 2 SHORT output === hardcoded oracle (JSON equality).
+ *   T7.  Body boundary 0.19/0.20/0.70/0.71 — phase2 === oracle.
+ *   T8.  Fallback when definition absent produces oracle output.
+ *   T9.  allow_reentry=true enforced — re-entry after fresh re-breakout fires.
+ *   T10. Session gate uses America/New_York ET: 09:29 blocked, 16:00 passes, 16:01 blocked.
+ *   T11. Only pdh_pdl_v1 registered; ORB/OB/Combined absent.
  *
  * Run: node estrategie/test_pdh_pdl_definition.js
  */
@@ -39,111 +39,107 @@ function getDailyHL(candles){
   return d;
 }
 
-// strategyPDHPDL — Phase 1B version (all seven fields from definition).
-// Must be kept byte-for-byte identical to the copy in index.html.
+// strategyPDHPDL — Phase 2 version (inline copy matching index.html).
+// Uses Intl.DateTimeFormat for ET time; no inTrade lock.
 function strategyPDHPDL_1B(candles,params){
-  const _def=(typeof STRATEGY_DEFINITIONS!=='undefined'&&STRATEGY_DEFINITIONS['pdh_pdl_v1'])
-             ||{parameters:{}};
+  const _def=(typeof STRATEGY_DEFINITIONS!=='undefined'&&STRATEGY_DEFINITIONS['pdh_pdl_v1'])||{parameters:{}};
   const dp=_def.parameters;
-
   const BODY_MIN=dp.body_min!==undefined?dp.body_min:0.20;
   const BODY_MAX=dp.body_max!==undefined?dp.body_max:0.70;
-
-  function etStrToUtcHHMM(etStr,fallback){
-    if(!etStr||typeof etStr!=='string')return fallback;
-    const parts=etStr.split(':');
-    if(parts.length!==2)return fallback;
-    const h=parseInt(parts[0],10),m=parseInt(parts[1],10);
-    if(isNaN(h)||isNaN(m))return fallback;
-    return(h+4)*100+m;
-  }
-  const SESSION_START_UTC=etStrToUtcHHMM(dp.session_start,1330);
-  const SESSION_END_UTC  =etStrToUtcHHMM(dp.session_end,  2000);
-
-  const DEF_ALLOW_REENTRY=dp.allow_reentry!==undefined?dp.allow_reentry:true;
-  void DEF_ALLOW_REENTRY;
-
-  const slPts=params.sl_ticks*0.25;
-  const daily=getDailyHL(candles),dates=Object.keys(daily).sort(),signals=[];
-  let bH=false,bL=false,pdh=null,pdl=null,lastD=null,inTrade=false;
+  function etStrToHHMM(s,fallback){if(!s||typeof s!=='string')return fallback;const p=s.split(':');if(p.length!==2)return fallback;const h=parseInt(p[0],10),m=parseInt(p[1],10);return(isNaN(h)||isNaN(m))?fallback:h*100+m;}
+  const SESSION_START_ET=etStrToHHMM(dp.session_start,930);
+  const SESSION_END_ET  =etStrToHHMM(dp.session_end,  1600);
+  void (dp.allow_reentry!==undefined?dp.allow_reentry:true);
+  const SL_TICKS=(params.sl_ticks!==undefined)?params.sl_ticks:(dp.sl_ticks||4);
+  const RR      =(params.rr      !==undefined)?params.rr      :(dp.rr      ||2);
+  const slPts=SL_TICKS*0.25;
+  const _etHHMMFmt=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',hour12:false});
+  const _etDateFmt=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'});
+  function getETHHMM(t){const p=_etHHMMFmt.formatToParts(t);return parseInt(p.find(x=>x.type==='hour').value,10)*100+parseInt(p.find(x=>x.type==='minute').value,10);}
+  function getETDate(t){return _etDateFmt.format(t);}
+  const dailyHL={};
+  candles.forEach(c=>{const k=getETDate(c.time);if(!dailyHL[k])dailyHL[k]={high:-Infinity,low:Infinity};if(c.high>dailyHL[k].high)dailyHL[k].high=c.high;if(c.low<dailyHL[k].low)dailyHL[k].low=c.low;});
+  const etDates=Object.keys(dailyHL).sort();
+  const signals=[];
+  let broken_pdh=false,broken_pdl=false,pdh_rotto=null,pdl_rotto=null,lastDate=null;
   candles.forEach((c,i)=>{
     if(!i)return;
-    const d=getDateStr(c.time),di=dates.indexOf(d);
+    const etDate=getETDate(c.time);
+    const di=etDates.indexOf(etDate);
     if(di<1)return;
-    const prev=candles[i-1],PDH=daily[dates[di-1]].high,PDL=daily[dates[di-1]].low;
-    if(d!==lastD){lastD=d;bH=false;bL=false;inTrade=false;}
-    if(inTrade)return;
-    const hhmm=getHHMM(c.time);
-    if(hhmm<SESSION_START_UTC||hhmm>=SESSION_END_UTC)return;
-    if(prev.close<PDH&&c.close>PDH){bH=true;pdh=PDH;bL=false;}
-    if(prev.close>PDL&&c.close<PDL){bL=true;pdl=PDL;bH=false;}
+    const PDH=dailyHL[etDates[di-1]].high,PDL=dailyHL[etDates[di-1]].low;
+    const prev=candles[i-1];
+    if(etDate!==lastDate){lastDate=etDate;broken_pdh=false;broken_pdl=false;pdh_rotto=null;pdl_rotto=null;}
+    const etHHMM=getETHHMM(c.time);
+    if(etHHMM<SESSION_START_ET||etHHMM>SESSION_END_ET)return;
+    if(prev.close<PDH&&c.close>PDH){broken_pdh=true;pdh_rotto=PDH;broken_pdl=false;pdl_rotto=null;}
+    if(prev.close>PDL&&c.close<PDL){broken_pdl=true;pdl_rotto=PDL;broken_pdh=false;pdh_rotto=null;}
     const tot=c.high-c.low;if(!tot)return;
     const bodyRatio=Math.abs(c.close-c.open)/tot;
     if(bodyRatio<BODY_MIN||bodyRatio>BODY_MAX)return;
-    if(bH&&pdh){
-      if(c.low<=pdh&&pdh<=c.high&&c.close>pdh){
-        const entry=c.close,stop=Math.round((entry-slPts)*100)/100,target=Math.round((entry+slPts*params.rr)*100)/100;
-        signals.push({time:c.time,type:'LONG',setup:'PDH',entry,stop,target,trigger:'BODY'});
-        bH=false;inTrade=true;return;
+    if(broken_pdh&&pdh_rotto!==null){
+      if(c.low<=pdh_rotto&&pdh_rotto<=c.high&&c.close>pdh_rotto){
+        const entry=Math.round(c.close*100)/100,stop=Math.round((entry-slPts)*100)/100,target=Math.round((entry+slPts*RR)*100)/100;
+        signals.push({time:c.time,type:'LONG',setup:'PDH',level:pdh_rotto,entry,stop,target,trigger:'BODY'});
+        broken_pdh=false;return;
       }
     }
-    if(bL&&pdl){
-      if(c.low<=pdl&&pdl<=c.high&&c.close<pdl){
-        const entry=c.close,stop=Math.round((entry+slPts)*100)/100,target=Math.round((entry-slPts*params.rr)*100)/100;
-        signals.push({time:c.time,type:'SHORT',setup:'PDL',entry,stop,target,trigger:'BODY'});
-        bL=false;inTrade=true;
+    if(broken_pdl&&pdl_rotto!==null){
+      if(c.low<=pdl_rotto&&pdl_rotto<=c.high&&c.close<pdl_rotto){
+        const entry=Math.round(c.close*100)/100,stop=Math.round((entry+slPts)*100)/100,target=Math.round((entry-slPts*RR)*100)/100;
+        signals.push({time:c.time,type:'SHORT',setup:'PDL',level:pdl_rotto,entry,stop,target,trigger:'BODY'});
+        broken_pdl=false;
       }
     }
   });
   return signals;
 }
 
-// strategyPDHPDL — hardcoded baseline (Phase 1 copy, no definition reads).
-// Used as the ground-truth "oracle" for output parity tests.
+// strategyPDHPDL — oracle (Phase 2 hardcoded; no definition reads, no inTrade).
+// Identical logic to strategyPDHPDL_1B but reads hardcoded 0.20/0.70/930/1600.
+// Used as ground-truth for output parity tests where STRATEGY_DEFINITIONS is present.
 function strategyPDHPDL_oracle(candles,params){
-  const daily=getDailyHL(candles),dates=Object.keys(daily).sort(),signals=[];
-  let bH=false,bL=false,pdh=null,pdl=null,lastD=null,inTrade=false;
-  const slPts=params.sl_ticks*0.25;
+  const slPts=(params.sl_ticks||4)*0.25, RR=(params.rr||2);
+  const _etHHMMFmt=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',hour12:false});
+  const _etDateFmt=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'});
+  function getETHHMM(t){const p=_etHHMMFmt.formatToParts(t);return parseInt(p.find(x=>x.type==='hour').value,10)*100+parseInt(p.find(x=>x.type==='minute').value,10);}
+  function getETDate(t){return _etDateFmt.format(t);}
+  const dailyHL={};
+  candles.forEach(c=>{const k=getETDate(c.time);if(!dailyHL[k])dailyHL[k]={high:-Infinity,low:Infinity};if(c.high>dailyHL[k].high)dailyHL[k].high=c.high;if(c.low<dailyHL[k].low)dailyHL[k].low=c.low;});
+  const etDates=Object.keys(dailyHL).sort();
+  const signals=[];
+  let broken_pdh=false,broken_pdl=false,pdh_rotto=null,pdl_rotto=null,lastDate=null;
   candles.forEach((c,i)=>{
     if(!i)return;
-    const d=getDateStr(c.time),di=dates.indexOf(d);
+    const etDate=getETDate(c.time);
+    const di=etDates.indexOf(etDate);
     if(di<1)return;
-    const prev=candles[i-1],PDH=daily[dates[di-1]].high,PDL=daily[dates[di-1]].low;
-    if(d!==lastD){lastD=d;bH=false;bL=false;inTrade=false;}
-    if(inTrade)return;
-    const hhmm=getHHMM(c.time);
-    if(hhmm<1330||hhmm>=2000)return;    // hardcoded
-    if(prev.close<PDH&&c.close>PDH){bH=true;pdh=PDH;bL=false;}
-    if(prev.close>PDL&&c.close<PDL){bL=true;pdl=PDL;bH=false;}
+    const PDH=dailyHL[etDates[di-1]].high,PDL=dailyHL[etDates[di-1]].low;
+    const prev=candles[i-1];
+    if(etDate!==lastDate){lastDate=etDate;broken_pdh=false;broken_pdl=false;pdh_rotto=null;pdl_rotto=null;}
+    const etHHMM=getETHHMM(c.time);
+    if(etHHMM<930||etHHMM>1600)return;   // hardcoded
+    if(prev.close<PDH&&c.close>PDH){broken_pdh=true;pdh_rotto=PDH;broken_pdl=false;pdl_rotto=null;}
+    if(prev.close>PDL&&c.close<PDL){broken_pdl=true;pdl_rotto=PDL;broken_pdh=false;pdh_rotto=null;}
     const tot=c.high-c.low;if(!tot)return;
     const bodyRatio=Math.abs(c.close-c.open)/tot;
-    if(bodyRatio<0.20||bodyRatio>0.70)return;    // hardcoded
-    if(bH&&pdh){
-      if(c.low<=pdh&&pdh<=c.high&&c.close>pdh){
-        const entry=c.close,stop=Math.round((entry-slPts)*100)/100,target=Math.round((entry+slPts*params.rr)*100)/100;
-        signals.push({time:c.time,type:'LONG',setup:'PDH',entry,stop,target,trigger:'BODY'});
-        bH=false;inTrade=true;return;
+    if(bodyRatio<0.20||bodyRatio>0.70)return;   // hardcoded
+    if(broken_pdh&&pdh_rotto!==null){
+      if(c.low<=pdh_rotto&&pdh_rotto<=c.high&&c.close>pdh_rotto){
+        const entry=Math.round(c.close*100)/100,stop=Math.round((entry-slPts)*100)/100,target=Math.round((entry+slPts*RR)*100)/100;
+        signals.push({time:c.time,type:'LONG',setup:'PDH',level:pdh_rotto,entry,stop,target,trigger:'BODY'});
+        broken_pdh=false;return;
       }
     }
-    if(bL&&pdl){
-      if(c.low<=pdl&&pdl<=c.high&&c.close<pdl){
-        const entry=c.close,stop=Math.round((entry+slPts)*100)/100,target=Math.round((entry-slPts*params.rr)*100)/100;
-        signals.push({time:c.time,type:'SHORT',setup:'PDL',entry,stop,target,trigger:'BODY'});
-        bL=false;inTrade=true;
+    if(broken_pdl&&pdl_rotto!==null){
+      if(c.low<=pdl_rotto&&pdl_rotto<=c.high&&c.close<pdl_rotto){
+        const entry=Math.round(c.close*100)/100,stop=Math.round((entry+slPts)*100)/100,target=Math.round((entry-slPts*RR)*100)/100;
+        signals.push({time:c.time,type:'SHORT',setup:'PDL',level:pdl_rotto,entry,stop,target,trigger:'BODY'});
+        broken_pdl=false;
       }
     }
   });
   return signals;
-}
-
-// ── Standalone etStrToUtcHHMM — for direct conversion tests ───────────────
-function etStrToUtcHHMM(etStr,fallback){
-  if(!etStr||typeof etStr!=='string')return fallback;
-  const parts=etStr.split(':');
-  if(parts.length!==2)return fallback;
-  const h=parseInt(parts[0],10),m=parseInt(parts[1],10);
-  if(isNaN(h)||isNaN(m))return fallback;
-  return(h+4)*100+m;
 }
 
 // ── Test helpers ───────────────────────────────────────────────────────────
@@ -183,11 +179,11 @@ function makeCandle(dateStr,hhmmUTC,open,high,low,close){
 //   Breakout candle body = |411-408|/|411-408|=1.0 → >0.70 → not a retest itself.
 //   Day 2 @1335 retest: low=408≤410≤high=413, close=412>410, body=3/5=0.60 ✓
 const CANDLES_A=[
-  makeCandle('2026-01-05',1330,405,410,400,408),
-  makeCandle('2026-01-05',1335,408,410,403,406),
-  makeCandle('2026-01-05',1340,406,407,400,402),
-  makeCandle('2026-01-06',1330,408,411,408,411),  // breakout; body=1.0→fails body_max
-  makeCandle('2026-01-06',1335,409,413,408,412),  // retest; body=3/5=0.60 ✓ → LONG
+  makeCandle('2026-05-05',1330,405,410,400,408),
+  makeCandle('2026-05-05',1335,408,410,403,406),
+  makeCandle('2026-05-05',1340,406,407,400,402),
+  makeCandle('2026-05-06',1330,408,411,408,411),  // breakout; body=1.0→fails body_max
+  makeCandle('2026-05-06',1335,409,413,408,412),  // retest; body=3/5=0.60 ✓ → LONG
 ];
 
 // Dataset B — SHORT via PDL retest
@@ -195,10 +191,10 @@ const CANDLES_A=[
 //   Day 2 @1330: prev.close=396>395, close=394<395 → bL=true + same candle retest fires.
 //   low=393≤395≤high=397, close=394<395, body=|394-396|/4=0.50 ✓
 const CANDLES_B=[
-  makeCandle('2026-01-05',1330,398,402,395,400),
-  makeCandle('2026-01-05',1335,400,401,396,397),
-  makeCandle('2026-01-05',1340,397,398,395,396),
-  makeCandle('2026-01-06',1330,396,397,393,394),  // breakout+retest; body=0.50 ✓ → SHORT
+  makeCandle('2026-05-05',1330,398,402,395,400),
+  makeCandle('2026-05-05',1335,400,401,396,397),
+  makeCandle('2026-05-05',1340,397,398,395,396),
+  makeCandle('2026-05-06',1330,396,397,393,394),  // breakout+retest; body=0.50 ✓ → SHORT
 ];
 
 // makeRetestCandles — minimal set to test a specific body_ratio
@@ -208,11 +204,11 @@ function makeRetestCandles(bodyRatio){
   const closeP=412,openP=Math.round((closeP-body)*10000)/10000;
   const highP=418,lowP=highP-range; // low=408≤PDH=410≤high=418 ✓
   return[
-    makeCandle('2026-01-05',1330,405,410,400,408),
-    makeCandle('2026-01-05',1335,408,410,403,406),
-    makeCandle('2026-01-05',1340,406,407,400,402),
-    makeCandle('2026-01-06',1330,408,411,408,411),            // breakout
-    makeCandle('2026-01-06',1335,openP,highP,lowP,closeP),   // retest with target ratio
+    makeCandle('2026-05-05',1330,405,410,400,408),
+    makeCandle('2026-05-05',1335,408,410,403,406),
+    makeCandle('2026-05-05',1340,406,407,400,402),
+    makeCandle('2026-05-06',1330,408,411,408,411),            // breakout
+    makeCandle('2026-05-06',1335,openP,highP,lowP,closeP),   // retest with target ratio
   ];
 }
 
@@ -229,7 +225,7 @@ console.log('T1: Definition shape and canonical values');
   const def=STRATEGY_DEFINITIONS['pdh_pdl_v1'];
   assert(def!==undefined,                         'STRATEGY_DEFINITIONS[pdh_pdl_v1] exists');
   assert(def.strategy_id==='pdh_pdl_v1',          'strategy_id = pdh_pdl_v1');
-  assert(def.version==='1.0.0',                   'version = 1.0.0');
+  assert(def.version==='2.0.0',                   'version = 2.0.0');
   assert(def.name==='PDH/PDL Original (Python baseline)','name matches');
   assert(typeof def.parameters==='object',         'parameters is an object');
   // Seven canonical parameters
@@ -254,25 +250,21 @@ console.log('\nT2: allow_reentry is true in canonical definition');
     'allow_reentry is a boolean (not truthy string or number)');
 }
 
-// ── T3: Session conversion — ET strings → UTC HHMM ───────────────────────
-console.log('\nT3: Session window ET strings convert to correct UTC HHMM');
+// ── T3: Session strings parse to ET HHMM integers ───────────────────────────────
+console.log('\nT3: Session ET strings parse to ET HHMM integers (no UTC offset)');
 {
-  // "09:30" ET + 4h = 13:30 UTC = HHMM 1330
-  assert(etStrToUtcHHMM('09:30',0)===1330, '"09:30" ET → 1330 UTC');
-  // "16:00" ET + 4h = 20:00 UTC = HHMM 2000
-  assert(etStrToUtcHHMM('16:00',0)===2000, '"16:00" ET → 2000 UTC');
-  // Fallback on bad input
-  assert(etStrToUtcHHMM(null,   1330)===1330, 'null → fallback 1330');
-  assert(etStrToUtcHHMM('',     2000)===2000, '"" → fallback 2000');
-  assert(etStrToUtcHHMM('NOON', 1330)===1330, '"NOON" → fallback 1330');
-  // Definition values pass through correctly
+  // Phase 2 engine reads the session window as ET HHMM integers directly.
+  // "09:30" → 930,  "16:00" → 1600. No UTC offset is applied.
+  function etStrToHHMM(s,fallback){if(!s||typeof s!=='string')return fallback;const p=s.split(':');if(p.length!==2)return fallback;const h=parseInt(p[0],10),m=parseInt(p[1],10);return(isNaN(h)||isNaN(m))?fallback:h*100+m;}
+  assert(etStrToHHMM('09:30',0)===930,  '"09:30" → 930 (ET HHMM integer)');
+  assert(etStrToHHMM('16:00',0)===1600, '"16:00" → 1600 (ET HHMM integer)');
+  assert(etStrToHHMM(null,   930)===930,   'null → fallback 930');
+  assert(etStrToHHMM('',    1600)===1600,  '"" → fallback 1600');
+  assert(etStrToHHMM('NOON', 930)===930,   '"NOON" → fallback 930');
   const dp=STRATEGY_DEFINITIONS['pdh_pdl_v1'].parameters;
-  assert(etStrToUtcHHMM(dp.session_start,0)===1330,
-    'Definition session_start → 1330 UTC');
-  assert(etStrToUtcHHMM(dp.session_end,0)===2000,
-    'Definition session_end → 2000 UTC');
+  assert(etStrToHHMM(dp.session_start,0)===930,  'Definition session_start → 930 ET');
+  assert(etStrToHHMM(dp.session_end,  0)===1600, 'Definition session_end → 1600 ET');
 }
-
 // ── T4: Mutating a definition field changes resolved constant ─────────────
 console.log('\nT4: Mutating definition field changes resolved config');
 {
@@ -357,66 +349,85 @@ console.log('\nT8: Fallback to hardcoded literals when definition absent');
   assert(STRATEGY_DEFINITIONS['pdh_pdl_v1']!==undefined,'Definition restored after fallback test');
 }
 
-// ── T9: inTrade still active — max 1 signal per day ──────────────────────
-console.log('\nT9: inTrade position lock still active (despite allow_reentry=true in definition)');
+// ── T9: allow_reentry=true enforced in Phase 2 ────────────────────────────────────────
+console.log('\nT9: allow_reentry=true enforced — re-entry after fresh breakout');
 {
-  // allow_reentry is true in the definition, but inTrade is still enforced.
-  // Two valid retest candles on the same day — only the first should fire.
-  const candles_two=[
-    makeCandle('2026-01-05',1330,405,410,400,408),
-    makeCandle('2026-01-05',1335,408,410,403,406),
-    makeCandle('2026-01-05',1340,406,407,400,402),
-    makeCandle('2026-01-06',1330,408,411,408,411),  // breakout; body=1.0→blocked
-    makeCandle('2026-01-06',1335,409,413,408,412),  // 1st retest; body=0.60 ✓ → fires, inTrade=true
-    makeCandle('2026-01-06',1340,409,413,408,412),  // 2nd retest; inTrade=true → blocked
-  ];
-  // Verify definition says allow_reentry=true
+  // Phase 2 removes the inTrade lock. After a signal fires (broken_pdh=false),
+  // a fresh re-breakout of the same level re-arms the flag and a new signal fires.
   assert(STRATEGY_DEFINITIONS['pdh_pdl_v1'].parameters.allow_reentry===true,
-    'Definition: allow_reentry=true');
-  // Verify engine still locks after first signal
-  const oracle =strategyPDHPDL_oracle(candles_two,PARAMS_DEF);
-  const phase1b=strategyPDHPDL_1B(candles_two,PARAMS_DEF);
-  assertDeepEqual(phase1b,oracle,'Lock: phase1B output === oracle');
-  assert(phase1b.length===1,
-    'inTrade still active: only 1 signal despite allow_reentry=true in definition');
-  assert(oracle.length===1,
-    'Oracle also yields 1 signal — engine unchanged from Phase 1');
-}
+    'Definition: allow_reentry=true (Phase 2 enforced)');
 
-// ── T10: Session gate uses converted constants ─────────────────────────────
-console.log('\nT10: Session gate honours SESSION_START_UTC and SESSION_END_UTC');
+  // Dataset: Day 1 PDH=410.
+  // @1330: breakout fires (body=1.0→blocked as retest); broken_pdh=true.
+  // @1335: 1st retest fires (body=0.60 ✓), broken_pdh=false.
+  // @1340: price drops to 409 (below PDH).
+  // @1345: fresh re-breakout (body=1.0→not retest); broken_pdh=true.
+  // @1350: 2nd retest fires (body=0.60 ✓).
+  const candles_reentry=[
+    makeCandle('2026-05-05',1330,405,410,400,408),
+    makeCandle('2026-05-05',1335,408,410,403,406),
+    makeCandle('2026-05-05',1340,406,407,400,402),
+    makeCandle('2026-05-06',1330,408,411,408,411),  // breakout; body=1.0→not retest
+    makeCandle('2026-05-06',1335,409,413,408,412),  // 1st retest; body=0.60 ✓ → LONG fires
+    makeCandle('2026-05-06',1340,412,413,408,409),  // price drops below PDH
+    makeCandle('2026-05-06',1345,409,411,409,411),  // re-breakout; body=1.0→not retest; broken_pdh=true
+    makeCandle('2026-05-06',1350,409,413,408,412),  // 2nd retest; body=0.60 ✓ → 2nd LONG fires
+  ];
+  const sigs=strategyPDHPDL_1B(candles_reentry,PARAMS_DEF);
+  assert(sigs.length===2,
+    'Phase 2: two LONG signals after fresh re-breakout (allow_reentry=true enforced)');
+  if(sigs.length>=2){
+    assert(sigs[0].type==='LONG','Signal 1 type LONG');
+    assert(sigs[1].type==='LONG','Signal 2 type LONG after re-breakout');
+  }
+}
+// ── T10: Session gate uses America/New_York ET times ──────────────────────────
+console.log('\nT10: Session gate uses America/New_York ET times');
 {
-  // A candle at exactly 13:29 UTC must be blocked; 13:30 must be allowed.
-  // The breakout must happen at 13:30 or later (session-gated).
-  // Build a dataset where the only retest candle is at 1329 UTC.
+  // Phase 2 engine reads ET time via Intl.DateTimeFormat('America/New_York').
+  // Session: 09:30 ET ≤ hhmm ≤ 16:00 ET (both inclusive, matching Python).
+  // makeCandle(dateStr, hhmmUTC, ...) builds UTC timestamps.
+  // In summer (EDT, UTC-4): 1329 UTC = 09:29 ET, 1330 UTC = 09:30 ET, 2000 UTC = 16:00 ET.
+  // Note: 16:00 ET is INCLUSIVE in Python; Phase 2 engine uses etHHMM > 1600 to block,
+  // so 1600 passes. The test at 2001 UTC = 16:01 ET must be blocked.
+
+  // 09:29 ET = before session start → blocked
   const before_open=[
-    makeCandle('2026-01-05',1330,405,410,400,402), // Day 1
-    makeCandle('2026-01-06',1330,402,411,408,411), // breakout
-    makeCandle('2026-01-06',1329,409,413,408,412), // retest at 1329 → blocked by session gate
+    makeCandle('2026-05-05',1330,405,410,400,402), // Day 1
+    makeCandle('2026-05-06',1330,402,411,408,411), // breakout at 09:30 ET
+    makeCandle('2026-05-06',1329,409,413,408,412), // retest at 09:29 ET → blocked
   ];
-  const sig_before=strategyPDHPDL_1B(before_open,PARAMS_DEF);
-  assert(sig_before.length===0,
-    'Candle at 1329 UTC (before session_start) produces no signal');
+  assert(strategyPDHPDL_1B(before_open,PARAMS_DEF).length===0,
+    'Candle at 09:29 ET (before session_start) produces no signal');
 
-  // Retest at exactly 1330 UTC — should fire
+  // 09:30 ET breakout + 09:35 ET retest → fires
   const at_open=[
-    makeCandle('2026-01-05',1330,405,410,400,402), // Day 1
-    makeCandle('2026-01-06',1330,402,411,408,411), // breakout at 1330; body=1.0→blocked
-    makeCandle('2026-01-06',1335,409,413,408,412), // retest at 1335 ✓ → fires
+    makeCandle('2026-05-05',1330,405,410,400,402), // Day 1
+    makeCandle('2026-05-06',1330,402,411,408,411), // breakout at 09:30 ET; body=1.0→not retest
+    makeCandle('2026-05-06',1335,409,413,408,412), // retest at 09:35 ET ✓ → fires
   ];
-  const sig_at=strategyPDHPDL_1B(at_open,PARAMS_DEF);
-  assert(sig_at.length===1,'Candle at 1335 UTC (inside session) fires');
+  assert(strategyPDHPDL_1B(at_open,PARAMS_DEF).length===1,
+    'Candle at 09:35 ET (inside session) fires');
 
-  // Retest at exactly 2000 UTC must be blocked (>= SESSION_END_UTC)
+  // 16:00 ET = inclusive in Python (session_end) → passes (2000 UTC in EDT)
+  // Breakout at 09:35 ET, retest at exactly 16:00 ET (2000 UTC)
   const at_close=[
-    makeCandle('2026-01-05',1330,405,410,400,402), // Day 1
-    makeCandle('2026-01-06',1335,402,411,408,411), // breakout
-    makeCandle('2026-01-06',2000,409,413,408,412), // retest at 2000 → >= SESSION_END_UTC → blocked
+    makeCandle('2026-05-05',1330,405,410,400,402), // Day 1
+    makeCandle('2026-05-06',1335,402,411,408,411), // breakout at 09:35 ET
+    makeCandle('2026-05-06',2000,409,413,408,412), // retest at 16:00 ET → inclusive → fires
   ];
-  const sig_close=strategyPDHPDL_1B(at_close,PARAMS_DEF);
-  assert(sig_close.length===0,'Candle at 2000 UTC (session_end) is blocked (>= end)');
-}
+  assert(strategyPDHPDL_1B(at_close,PARAMS_DEF).length===1,
+    'Candle at 16:00 ET (session_end inclusive) fires — Python parity');
 
+  // 16:01 ET = after session end → blocked (2001 UTC in EDT)
+  const after_close=[
+    makeCandle('2026-05-05',1330,405,410,400,402), // Day 1
+    makeCandle('2026-05-06',1335,402,411,408,411), // breakout at 09:35 ET
+    makeCandle('2026-05-06',2001,409,413,408,412), // retest at 16:01 ET → blocked
+  ];
+  assert(strategyPDHPDL_1B(after_close,PARAMS_DEF).length===0,
+    'Candle at 16:01 ET (after session_end) is blocked');
+}
 // ── T11: ORB / OB / Combined not registered ───────────────────────────────
 console.log('\nT11: Only pdh_pdl_v1 registered in Phase 1B');
 {
