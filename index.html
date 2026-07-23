@@ -404,6 +404,7 @@ tr.clickable:hover td{background:rgba(255,255,255,0.03);}
 </div>
 <div id="toast"></div>
 
+<script src="estrategie/pdh_pdl_definition.js"></script>
 <script>
 // ── Supabase config ──
 const SUPA_URL = 'https://yemkraqdbcezliqfcsps.supabase.co';
@@ -679,13 +680,21 @@ function checkEng(c,prev,zH){if(c.close<=c.open||prev.close>=prev.open)return nu
 function tryEntry(c,prev,zH,stop,params,rr){if(!inSession(getHHMM(c.time),params))return null;let trigger=null;if(params.trigger!=='engulfing')trigger=checkWick(c,zH,params);if(!trigger&&params.trigger!=='wick')trigger=checkEng(c,prev,zH);if(!trigger)return null;const risk=c.close-stop;if(risk<=0)return null;return{entry:c.close,stop,target:c.close+risk*rr,trigger};}
 
 // strategyPDHPDL — Phase 2: Python parity (pdh_pdl.py).
-// Entry filter : body_ratio in [0.20, 0.70]  (Python BODY_MIN/BODY_MAX)
+// Parameters sourced from STRATEGY_DEFINITIONS['pdh_pdl_v1'] (estrategie/pdh_pdl_definition.js).
+// Entry filter : body_ratio in [def.body_min, def.body_max]  → [0.20, 0.70]
 // Stop         : entry ± sl_ticks × 0.25     (Python STOP_LOSS_TICKS × 0.25)
 // Target       : entry ± sl_ticks × 0.25 × rr (Python TAKE_PROFIT_MULTIPLIER)
 // Session      : 13:30–20:00 UTC (09:30–16:00 ET) — Python SESSIONE_FINE=16:00
 // No wick_min  : Python has no minimum wick requirement for PDH/PDL retest
 // Position lock: inTrade resets each new day (max 1 trade/day)
 function strategyPDHPDL(candles,params){
+  // Read body filter bounds from the certified strategy definition.
+  // Values are 0.20 and 0.70 — identical to the Python baseline.
+  // Fallback to literals if the definition file failed to load.
+  const _def=(STRATEGY_DEFINITIONS&&STRATEGY_DEFINITIONS['pdh_pdl_v1'])||{parameters:{}};
+  const BODY_MIN=_def.parameters.body_min!==undefined?_def.parameters.body_min:0.20;
+  const BODY_MAX=_def.parameters.body_max!==undefined?_def.parameters.body_max:0.70;
+
   const daily=getDailyHL(candles),dates=Object.keys(daily).sort(),signals=[];
   let bH=false,bL=false,pdh=null,pdl=null,lastD=null,inTrade=false;
   // Fixed stop distance in points (Python: STOP_LOSS_TICKS × 0.25)
@@ -705,10 +714,10 @@ function strategyPDHPDL(candles,params){
     // Breakout detection
     if(prev.close<PDH&&c.close>PDH){bH=true;pdh=PDH;bL=false;}
     if(prev.close>PDL&&c.close<PDL){bL=true;pdl=PDL;bH=false;}
-    // Body ratio (Python body_valido: 0.20 ≤ ratio ≤ 0.70)
+    // Body ratio — bounds from STRATEGY_DEFINITIONS['pdh_pdl_v1'].parameters
     const tot=c.high-c.low;if(!tot)return;
     const bodyRatio=Math.abs(c.close-c.open)/tot;
-    if(bodyRatio<0.20||bodyRatio>0.70)return;
+    if(bodyRatio<BODY_MIN||bodyRatio>BODY_MAX)return;
     // RETEST LONG — Python: Low≤PDH≤High AND Close>PDH AND body valid
     if(bH&&pdh){
       if(c.low<=pdh&&pdh<=c.high&&c.close>pdh){
