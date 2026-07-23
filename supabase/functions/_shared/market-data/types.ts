@@ -42,6 +42,7 @@ export interface DatabaseBar {
   low:       number;
   close:     number;
   volume:    number | null;
+  source:    string | null;   // 'legacy' for pre-provenance rows; provider name for new inserts
 }
 
 // ─── Errore di validazione OHLCV ────────────────────────────────────────────

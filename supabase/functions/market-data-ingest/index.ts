@@ -221,7 +221,7 @@ async function processSymbolDryRun(ctx: {
 
   const { data: dbData, error: dbError } = await supabase
     .from("candles")
-    .select("simbolo, timeframe, ts, open, high, low, close, volume")
+    .select("simbolo, timeframe, ts, open, high, low, close, volume, source")
     .eq("simbolo",   symbol)
     .eq("timeframe", timeframe)
     .gte("ts",       start)
@@ -238,6 +238,7 @@ async function processSymbolDryRun(ctx: {
     open:    Number(r.open), high: Number(r.high),
     low:     Number(r.low),  close: Number(r.close),
     volume:  r.volume !== null ? Number(r.volume) : null,
+    source:  r.source ?? null,
   }));
 
   const compareResult = compareBars(symbol, fetchResult.bars, dbBars, invalidBars);
@@ -313,7 +314,7 @@ async function processSymbolWrite(ctx: {
   // Eseguita immediatamente prima dell'INSERT per avere un baseline fresco.
   const { data: beforeData, error: beforeErr } = await supabase
     .from("candles")
-    .select("simbolo, timeframe, ts, open, high, low, close, volume")
+    .select("simbolo, timeframe, ts, open, high, low, close, volume, source")
     .eq("simbolo",   symbol)
     .eq("timeframe", timeframe)
     .gte("ts",       start)
@@ -351,6 +352,7 @@ async function processSymbolWrite(ctx: {
     simbolo: string; timeframe: string; ts: string;
     open: number; high: number; low: number; close: number;
     volume: number | null;
+    source: string;   // provider name — set from bar.provider (e.g. "alpaca_iex")
   };
 
   const toInsert: InsertRow[] = [];   // barre nuove → INSERT
@@ -379,6 +381,7 @@ async function processSymbolWrite(ctx: {
         low:       round4(bar.low),
         close:     round4(bar.close),
         volume:    volInt,
+        source:    bar.provider,   // provenance: e.g. "alpaca_iex", "yahoo"
       });
     } else {
       // ── EXISTING: già in DB → non scritta, classificata ──
