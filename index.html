@@ -651,16 +651,65 @@ async function runBacktest(){
 }
 
 function getDailyHL(candles){const d={};candles.forEach(c=>{const k=getDateStr(c.time);if(!d[k])d[k]={high:-Infinity,low:Infinity};d[k].high=Math.max(d[k].high,c.high);d[k].low=Math.min(d[k].low,c.low);});return d;}
-function getDateStr(t){return t.toISOString().split('T')[0];}
-function getHHMM(t){return t.getHours()*100+t.getMinutes();}
-function isSameDay(a,b){return a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate();}
+// ── UTC-based date/time helpers ──
+// Candles are stored in UTC. All time logic must use UTC to be
+// timezone-independent regardless of where the browser is running.
+function getDateStr(t){return t.toISOString().split('T')[0];}                     // already UTC ✓
+function getHHMM(t){return t.getUTCHours()*100+t.getUTCMinutes();}               // UTC hours/minutes
+function isSameDay(a,b){return a.getUTCFullYear()===b.getUTCFullYear()&&a.getUTCMonth()===b.getUTCMonth()&&a.getUTCDate()===b.getUTCDate();} // UTC date
 
-function inSession(hhmm,params){const skip=params.skip_min;const startTot=9*60+30+skip;const startHHMM=Math.floor(startTot/60)*100+startTot%60;return hhmm>=startHHMM&&hhmm<=params.last_entry;}
+// inSession — hhmm is now UTC (from getHHMM using getUTCHours).
+// NY market: 09:30-16:00 ET = 13:30-20:00 UTC (EDT, UTC-4).
+// last_entry UI slider is still expressed in ET (e.g. 1530 = 15:30 ET).
+// We convert ET→UTC by adding 400 (4 hours). skip_min shifts start forward.
+function inSession(hhmm,params){
+  const skip=params.skip_min;
+  const startTot=13*60+30+skip;                              // 13:30 UTC = 09:30 ET + skip
+  const startHHMM=Math.floor(startTot/60)*100+startTot%60;
+  // last_entry is stored as ET hhmm (e.g. 1530); convert to UTC by +400
+  const lastEntryUTC=params.last_entry+400;
+  return hhmm>=startHHMM&&hhmm<=lastEntryUTC;
+}
 function checkWick(c,zH,params){const total=c.high-c.low;if(!total)return null;const body=Math.abs(c.close-c.open)/total;const wickBot=(Math.min(c.open,c.close)-c.low)/total;if(c.close<=zH||c.low>=zH)return null;if(body>params.body_max||wickBot<params.wick_min)return null;return'WICK';}
 function checkEng(c,prev,zH){if(c.close<=c.open||prev.close>=prev.open)return null;if(c.close<=prev.open||c.open>=prev.close||c.close<=zH)return null;return'ENG';}
 function tryEntry(c,prev,zH,stop,params,rr){if(!inSession(getHHMM(c.time),params))return null;let trigger=null;if(params.trigger!=='engulfing')trigger=checkWick(c,zH,params);if(!trigger&&params.trigger!=='wick')trigger=checkEng(c,prev,zH);if(!trigger)return null;const risk=c.close-stop;if(risk<=0)return null;return{entry:c.close,stop,target:c.close+risk*rr,trigger};}
 
-function strategyPDHPDL(candles,params){const daily=getDailyHL(candles),dates=Object.keys(daily).sort(),signals=[];let bH=false,bL=false,pdh=null,pdl=null,lastD=null;candles.forEach((c,i)=>{if(!i)return;const d=getDateStr(c.time),di=dates.indexOf(d);if(di<1)return;const prev=candles[i-1],PDH=daily[dates[di-1]].high,PDL=daily[dates[di-1]].low;if(d!==lastD){lastD=d;bH=false;bL=false;}if(prev.close<PDH&&c.close>PDH){bH=true;pdh=PDH;bL=false;}if(prev.close>PDL&&c.close<PDL){bL=true;pdl=PDL;bH=false;}if(bH&&pdh){const e=tryEntry(c,prev,pdh,c.low,params,params.rr);if(e){signals.push({time:c.time,type:'LONG',setup:'PDH',...e});bH=false;}}if(bL&&pdl){const tot=c.high-c.low;if(!tot)return;const body=Math.abs(c.close-c.open)/tot,wickTop=(c.high-Math.max(c.open,c.close))/tot;const hhmm=getHHMM(c.time);if(inSession(hhmm,params)&&c.close<pdl&&c.high>pdl&&wickTop>=params.wick_min&&body<=params.body_max){const risk=c.high-c.close;if(risk>0){signals.push({time:c.time,type:'SHORT',setup:'PDL',entry:c.close,stop:c.high,target:c.close-risk*params.rr,trigger:'WICK'});bL=false;}}}} );return signals;}
+// strategyPDHPDL — position lock: max 1 open signal per day.
+// inTrade flag blocks new entries until end-of-day reset.
+// This mirrors Python pdh_pdl.py behavior where only one trade fires per day.
+function strategyPDHPDL(candles,params){
+  const daily=getDailyHL(candles),dates=Object.keys(daily).sort(),signals=[];
+  let bH=false,bL=false,pdh=null,pdl=null,lastD=null,inTrade=false;
+  candles.forEach((c,i)=>{
+    if(!i)return;
+    const d=getDateStr(c.time),di=dates.indexOf(d);
+    if(di<1)return;
+    const prev=candles[i-1],PDH=daily[dates[di-1]].high,PDL=daily[dates[di-1]].low;
+    // New day: reset all state including position lock
+    if(d!==lastD){lastD=d;bH=false;bL=false;inTrade=false;}
+    // No new entries while a position is open
+    if(inTrade)return;
+    // Breakout detection
+    if(prev.close<PDH&&c.close>PDH){bH=true;pdh=PDH;bL=false;}
+    if(prev.close>PDL&&c.close<PDL){bL=true;pdl=PDL;bH=false;}
+    // LONG entry
+    if(bH&&pdh){
+      const e=tryEntry(c,prev,pdh,c.low,params,params.rr);
+      if(e){signals.push({time:c.time,type:'LONG',setup:'PDH',...e});bH=false;inTrade=true;return;}
+    }
+    // SHORT entry
+    if(bL&&pdl){
+      const tot=c.high-c.low;if(!tot)return;
+      const body=Math.abs(c.close-c.open)/tot,wickTop=(c.high-Math.max(c.open,c.close))/tot;
+      const hhmm=getHHMM(c.time);
+      if(inSession(hhmm,params)&&c.close<pdl&&c.high>pdl&&wickTop>=params.wick_min&&body<=params.body_max){
+        const risk=c.high-c.close;
+        if(risk>0){signals.push({time:c.time,type:'SHORT',setup:'PDL',entry:c.close,stop:c.high,target:c.close-risk*params.rr,trigger:'WICK'});bL=false;inTrade=true;}
+      }
+    }
+  });
+  return signals;
+}
 
 function strategyORB(candles,params){const signals=[],byDay={};candles.forEach(c=>{const d=getDateStr(c.time);if(!byDay[d])byDay[d]=[];byDay[d].push(c);});Object.values(byDay).forEach(dc=>{const orb=dc.filter(c=>{const h=getHHMM(c.time);return h>=930&&h<930+params.orb_min;});if(!orb.length)return;const orbH=Math.max(...orb.map(c=>c.high));let broken=false,count=0;dc.forEach((c,i)=>{if(!i||count>=params.max_entries)return;const prev=dc[i-1];if(prev.close>orbH)broken=true;if(!broken)return;const e=tryEntry(c,prev,orbH,c.low,params,params.rr_orb);if(e){signals.push({time:c.time,type:'LONG',setup:'ORB',...e});broken=false;count++;}});});return signals;}
 
@@ -671,8 +720,11 @@ function strategyCombined(candles,params){const all=[...strategyPDHPDL(candles,{
 function calcPnlDollars(pnlPoints,params){if(currentMode==='futures'){const cfg=FUTURES_CONFIG[currentFutures];const contracts=parseInt(document.getElementById('fut_contracts').value);return Math.round(pnlPoints*cfg.pointValue*contracts*100)/100;}else if(currentMode==='options'){const premium=parseInt(document.getElementById('premium').value)/100;const contracts=parseInt(document.getElementById('opt_contracts').value);const riskPerTrade=premium*100*contracts;if(pnlPoints<0)return-riskPerTrade;return Math.round(pnlPoints*DELTA[currentStrike]*100*contracts*100)/100;}else{const shares=parseInt(document.getElementById('shares').value);return Math.round(pnlPoints*shares*100)/100;}}
 
 function runStrategy(candles,params){let signals=[];if(params.strategy==='pdh_pdl')signals=strategyPDHPDL(candles,params);else if(params.strategy==='orb')signals=strategyORB(candles,params);else if(params.strategy==='ob')signals=strategyOB(candles,params);else signals=strategyCombined(candles,params);
+// Simulation loop — UTC-based EOD detection.
+// Market close: 16:00 ET = 20:00 UTC → getHHMM (UTC) >= 2000.
+// lastC filter also uses UTC: last bar with getHHMM < 2000 on the same UTC day.
 const trades=signals.map(s=>{const future=candles.filter(c=>c.time>s.time);let esito='APERTO',uscita=s.entry;
-for(const c of future){const hhmm=getHHMM(c.time);if(!isSameDay(c.time,s.time)||hhmm>=1600){const lastC=future.filter(x=>isSameDay(x.time,s.time)&&getHHMM(x.time)<1600).pop();uscita=lastC?lastC.close:s.entry;esito='EOD';break;}if(s.type==='LONG'){if(c.low<=s.stop){esito='STOP';uscita=s.stop;break;}if(c.high>=s.target){esito='TARGET';uscita=s.target;break;}}else{if(c.high>=s.stop){esito='STOP';uscita=s.stop;break;}if(c.low<=s.target){esito='TARGET';uscita=s.target;break;}}}
+for(const c of future){const hhmm=getHHMM(c.time);if(!isSameDay(c.time,s.time)||hhmm>=2000){const lastC=future.filter(x=>isSameDay(x.time,s.time)&&getHHMM(x.time)<2000).pop();uscita=lastC?lastC.close:s.entry;esito='EOD';break;}if(s.type==='LONG'){if(c.low<=s.stop){esito='STOP';uscita=s.stop;break;}if(c.high>=s.target){esito='TARGET';uscita=s.target;break;}}else{if(c.high>=s.stop){esito='STOP';uscita=s.stop;break;}if(c.low<=s.target){esito='TARGET';uscita=s.target;break;}}}
 let pnlPts=0,pnlUSD=0;if(esito!=='APERTO'){pnlPts=s.type==='LONG'?uscita-s.entry:s.entry-uscita;pnlUSD=calcPnlDollars(pnlPts,params);}
 return{...s,uscita,esito,pnlPts,pnlUSD};});
 const closed=trades.filter(t=>t.esito!=='APERTO');const aperti=trades.filter(t=>t.esito==='APERTO');const eods=closed.filter(t=>t.esito==='EOD');const wins=closed.filter(t=>t.esito==='TARGET');const losses=closed.filter(t=>t.esito==='STOP');const wr=closed.length?wins.length/closed.length*100:0;const totalUSD=closed.reduce((s,t)=>s+t.pnlUSD,0);const avgUSD=closed.length?totalUSD/closed.length:0;const maxWin=wins.length?Math.max(...wins.map(t=>t.pnlUSD)):0;const maxLoss=losses.length?Math.min(...losses.map(t=>t.pnlUSD)):0;let cum=0;const equity=closed.map(t=>{cum+=t.pnlUSD;return{time:t.time,cum};});const wickT=closed.filter(t=>t.trigger==='WICK');const engT=closed.filter(t=>t.trigger==='ENG');return{trades,closed,aperti,eods,wr,totalUSD,avgUSD,maxWin,maxLoss,equity,wickT,engT};}
