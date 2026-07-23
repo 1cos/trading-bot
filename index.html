@@ -107,6 +107,21 @@ tr.clickable:hover td{background:rgba(255,255,255,0.03);}
 .db-status{font-size:10px;padding:3px 8px;border-radius:10px;display:inline-flex;align-items:center;gap:4px;}
 .db-status.ok{background:rgba(0,200,150,0.1);color:var(--green);border:0.5px solid rgba(0,200,150,0.2);}
 .db-status.err{background:rgba(255,77,77,0.1);color:var(--red);border:0.5px solid rgba(255,77,77,0.2);}
+/* ── Certified / Experimental state ── */
+.certified-block{background:rgba(0,200,150,0.05);border:0.5px solid rgba(0,200,150,0.25);border-radius:var(--radius);padding:10px 12px;display:flex;flex-direction:column;gap:6px;}
+.certified-block.experimental{background:rgba(245,158,11,0.05);border-color:rgba(245,158,11,0.30);}
+.cert-header{display:flex;align-items:center;justify-content:space-between;gap:6px;}
+.cert-badge{font-size:10px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;padding:2px 8px;border-radius:10px;}
+.cert-badge.certified{background:rgba(0,200,150,0.15);color:var(--green);border:0.5px solid rgba(0,200,150,0.35);}
+.cert-badge.experimental{background:rgba(245,158,11,0.15);color:var(--amber);border:0.5px solid rgba(245,158,11,0.35);}
+.cert-name{font-size:12px;font-weight:500;color:var(--text);flex:1;}
+.cert-desc{font-size:10px;color:var(--muted);line-height:1.5;}
+.cert-desc.experimental-hint{color:var(--amber);}
+.builtin-chip{padding:5px 10px;border-radius:20px;background:rgba(0,200,150,0.08);border:0.5px solid rgba(0,200,150,0.35);cursor:pointer;font-size:11px;color:var(--green);transition:all 0.15s;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;}
+.builtin-chip:hover{background:rgba(0,200,150,0.15);}
+.builtin-chip .cert-icon{font-size:12px;}
+.param-locked input[type=range]{opacity:0.38;pointer-events:none;}
+.param-locked label{color:rgba(136,136,136,0.6);}
 
 /* Modal grafico candele */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:1000;display:none;align-items:center;justify-content:center;}
@@ -261,7 +276,7 @@ tr.clickable:hover td{background:rgba(255,255,255,0.03);}
       </select>
     </div>
 
-    <div>
+    <div id="section-trigger">
       <div class="section-title">Trigger di entrata</div>
       <div class="tabs3">
         <div class="tab active-purple" onclick="setTrigger('both',this)">Wick + Eng</div>
@@ -270,7 +285,7 @@ tr.clickable:hover td{background:rgba(255,255,255,0.03);}
       </div>
     </div>
 
-    <div>
+    <div id="section-wick">
       <div class="section-title">Proporzione Wick / Body</div>
       <div class="wick-visual">
         <div class="candle-preview">
@@ -293,7 +308,7 @@ tr.clickable:hover td{background:rgba(255,255,255,0.03);}
       </div>
     </div>
 
-    <div>
+    <div id="section-time-filter">
       <div class="section-title">Filtro tempo</div>
       <div class="param">
         <label>Salta i primi <span id="skip_min_val">0 min</span></label>
@@ -307,13 +322,13 @@ tr.clickable:hover td{background:rgba(255,255,255,0.03);}
 
     <div id="params-pdh_pdl">
       <div class="section-title">Parametri PDH / PDL</div>
-      <div class="param">
+      <div class="param" id="param-sl_ticks">
         <label>Stop Loss (ticks) <span id="sl_ticks_val">4</span></label>
-        <input type="range" min="2" max="16" value="4" step="1" id="sl_ticks" oninput="document.getElementById('sl_ticks_val').textContent=this.value">
+        <input type="range" min="2" max="16" value="4" step="1" id="sl_ticks" oninput="document.getElementById('sl_ticks_val').textContent=this.value;onCertifiedSliderChange()">
       </div>
-      <div class="param">
+      <div class="param" id="param-rr">
         <label>Risk / Reward <span id="rr_val">2.0x</span></label>
-        <input type="range" min="10" max="60" value="20" step="5" id="rr" oninput="document.getElementById('rr_val').textContent=(this.value/10).toFixed(1)+'x'">
+        <input type="range" min="10" max="60" value="20" step="5" id="rr" oninput="document.getElementById('rr_val').textContent=(this.value/10).toFixed(1)+'x';onCertifiedSliderChange()">
       </div>
     </div>
 
@@ -362,6 +377,28 @@ tr.clickable:hover td{background:rgba(255,255,255,0.03);}
     </div>
 
     <div class="divider"></div>
+
+    <!-- ── Certified baseline block ── -->
+    <div class="certified-block" id="certified-block" style="display:none">
+      <div class="cert-header">
+        <span class="cert-name" id="cert-name">PDH/PDL Original (Python baseline)</span>
+        <span class="cert-badge certified" id="cert-badge">CERTIFIED BASELINE</span>
+      </div>
+      <div class="cert-desc" id="cert-desc">
+        SPY · 5m · SL 4 ticks · RR 2.0 · Body 20%–70% · Session 09:30–16:00 ET · Re-entry ON
+      </div>
+    </div>
+
+    <!-- ── Built-in presets ── -->
+    <div>
+      <div class="section-title">Preset certificati</div>
+      <div id="builtin-preset-bar">
+        <div class="builtin-chip" id="builtin-pdh-chip" onclick="loadBuiltinPreset('pdh_pdl_v1')">
+          <span class="cert-icon">🔒</span>
+          <span>PDH/PDL Original (Python baseline)</span>
+        </div>
+      </div>
+    </div>
 
     <div>
       <div class="section-title">I miei preset</div>
@@ -471,7 +508,10 @@ async function loadPreset(name){
   currentFutures=p.futures||'MES';
   currentStrike=p.strike||'ATM';
   currentTrigger=p.trigger||'both';
-  ['pdh_pdl','orb','ob','combined'].forEach(id=>{document.getElementById('params-'+id).style.display=id===currentStrategy?'block':'none';});
+  // Loading a user preset always clears certified state
+  activeCertifiedPresetId=null;
+  setCertifiedBlockState('hidden');
+  updateStrategyParamVisibility(currentStrategy);
   document.getElementById('futures-config').style.display=currentMode==='futures'?'block':'none';
   document.getElementById('options-config').style.display=currentMode==='options'?'block':'none';
   document.getElementById('equity-config').style.display=currentMode==='equity'?'block':'none';
@@ -494,6 +534,125 @@ function getAllSliderValues(){
 }
 function setAllSliderValues(vals){
   Object.entries(vals).forEach(([id,val])=>{const el=document.getElementById(id);if(!el)return;el.value=val;el.dispatchEvent(new Event('input'));});
+}
+
+// ── Certified / Experimental state ──────────────────────────────────────────
+// activeCertifiedPresetId: set when a builtin certified preset is loaded.
+// null  → no certified preset active (user/experimental config)
+// 'pdh_pdl_v1' → certified baseline active; detect if sliders deviate
+let activeCertifiedPresetId = null;
+
+// Certified baseline values extracted directly from STRATEGY_DEFINITIONS
+// Behavior B: editing a certified slider marks UI as "Experimental configuration"
+function getCertifiedSliderValues(strategyId) {
+  if (typeof STRATEGY_DEFINITIONS === 'undefined') return null;
+  const def = STRATEGY_DEFINITIONS[strategyId];
+  if (!def) return null;
+  const p = def.parameters;
+  return {
+    sl_ticks: String(p.sl_ticks),  // 4
+    rr:       String(p.rr * 10),   // 20  (slider stores rr×10)
+  };
+}
+
+function isCertifiedSliderValues(strategyId) {
+  const certified = getCertifiedSliderValues(strategyId);
+  if (!certified) return true; // no definition — can't tell, stay certified
+  const slTicks = document.getElementById('sl_ticks').value;
+  const rr      = document.getElementById('rr').value;
+  return slTicks === certified.sl_ticks && rr === certified.rr;
+}
+
+// Called by sl_ticks and rr oninput when a certified preset is active
+function onCertifiedSliderChange() {
+  if (!activeCertifiedPresetId) return;
+  if (!isCertifiedSliderValues(activeCertifiedPresetId)) {
+    setCertifiedBlockState('experimental');
+  } else {
+    setCertifiedBlockState('certified');
+  }
+}
+
+// Update the certified block visual state
+// state: 'certified' | 'experimental' | 'hidden'
+function setCertifiedBlockState(state) {
+  const block = document.getElementById('certified-block');
+  const badge = document.getElementById('cert-badge');
+  const desc  = document.getElementById('cert-desc');
+  if (state === 'hidden') {
+    block.style.display = 'none';
+    return;
+  }
+  block.style.display = 'flex';
+  if (state === 'certified') {
+    block.className = 'certified-block';
+    badge.className = 'cert-badge certified';
+    badge.textContent = 'CERTIFIED BASELINE';
+    desc.className = 'cert-desc';
+    desc.textContent = 'SPY · 5m · SL 4 ticks · RR 2.0 · Body 20%–70% · Session 09:30–16:00 ET · Re-entry ON';
+  } else {
+    block.className = 'certified-block experimental';
+    badge.className = 'cert-badge experimental';
+    badge.textContent = 'EXPERIMENTAL';
+    desc.className = 'cert-desc experimental-hint';
+    desc.textContent = 'Parametri modificati rispetto al baseline certificato. Clicca 🔒 per ripristinare.';
+  }
+}
+
+// Load a built-in certified preset from STRATEGY_DEFINITIONS
+function loadBuiltinPreset(strategyId) {
+  if (typeof STRATEGY_DEFINITIONS === 'undefined' || !STRATEGY_DEFINITIONS[strategyId]) {
+    showToast('⚠️ Definizione strategia non trovata');
+    return;
+  }
+  const def = STRATEGY_DEFINITIONS[strategyId];
+  const p   = def.parameters;
+
+  // Set strategy to pdh_pdl
+  currentStrategy = 'pdh_pdl';
+  document.querySelectorAll('.tabs4 .tab').forEach(t => t.className = 'tab');
+  const pdTab = [...document.querySelectorAll('.tabs4 .tab')].find(t => t.textContent.trim() === 'PDH/PDL');
+  if (pdTab) pdTab.className = 'tab active-blue';
+  updateStrategyParamVisibility('pdh_pdl');
+
+  // Set symbol to SPY
+  document.getElementById('simbolo').value = 'SPY';
+
+  // Set sl_ticks — slider stores integer ticks, slider range min=2 max=16
+  const slEl = document.getElementById('sl_ticks');
+  slEl.value = String(p.sl_ticks);
+  document.getElementById('sl_ticks_val').textContent = String(p.sl_ticks);
+
+  // Set rr — slider stores rr×10 (e.g. 2.0 → 20)
+  const rrEl = document.getElementById('rr');
+  rrEl.value = String(p.rr * 10);
+  document.getElementById('rr_val').textContent = p.rr.toFixed(1) + 'x';
+
+  // Record active certified preset and update state
+  activeCertifiedPresetId = strategyId;
+  setCertifiedBlockState('certified');
+
+  showToast(`🔒 Preset certificato "${def.name}" caricato`);
+  addNotifica('🔒 Preset certificato', `"${def.name}" caricato — baseline Python`);
+}
+
+// Show/hide sections that are irrelevant to PDH/PDL strategy
+// PDH/PDL uses its own session gate and body filter (not wick/trigger/time-filter UI)
+function updateStrategyParamVisibility(strategy) {
+  const isPDH = strategy === 'pdh_pdl';
+  // PDH-irrelevant: trigger selector, wick/body section, time-filter section
+  document.getElementById('section-trigger').style.display   = isPDH ? 'none' : '';
+  document.getElementById('section-wick').style.display      = isPDH ? 'none' : '';
+  document.getElementById('section-time-filter').style.display = isPDH ? 'none' : '';
+  // Show only the relevant strategy param block
+  ['pdh_pdl','orb','ob','combined'].forEach(id => {
+    document.getElementById('params-'+id).style.display = id === strategy ? 'block' : 'none';
+  });
+  // Hide certified block when switching away from pdh_pdl
+  if (!isPDH && activeCertifiedPresetId) {
+    activeCertifiedPresetId = null;
+    setCertifiedBlockState('hidden');
+  }
 }
 
 // ── Notifiche ──
@@ -570,7 +729,12 @@ function setFutures(f,el){currentFutures=f;document.querySelectorAll('#futures-c
 function updateFuturesExample(){const cfg=FUTURES_CONFIG[currentFutures];const c=parseInt(document.getElementById('fut_contracts').value);document.getElementById('futures-example').textContent=`Es: +3pt × $${cfg.pointValue} × ${c} = +$${3*cfg.pointValue*c} per trade`;}
 function setStrike(s,el){currentStrike=s;document.querySelectorAll('#options-config .tabs2 .tab').forEach(t=>t.className='tab');el.className='tab active-green';updatePremium();}
 function updatePremium(){const p=parseInt(document.getElementById('premium').value)/100;const c=parseInt(document.getElementById('opt_contracts').value);document.getElementById('premium_val').textContent='$'+p.toFixed(2);const risk=p*100*c;document.getElementById('opt-risk-detail').textContent=`${c} contratti × $${(p*100).toFixed(0)} = $${risk.toFixed(0)} a rischio`;document.getElementById('opt-pnl-example').textContent=`Delta ${DELTA[currentStrike]} · Target 2x → +$${risk.toFixed(0)} · Stop → -$${risk.toFixed(0)}`;}
-function setStrategy(s,el){currentStrategy=s;document.querySelectorAll('.tabs4 .tab').forEach(t=>t.className='tab');el.className='tab active-blue';['pdh_pdl','orb','ob','combined'].forEach(id=>{document.getElementById('params-'+id).style.display=id===s?'block':'none';});}
+function setStrategy(s,el){currentStrategy=s;document.querySelectorAll('.tabs4 .tab').forEach(t=>t.className='tab');el.className='tab active-blue';
+  // Manually selecting a strategy always clears the certified preset state
+  activeCertifiedPresetId=null;
+  setCertifiedBlockState('hidden');
+  updateStrategyParamVisibility(s);
+}
 function setTrigger(t,el){currentTrigger=t;document.querySelectorAll('.tabs3 .tab').forEach(b=>{if(b.parentElement===el.parentElement)b.className='tab';});el.className='tab active-purple';}
 function updateWickPreview(){const w=parseInt(document.getElementById('wick_min').value);const b=parseInt(document.getElementById('body_max').value);document.getElementById('wick_min_val').textContent=w+'%';document.getElementById('body_max_val').textContent=b+'%';document.getElementById('wick-ratio-label').textContent=`Wick ${w}% / Body ${b}%`;const total=60;const bodyH=Math.round(total*b/100);const wickBotH=Math.round(total*w/100);const wickTopH=Math.max(2,total-bodyH-wickBotH);document.getElementById('wick-top-preview').style.height=wickTopH+'px';document.getElementById('body-preview').style.height=bodyH+'px';document.getElementById('wick-bot-preview').style.height=wickBotH+'px';}
 function updateSkipLabel(){const v=parseInt(document.getElementById('skip_min').value);const tot=9*60+30+v;const fh=Math.floor(tot/60),fm=tot%60;document.getElementById('skip_min_val').textContent=v===0?'0 min (da 09:30)':`${v} min (da ${fh}:${fm<10?'0':''}${fm})`;}
@@ -859,6 +1023,8 @@ loadPresetsUI();
 updateWickPreview();
 updateFuturesExample();
 updatePremium();
+// Apply initial strategy visibility (PDH/PDL is default)
+updateStrategyParamVisibility(currentStrategy);
 
 // Chiudi modal cliccando fuori
 document.getElementById('trade-modal').addEventListener('click',e=>{if(e.target===document.getElementById('trade-modal'))closeModal();});
