@@ -126,35 +126,50 @@ tr.clickable:hover td{background:rgba(255,255,255,0.03);}
 /* Modal grafico candele */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:1000;display:none;align-items:center;justify-content:center;}
 .modal-overlay.open{display:flex;}
-.modal{background:var(--surface);border:0.5px solid var(--border);border-radius:16px;width:90vw;max-width:900px;max-height:85vh;overflow:hidden;display:flex;flex-direction:column;}
-.modal-header{padding:16px 20px;border-bottom:0.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.modal{background:var(--surface);border:0.5px solid var(--border);border-radius:16px;width:90vw;max-width:900px;max-height:88vh;overflow:hidden;display:flex;flex-direction:column;}
+.modal-header{padding:16px 20px;border-bottom:0.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
 .modal-header h2{font-size:14px;font-weight:500;}
 .modal-close{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:0 4px;}
-.modal-body{flex:1;padding:20px;overflow-y:auto;}
-.trade-detail-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
+.modal-body{flex:1;padding:20px;overflow-y:auto;display:flex;flex-direction:column;min-height:0;}
+.trade-detail-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px;flex-shrink:0;}
 .trade-detail-item{background:var(--surface2);border-radius:8px;padding:10px 12px;}
 .trade-detail-item .label{font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:3px;}
 .trade-detail-item .value{font-size:15px;font-weight:500;}
-.candle-chart-wrap{height:320px;position:relative;overflow:hidden;}
-/* Trade Replay candlestick chart */
-.replay-svg-wrap{width:100%;height:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+/* Chart area: column flex — svg on top, nav bar underneath */
+.candle-chart-wrap{flex:1;min-height:220px;display:flex;flex-direction:column;overflow:hidden;}
+.replay-svg-wrap{flex:1;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scroll-behavior:smooth;min-height:0;}
 .replay-svg-wrap svg{display:block;}
-.replay-info-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+/* Navigation bar */
+.replay-nav{display:flex;gap:6px;align-items:center;padding:6px 0 0;flex-shrink:0;}
+.replay-nav-btn{padding:5px 11px;border-radius:8px;border:0.5px solid var(--border);background:var(--surface2);color:var(--muted);font-size:11px;cursor:pointer;transition:all 0.12s;white-space:nowrap;}
+.replay-nav-btn:hover{border-color:var(--blue);color:var(--blue);}
+.replay-nav-btn.active{border-color:var(--blue);color:var(--blue);background:rgba(57,135,229,0.10);}
+.replay-nav-btn.exit-stop{border-color:var(--red);color:var(--red);}
+.replay-nav-btn.exit-stop:hover,.replay-nav-btn.exit-stop.active{background:rgba(255,77,77,0.10);}
+.replay-nav-btn.exit-target{border-color:var(--green);color:var(--green);}
+.replay-nav-btn.exit-target:hover,.replay-nav-btn.exit-target.active{background:rgba(0,200,150,0.10);}
+.replay-nav-btn.exit-eod{border-color:var(--blue);color:var(--blue);}
+.replay-nav-btn.exit-eod:hover,.replay-nav-btn.exit-eod.active{background:rgba(57,135,229,0.10);}
+.replay-nav-spacer{flex:1;}
+.replay-nav-label{font-size:10px;color:var(--muted);}
+/* Info tags row */
+.replay-info-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;flex-shrink:0;}
 .replay-tag{font-size:10px;padding:2px 7px;border-radius:10px;background:var(--surface2);color:var(--muted);border:0.5px solid var(--border);}
 .replay-tag.long{background:rgba(0,200,150,0.12);color:var(--green);border-color:rgba(0,200,150,0.3);}
 .replay-tag.short{background:rgba(255,77,77,0.12);color:var(--red);border-color:rgba(255,77,77,0.3);}
 .replay-tag.stop{background:rgba(255,77,77,0.08);color:var(--red);}
 .replay-tag.target{background:rgba(0,200,150,0.08);color:var(--green);}
 .replay-tag.eod{background:rgba(57,135,229,0.08);color:var(--blue);}
-/* OB zone label */
-.ob-zone-label{font-size:9px;fill:rgba(167,139,250,0.7);}
 /* Mobile modal tweak */
 @media(max-width:767px){
-  .modal{width:96vw;max-height:92vh;border-radius:12px;}
-  .modal-body{padding:12px;}
-  .trade-detail-grid{grid-template-columns:1fr 1fr;gap:8px;}
-  .candle-chart-wrap{height:280px;}
-  .replay-info-row{gap:4px;}
+  .modal{width:96vw;max-height:94vh;border-radius:12px;}
+  .modal-body{padding:10px;}
+  .trade-detail-grid{grid-template-columns:1fr 1fr;gap:7px;margin-bottom:8px;}
+  .trade-detail-item{padding:8px 10px;}
+  .trade-detail-item .value{font-size:13px;}
+  .candle-chart-wrap{min-height:200px;}
+  .replay-info-row{gap:4px;margin-bottom:6px;}
+  .replay-nav-btn{padding:5px 9px;font-size:10px;}
 }
 
 /* Toast */
@@ -201,6 +216,7 @@ tr.clickable:hover td{background:rgba(255,255,255,0.03);}
       <div class="replay-info-row" id="modal-replay-tags"></div>
       <div class="candle-chart-wrap">
         <div class="replay-svg-wrap" id="replay-svg-wrap"></div>
+        <div class="replay-nav" id="replay-nav"></div>
       </div>
     </div>
   </div>
@@ -701,6 +717,24 @@ function fmtETTime(d){return _etTimeFmt.format(d);}
 function fmtETDate(d){return _etDateShortFmt.format(d);}
 function fmtETDateTime(d){return fmtETDate(d)+' '+fmtETTime(d)+' ET';}
 
+// ── Replay layout constants (shared between modal and nav) ──
+const _R={CAND_W:9,CAND_GAP:3,PAD_L:52,PAD_R:8,PAD_T:22,PAD_B:36,CHART_H:230};
+_R.STEP=_R.CAND_W+_R.CAND_GAP;
+
+// Scroll positions computed by renderCandleReplay, used by nav buttons
+let _replayScrollEntry=0,_replayScrollExit=0,_replayScrollFull=0;
+
+// ── Nav button scroll ──
+function replayScrollTo(pos){
+  const wrap=document.getElementById('replay-svg-wrap');
+  if(!wrap)return;
+  wrap.scrollLeft=pos;
+  // Update active nav button
+  document.querySelectorAll('.replay-nav-btn[data-scroll]').forEach(b=>{
+    b.classList.toggle('active',parseInt(b.dataset.scroll)===pos);
+  });
+}
+
 // ── Modal grafico candele ──
 function openTradeModal(trade){
   document.getElementById('trade-modal').classList.add('open');
@@ -716,10 +750,10 @@ function openTradeModal(trade){
     <div class="trade-detail-item"><div class="label">Stop</div><div class="value" style="color:var(--red)">$${trade.stop.toFixed(2)}</div></div>
     <div class="trade-detail-item"><div class="label">Target</div><div class="value" style="color:var(--green)">$${trade.target.toFixed(2)}</div></div>
     <div class="trade-detail-item"><div class="label">Esito</div><div class="value" style="color:${pnlColor}">${trade.esito} ${fmt$(Math.round(trade.pnlUSD))}</div></div>
-    <div class="trade-detail-item"><div class="label">Uscita</div><div class="value">$${trade.uscita?trade.uscita.toFixed(2):'—'}</div></div>
+    <div class="trade-detail-item"><div class="label">Uscita</div><div class="value">$${trade.uscita!=null?trade.uscita.toFixed(2):'—'}</div></div>
     <div class="trade-detail-item"><div class="label">P&L pts</div><div class="value" style="color:${pnlColor}">${trade.pnlPts?((trade.pnlPts>=0?'+':'')+trade.pnlPts.toFixed(2)):'—'}</div></div>
-    <div class="trade-detail-item"><div class="label">Exit time ET</div><div class="value" style="font-size:13px">${exitLabel}</div></div>
-    <div class="trade-detail-item"><div class="label">Strategia</div><div class="value" style="font-size:12px">${trade.setup}${trade.trigger?'/'+trade.trigger:''}</div></div>`;
+    <div class="trade-detail-item"><div class="label">Exit ET</div><div class="value" style="font-size:13px">${exitLabel}</div></div>
+    <div class="trade-detail-item"><div class="label">Setup</div><div class="value" style="font-size:12px">${trade.setup}${trade.trigger?'/'+trade.trigger:''}</div></div>`;
 
   // Replay info tags
   const esitoCls=trade.esito==='TARGET'?'target':trade.esito==='STOP'?'stop':trade.esito==='EOD'?'eod':'';
@@ -731,19 +765,49 @@ function openTradeModal(trade){
   if(trade.ob_high!=null)tagsHtml+=`<span class="replay-tag" style="color:var(--purple);border-color:rgba(167,139,250,0.3)">OB ${trade.ob_low.toFixed(2)}–${trade.ob_high.toFixed(2)}</span>`;
   document.getElementById('modal-replay-tags').innerHTML=tagsHtml;
 
-  // Candle window: 20 pre-entry, full duration, 5 post-exit
-  const sigIdx=trade.signal_candle_index>=0?trade.signal_candle_index:allCandles.findIndex(c=>c.time.getTime()===trade.time.getTime());
+  // ── Candle window: 20 pre-signal, full trade duration, 5 post-exit ──
+  const sigIdx=trade.signal_candle_index>=0
+    ?trade.signal_candle_index
+    :allCandles.findIndex(c=>c.time.getTime()===trade.time.getTime());
   const exitIdx=trade.exit_candle_index>=0?trade.exit_candle_index:sigIdx+15;
   const startIdx=Math.max(0,sigIdx-20);
   const endIdx=Math.min(allCandles.length-1,exitIdx+5);
   const slice=allCandles.slice(startIdx,endIdx+1);
 
-  // Offset maps: positions within slice
+  // Slice-local indices
   const sliceSignalIdx=sigIdx-startIdx;
   const sliceEntryIdx=trade.entry_candle_index>=0?trade.entry_candle_index-startIdx:sliceSignalIdx;
   const sliceExitIdx=exitIdx>=0?exitIdx-startIdx:-1;
 
-  renderCandleReplay(slice,trade,sliceSignalIdx,sliceEntryIdx,sliceExitIdx);
+  // Render chart — returns scroll anchors
+  const scrollAnchors=renderCandleReplay(slice,trade,sliceSignalIdx,sliceEntryIdx,sliceExitIdx);
+  _replayScrollEntry=scrollAnchors.entry;
+  _replayScrollExit=scrollAnchors.exit;
+  _replayScrollFull=scrollAnchors.full;
+
+  // ── Build nav bar ──
+  const tradeBars=exitIdx-sigIdx;
+  const exitCls=trade.esito==='TARGET'?'exit-target':trade.esito==='STOP'?'exit-stop':'exit-eod';
+  const exitBtnLabel=trade.esito==='EOD'
+    ?`EOD ${trade.exit_ts?fmtETTime(trade.exit_ts):'exit'}`
+    :trade.esito==='TARGET'?'TARGET':'STOP';
+
+  const navEl=document.getElementById('replay-nav');
+  navEl.innerHTML=`
+    <button class="replay-nav-btn active" data-scroll="${scrollAnchors.entry}" onclick="replayScrollTo(${scrollAnchors.entry})">Entry</button>
+    <button class="replay-nav-btn ${exitCls}" data-scroll="${scrollAnchors.exit}" onclick="replayScrollTo(${scrollAnchors.exit})">${exitBtnLabel}</button>
+    <button class="replay-nav-btn" data-scroll="${scrollAnchors.full}" onclick="replayScrollTo(${scrollAnchors.full})">Full trade</button>
+    <span class="replay-nav-spacer"></span>
+    <span class="replay-nav-label">${tradeBars} bars</span>`;
+
+  // Default view: if trade is short enough to fit, show full-trade; otherwise show entry
+  const wrap=document.getElementById('replay-svg-wrap');
+  const wrapW=wrap.clientWidth||350;
+  const {STEP,PAD_L,PAD_R}=_R;
+  const totalSvgW=PAD_L+PAD_R+slice.length*STEP;
+  const defaultScroll=totalSvgW<=wrapW?scrollAnchors.full:scrollAnchors.entry;
+  // Use rAF so the SVG is painted and scrollWidth is valid
+  requestAnimationFrame(()=>{ wrap.scrollLeft=defaultScroll; });
 }
 
 function closeModal(){
@@ -751,79 +815,79 @@ function closeModal(){
 }
 
 // ── Candlestick Replay Renderer (SVG, no extra framework) ──────────────────
-// Draws real OHLC candles with entry/stop/target lines and event markers.
-// Mobile-friendly: fixed candle width with horizontal scroll when needed.
+// Returns {entry, exit, full} scroll positions for the nav bar.
 function renderCandleReplay(candles,trade,signalIdx,entryIdx,exitIdx){
   const wrap=document.getElementById('replay-svg-wrap');
   wrap.innerHTML='';
-  if(!candles.length)return;
+  if(!candles.length)return{entry:0,exit:0,full:0};
 
-  // Layout constants
-  const CAND_W=9;      // candle body width
-  const CAND_GAP=3;    // gap between candles
-  const STEP=CAND_W+CAND_GAP;
-  const PAD_L=52;      // left axis
-  const PAD_R=8;
-  const PAD_T=22;      // top for labels
-  const PAD_B=32;      // bottom for time labels
-  const CHART_H=256;   // chart area height (inside padding)
+  const {CAND_W,CAND_GAP,STEP,PAD_L,PAD_R,PAD_T,PAD_B,CHART_H}=_R;
   const svgH=PAD_T+CHART_H+PAD_B;
-  const svgW=Math.max(PAD_L+PAD_R+candles.length*STEP, 300);
+  const svgW=Math.max(PAD_L+PAD_R+candles.length*STEP,300);
 
-  // Price range
+  // Price range — include all candle prices plus level lines
   let pMin=Infinity,pMax=-Infinity;
   candles.forEach(c=>{pMin=Math.min(pMin,c.low);pMax=Math.max(pMax,c.high);});
-  // Expand for lines
-  const prices=[trade.entry,trade.stop,trade.target];
-  prices.forEach(p=>{pMin=Math.min(pMin,p);pMax=Math.max(pMax,p);});
+  [trade.entry,trade.stop,trade.target].forEach(p=>{pMin=Math.min(pMin,p);pMax=Math.max(pMax,p);});
   const pad=(pMax-pMin)*0.06||0.5;
   pMin-=pad;pMax+=pad;
   const priceRange=pMax-pMin;
+
   function py(p){return PAD_T+CHART_H-(((p-pMin)/priceRange)*CHART_H);}
   function cx(i){return PAD_L+i*STEP+CAND_W/2;}
 
-  // SVG helpers
-  const SVG_NS='http://www.w3.org/2000/svg';
-  function el(tag,attrs,parent){const e=document.createElementNS(SVG_NS,tag);Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v));if(parent)parent.appendChild(e);return e;}
-  function line(x1,y1,x2,y2,col,w,dash,parent){return el('line',{x1,y1,x2,y2,stroke:col,'stroke-width':w||1,'stroke-dasharray':dash||'none'},parent);}
-  function rect(x,y,w,h,fill,parent,rx){const r=el('rect',{x,y,width:Math.max(w,1),height:Math.max(h,1),fill,rx:rx||0},parent);return r;}
-  function text(x,y,s,col,sz,anchor,parent){const t=el('text',{x,y,fill:col||'#888','font-size':sz||10,'text-anchor':anchor||'middle','font-family':'-apple-system,sans-serif'},parent);t.textContent=s;return t;}
+  // ── SVG helpers ──
+  const NS='http://www.w3.org/2000/svg';
+  function el(tag,attrs,parent){
+    const e=document.createElementNS(NS,tag);
+    Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,String(v)));
+    if(parent)parent.appendChild(e);
+    return e;
+  }
+  function ln(x1,y1,x2,y2,col,w,dash,p){
+    return el('line',{x1,y1,x2,y2,stroke:col,'stroke-width':w||1,'stroke-dasharray':dash||'none'},p);
+  }
+  function rc(x,y,w,h,fill,p,rx){
+    return el('rect',{x,y,width:Math.max(w,1),height:Math.max(h,1),fill,rx:rx||0},p);
+  }
+  function tx(x,y,s,col,sz,anchor,p){
+    const t=el('text',{x,y,fill:col||'#888','font-size':sz||10,'text-anchor':anchor||'middle','dominant-baseline':'auto','font-family':'-apple-system,BlinkMacSystemFont,sans-serif'},p);
+    t.textContent=s;
+    return t;
+  }
 
-  const svg=el('svg',{width:svgW,height:svgH,'xmlns':SVG_NS},null);
+  const svg=el('svg',{width:svgW,height:svgH,xmlns:NS},null);
+  rc(0,0,svgW,svgH,'#1a1a1a',svg);
 
-  // Background
-  rect(0,0,svgW,svgH,'#1a1a1a',svg);
-
-  // Y-axis grid + labels (5 ticks)
+  // Y-axis grid + labels
   const nTicks=5;
   for(let ti=0;ti<=nTicks;ti++){
     const p=pMin+(priceRange*ti/nTicks);
     const yy=py(p);
-    line(PAD_L,yy,svgW-PAD_R,yy,'rgba(255,255,255,0.04)',1,'none',svg);
-    text(PAD_L-4,yy+3,'$'+p.toFixed(0),'#555',9,'end',svg);
+    ln(PAD_L,yy,svgW-PAD_R,yy,'rgba(255,255,255,0.04)',1,'none',svg);
+    tx(PAD_L-4,yy+3,'$'+p.toFixed(1),'#555',9,'end',svg);
   }
 
-  // OB zone shading (if OB trade)
+  // OB zone shading
   if(trade.ob_high!=null&&trade.ob_low!=null){
     const y1=py(trade.ob_high),y2=py(trade.ob_low);
-    rect(PAD_L,Math.min(y1,y2),svgW-PAD_L-PAD_R,Math.abs(y2-y1),'rgba(167,139,250,0.07)',svg);
-    // OB top/bottom dashed lines
-    line(PAD_L,py(trade.ob_high),svgW-PAD_R,py(trade.ob_high),'rgba(167,139,250,0.4)',1,'3,3',svg);
-    line(PAD_L,py(trade.ob_low),svgW-PAD_R,py(trade.ob_low),'rgba(167,139,250,0.4)',1,'3,3',svg);
-    text(PAD_L+4,py(trade.ob_high)-3,'OB High','rgba(167,139,250,0.7)',8,'start',svg);
-    text(PAD_L+4,py(trade.ob_low)+10,'OB Low','rgba(167,139,250,0.7)',8,'start',svg);
+    rc(PAD_L,Math.min(y1,y2),svgW-PAD_L-PAD_R,Math.abs(y2-y1),'rgba(167,139,250,0.07)',svg);
+    ln(PAD_L,py(trade.ob_high),svgW-PAD_R,py(trade.ob_high),'rgba(167,139,250,0.4)',1,'3,3',svg);
+    ln(PAD_L,py(trade.ob_low),svgW-PAD_R,py(trade.ob_low),'rgba(167,139,250,0.4)',1,'3,3',svg);
+    tx(PAD_L+4,py(trade.ob_high)-4,'OB High','rgba(167,139,250,0.7)',8,'start',svg);
+    tx(PAD_L+4,py(trade.ob_low)+11,'OB Low','rgba(167,139,250,0.7)',8,'start',svg);
   }
 
-  // Horizontal price lines — entry, stop, target
+  // Horizontal price lines — drawn before candles so candles appear on top
   const hLines=[
-    {p:trade.entry,col:'#3987e5',label:'Entry '+trade.entry.toFixed(2),dash:'4,3'},
-    {p:trade.stop,col:'#ff4d4d',label:'Stop '+trade.stop.toFixed(2),dash:'4,3'},
-    {p:trade.target,col:'#00c896',label:'Target '+trade.target.toFixed(2),dash:'4,3'},
+    {p:trade.entry,col:'#3987e5',label:'Entry $'+trade.entry.toFixed(2)},
+    {p:trade.stop, col:'#ff4d4d',label:'Stop $'+trade.stop.toFixed(2)},
+    {p:trade.target,col:'#00c896',label:'Tgt $'+trade.target.toFixed(2)},
   ];
-  hLines.forEach(({p,col,label,dash})=>{
+  hLines.forEach(({p,col,label})=>{
     const yy=py(p);
-    line(PAD_L,yy,svgW-PAD_R,yy,col,1,dash,svg);
-    text(PAD_L+2,yy-3,label,col,8,'start',svg);
+    ln(PAD_L,yy,svgW-PAD_R,yy,col,1,'4,3',svg);
+    tx(PAD_L+3,yy-4,label,col,8,'start',svg);
   });
 
   // Candles
@@ -833,86 +897,122 @@ function renderCandleReplay(candles,trade,signalIdx,entryIdx,exitIdx){
     const col=isUp?'#00c896':'#ff4d4d';
     const bodyY=py(Math.max(c.open,c.close));
     const bodyH=Math.max(Math.abs(py(c.open)-py(c.close)),1);
-    // Wick
-    line(cx(i),py(c.high),cx(i),py(c.low),col,1,'none',svg);
-    // Body
-    rect(x,bodyY,CAND_W,bodyH,col,svg);
+    ln(cx(i),py(c.high),cx(i),py(c.low),col,1,'none',svg);
+    rc(x,bodyY,CAND_W,bodyH,col,svg);
   });
 
-  // Event markers: signal / entry / exit
-  function drawMarker(i,label,col,yOff){
-    if(i<0||i>=candles.length)return;
-    const x=cx(i);
-    const yTop=PAD_T-4+yOff;
-    // triangle pointing down
-    const pts=`${x},${PAD_T+6} ${x-5},${PAD_T-4} ${x+5},${PAD_T-4}`;
-    const tri=el('polygon',{points:pts,fill:col},svg);
-    text(x,PAD_T-6,label,col,8,'middle',svg);
-  }
-
-  // Signal marker (amber)
-  if(signalIdx>=0&&signalIdx<candles.length){
-    drawMarker(signalIdx,'SIG','#f59e0b',0);
-  }
-  // Entry marker (blue) — only if different from signal
-  if(entryIdx>=0&&entryIdx<candles.length&&entryIdx!==signalIdx){
-    drawMarker(entryIdx,'ENT','#3987e5',0);
-  } else if(entryIdx>=0&&entryIdx===signalIdx){
-    // Combined: draw below signal marker
-    text(cx(entryIdx),PAD_T+18,'ENT','#3987e5',8,'middle',svg);
-  }
-  // Exit marker (color by outcome)
-  if(exitIdx>=0&&exitIdx<candles.length){
-    const exitCol=trade.esito==='TARGET'?'#00c896':trade.esito==='STOP'?'#ff4d4d':'#3987e5';
-    const exitLabel=trade.esito==='TARGET'?'TGT':trade.esito==='STOP'?'STP':trade.esito==='EOD'?'EOD':'?';
-    // Draw at bottom
-    const yExit=PAD_T+CHART_H+2;
-    const pts=`${cx(exitIdx)},${yExit} ${cx(exitIdx)-5},${yExit+8} ${cx(exitIdx)+5},${yExit+8}`;
-    el('polygon',{points:pts,fill:exitCol},svg);
-    text(cx(exitIdx),yExit+20,exitLabel,exitCol,8,'middle',svg);
-  }
-
-  // OB origin candle highlight (purple bracket)
+  // ── OB origin / retest candle highlights (drawn after candles) ──
   if(trade.ob_origin_ts){
     const obI=candles.findIndex(c=>c.time.getTime()===trade.ob_origin_ts.getTime());
     if(obI>=0){
-      rect(PAD_L+obI*STEP-1,PAD_T,CAND_W+2,CHART_H,'rgba(167,139,250,0.06)',svg);
-      line(PAD_L+obI*STEP-1,PAD_T,PAD_L+obI*STEP-1,PAD_T+CHART_H,'rgba(167,139,250,0.5)',1,'none',svg);
-      text(cx(obI),PAD_T+CHART_H+12,'OB','rgba(167,139,250,0.8)',8,'middle',svg);
+      rc(PAD_L+obI*STEP-1,PAD_T,CAND_W+2,CHART_H,'rgba(167,139,250,0.06)',svg);
+      ln(PAD_L+obI*STEP-1,PAD_T,PAD_L+obI*STEP-1,PAD_T+CHART_H,'rgba(167,139,250,0.5)',1,'none',svg);
+      tx(cx(obI),PAD_T+CHART_H+13,'OB','rgba(167,139,250,0.85)',8,'middle',svg);
     }
   }
-  // Retest candle highlight
   if(trade.retest_ts&&trade.ob_origin_ts&&trade.retest_ts.getTime()!==trade.ob_origin_ts.getTime()){
     const rtI=candles.findIndex(c=>c.time.getTime()===trade.retest_ts.getTime());
     if(rtI>=0){
-      line(PAD_L+rtI*STEP-1,PAD_T,PAD_L+rtI*STEP-1,PAD_T+CHART_H,'rgba(245,158,11,0.4)',1,'none',svg);
-      text(cx(rtI),PAD_T+CHART_H+12,'RT','rgba(245,158,11,0.8)',8,'middle',svg);
+      ln(PAD_L+rtI*STEP-1,PAD_T,PAD_L+rtI*STEP-1,PAD_T+CHART_H,'rgba(245,158,11,0.4)',1,'none',svg);
+      tx(cx(rtI),PAD_T+CHART_H+13,'RT','rgba(245,158,11,0.85)',8,'middle',svg);
     }
   }
 
-  // X-axis time labels — show every ~10th candle in ET
+  // ── Event markers ──
+  // Top-of-chart marker: triangle + short label
+  function topMarker(i,label,col){
+    if(i<0||i>=candles.length)return;
+    const x=cx(i);
+    // vertical line on the candle
+    ln(x,PAD_T,x,PAD_T+CHART_H,'rgba(255,255,255,0.07)',1,'none',svg);
+    // triangle pointing DOWN from top edge
+    const ty=PAD_T+8;
+    el('polygon',{points:`${x},${ty+8} ${x-6},${ty-2} ${x+6},${ty-2}`,fill:col},svg);
+    tx(x,PAD_T-1,label,col,8,'middle',svg);
+  }
+  // Bottom-of-chart marker: triangle pointing UP + label lines for exit
+  function bottomMarker(i,col,line1,line2){
+    if(i<0||i>=candles.length)return;
+    const x=cx(i);
+    const yBase=PAD_T+CHART_H;
+    // vertical line
+    ln(x,PAD_T,x,PAD_T+CHART_H,col,1.5,'none',svg);
+    // triangle pointing UP from bottom edge
+    el('polygon',{points:`${x},${yBase} ${x-7},${yBase+11} ${x+7},${yBase+11}`,fill:col},svg);
+    tx(x,yBase+20,line1,col,9,'middle',svg);
+    if(line2)tx(x,yBase+31,line2,col,8,'middle',svg);
+  }
+
+  // Signal marker (amber, top)
+  topMarker(signalIdx,'SIG','#f59e0b');
+
+  // Entry marker (blue, top) — only if different candle from signal
+  if(entryIdx>=0&&entryIdx!==signalIdx){
+    topMarker(entryIdx,'ENT','#3987e5');
+  } else if(entryIdx>=0){
+    tx(cx(entryIdx),PAD_T+22,'ENT','#3987e5',8,'middle',svg);
+  }
+
+  // Exit marker — large, colored, with time+price for EOD
+  if(exitIdx>=0&&exitIdx<candles.length){
+    const exitCol=trade.esito==='TARGET'?'#00c896':trade.esito==='STOP'?'#ff4d4d':'#3987e5';
+    let line1,line2;
+    if(trade.esito==='EOD'){
+      line1=`EOD ${trade.exit_ts?fmtETTime(trade.exit_ts):''}`;
+      line2=`$${trade.uscita!=null?trade.uscita.toFixed(2):'—'}`;
+    } else if(trade.esito==='TARGET'){
+      line1='TARGET';
+      line2=`$${trade.target.toFixed(2)}`;
+    } else if(trade.esito==='STOP'){
+      line1='STOP';
+      line2=`$${trade.stop.toFixed(2)}`;
+    } else {
+      line1=trade.esito||'EXIT';
+      line2=trade.uscita!=null?`$${trade.uscita.toFixed(2)}`:'';
+    }
+    bottomMarker(exitIdx,exitCol,line1,line2);
+  }
+
+  // X-axis time labels
   const labelStep=Math.max(1,Math.floor(candles.length/8));
   candles.forEach((c,i)=>{
     if(i%labelStep===0||i===candles.length-1){
-      text(cx(i),PAD_T+CHART_H+PAD_B-4,fmtETTime(c.time),'#555',9,'middle',svg);
+      tx(cx(i),PAD_T+CHART_H+PAD_B-2,fmtETTime(c.time),'#444',9,'middle',svg);
     }
   });
 
-  // Date change vertical lines
+  // Date-change vertical dividers
   for(let i=1;i<candles.length;i++){
     if(fmtETDate(candles[i].time)!==fmtETDate(candles[i-1].time)){
-      line(cx(i)-STEP/2,PAD_T,cx(i)-STEP/2,PAD_T+CHART_H,'rgba(255,255,255,0.08)',1,'none',svg);
-      text(cx(i),PAD_T+4,fmtETDate(candles[i].time),'rgba(255,255,255,0.25)',8,'middle',svg);
+      const dx=cx(i)-STEP/2;
+      ln(dx,PAD_T,dx,PAD_T+CHART_H,'rgba(255,255,255,0.1)',1,'none',svg);
+      tx(dx,PAD_T+6,fmtETDate(candles[i].time),'rgba(255,255,255,0.3)',8,'middle',svg);
     }
   }
 
   wrap.appendChild(svg);
 
-  // Auto-scroll to entry candle
-  if(entryIdx>=0){
-    const scrollX=Math.max(0,PAD_L+entryIdx*STEP-wrap.clientWidth/2);
-    wrap.scrollLeft=scrollX;
+  // ── Compute scroll anchors ──
+  const wrapW=wrap.clientWidth||350;
+
+  // Entry: center the entry candle in the viewport
+  const entryPx=PAD_L+entryIdx*STEP+CAND_W/2;
+  const scrollEntry=Math.max(0,entryPx-wrapW/2);
+
+  // Exit: center the exit candle in the viewport (or right-align if near end)
+  let scrollExit=0;
+  if(exitIdx>=0){
+    const exitPx=PAD_L+exitIdx*STEP+CAND_W/2;
+    scrollExit=Math.max(0,exitPx-wrapW/2);
   }
+
+  // Full: scroll so entry is at left edge with padding, showing rightward to exit
+  // If the entire slice fits, scrollFull = 0 (show all)
+  // Otherwise: position entry-20 bars at left, which may already show exit if trade is short
+  const firstBarPx=PAD_L+Math.max(0,entryIdx-3)*STEP;
+  const scrollFull=Math.max(0,firstBarPx-16);
+
+  return{entry:Math.round(scrollEntry),exit:Math.round(scrollExit),full:Math.round(scrollFull)};
 }
 
 // ── UI helpers ──
