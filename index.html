@@ -766,11 +766,13 @@ function openTradeModal(trade){
   document.getElementById('modal-replay-tags').innerHTML=tagsHtml;
 
   // ── Candle window: 20 pre-signal, full trade duration, 5 post-exit ──
+  // For PDH/PDL: also ensure breakout_candle_index is included (may be >20 bars before signal).
   const sigIdx=trade.signal_candle_index>=0
     ?trade.signal_candle_index
     :allCandles.findIndex(c=>c.time.getTime()===trade.time.getTime());
   const exitIdx=trade.exit_candle_index>=0?trade.exit_candle_index:sigIdx+15;
-  const startIdx=Math.max(0,sigIdx-20);
+  const brkIdx=trade.breakout_candle_index>=0?trade.breakout_candle_index:sigIdx;
+  const startIdx=Math.max(0,Math.min(sigIdx-20,brkIdx-3)); // include breakout with 3-bar lead
   const endIdx=Math.min(allCandles.length-1,exitIdx+5);
   const slice=allCandles.slice(startIdx,endIdx+1);
 
@@ -778,9 +780,12 @@ function openTradeModal(trade){
   const sliceSignalIdx=sigIdx-startIdx;
   const sliceEntryIdx=trade.entry_candle_index>=0?trade.entry_candle_index-startIdx:sliceSignalIdx;
   const sliceExitIdx=exitIdx>=0?exitIdx-startIdx:-1;
+  // PDH/PDL specific — breakout and retest candle positions within slice
+  const sliceBrkIdx=trade.breakout_candle_index>=0?trade.breakout_candle_index-startIdx:-1;
+  const sliceRetestIdx=trade.retest_candle_index>=0?trade.retest_candle_index-startIdx:sliceSignalIdx;
 
   // Render chart — returns scroll anchors
-  const scrollAnchors=renderCandleReplay(slice,trade,sliceSignalIdx,sliceEntryIdx,sliceExitIdx);
+  const scrollAnchors=renderCandleReplay(slice,trade,sliceSignalIdx,sliceEntryIdx,sliceExitIdx,sliceBrkIdx,sliceRetestIdx);
   _replayScrollEntry=scrollAnchors.entry;
   _replayScrollExit=scrollAnchors.exit;
   _replayScrollFull=scrollAnchors.full;
@@ -793,8 +798,14 @@ function openTradeModal(trade){
     :trade.esito==='TARGET'?'TARGET':'STOP';
 
   const navEl=document.getElementById('replay-nav');
+  // For PDH/PDL: add a BRK button that scrolls to the breakout candle
+  let brkBtn='';
+  if(trade.level_type&&scrollAnchors.brk!=null){
+    brkBtn=`<button class="replay-nav-btn" data-scroll="${scrollAnchors.brk}" onclick="replayScrollTo(${scrollAnchors.brk})">BRK</button>`;
+  }
   navEl.innerHTML=`
     <button class="replay-nav-btn active" data-scroll="${scrollAnchors.entry}" onclick="replayScrollTo(${scrollAnchors.entry})">Entry</button>
+    ${brkBtn}
     <button class="replay-nav-btn ${exitCls}" data-scroll="${scrollAnchors.exit}" onclick="replayScrollTo(${scrollAnchors.exit})">${exitBtnLabel}</button>
     <button class="replay-nav-btn" data-scroll="${scrollAnchors.full}" onclick="replayScrollTo(${scrollAnchors.full})">Full trade</button>
     <span class="replay-nav-spacer"></span>
@@ -815,11 +826,11 @@ function closeModal(){
 }
 
 // ── Candlestick Replay Renderer (SVG, no extra framework) ──────────────────
-// Returns {entry, exit, full} scroll positions for the nav bar.
-function renderCandleReplay(candles,trade,signalIdx,entryIdx,exitIdx){
+// Returns {entry, exit, full, brk} scroll positions for the nav bar.
+function renderCandleReplay(candles,trade,signalIdx,entryIdx,exitIdx,brkIdx,retestIdx){
   const wrap=document.getElementById('replay-svg-wrap');
   wrap.innerHTML='';
-  if(!candles.length)return{entry:0,exit:0,full:0};
+  if(!candles.length)return{entry:0,exit:0,full:0,brk:null};
 
   const {CAND_W,CAND_GAP,STEP,PAD_L,PAD_R,PAD_T,PAD_B,CHART_H}=_R;
   const svgH=PAD_T+CHART_H+PAD_B;
@@ -828,7 +839,9 @@ function renderCandleReplay(candles,trade,signalIdx,entryIdx,exitIdx){
   // Price range — include all candle prices plus level lines
   let pMin=Infinity,pMax=-Infinity;
   candles.forEach(c=>{pMin=Math.min(pMin,c.low);pMax=Math.max(pMax,c.high);});
-  [trade.entry,trade.stop,trade.target].forEach(p=>{pMin=Math.min(pMin,p);pMax=Math.max(pMax,p);});
+  const levelPrices=[trade.entry,trade.stop,trade.target];
+  if(trade.level_price!=null)levelPrices.push(trade.level_price);
+  levelPrices.forEach(p=>{pMin=Math.min(pMin,p);pMax=Math.max(pMax,p);});
   const pad=(pMax-pMin)*0.06||0.5;
   pMin-=pad;pMax+=pad;
   const priceRange=pMax-pMin;
@@ -878,6 +891,20 @@ function renderCandleReplay(candles,trade,signalIdx,entryIdx,exitIdx){
     tx(PAD_L+4,py(trade.ob_low)+11,'OB Low','rgba(167,139,250,0.7)',8,'start',svg);
   }
 
+  // ── PDH / PDL strategy level line ──────────────────────────────────────────
+  // Solid amber/cyan horizontal line spanning the full chart width,
+  // clearly distinct from the dashed entry/stop/target lines.
+  const PDH_COL='#f59e0b'; // amber — same as SIG marker, signals "caution/attention"
+  const PDL_COL='#38bdf8'; // sky blue — visually distinct from green/red/blue already used
+  if(trade.level_type&&trade.level_price!=null){
+    const lvlCol=trade.level_type==='PDH'?PDH_COL:PDL_COL;
+    const lvlY=py(trade.level_price);
+    // Solid line, slightly thicker than dashed lines
+    ln(PAD_L,lvlY,svgW-PAD_R,lvlY,lvlCol,1.5,'6,0',svg);
+    // Label flush-right so it doesn't collide with entry/stop/target labels (flush-left)
+    tx(svgW-PAD_R-2,lvlY-4,`${trade.level_type} $${trade.level_price.toFixed(2)}`,lvlCol,8,'end',svg);
+  }
+
   // Horizontal price lines — drawn before candles so candles appear on top
   const hLines=[
     {p:trade.entry,col:'#3987e5',label:'Entry $'+trade.entry.toFixed(2)},
@@ -923,9 +950,7 @@ function renderCandleReplay(candles,trade,signalIdx,entryIdx,exitIdx){
   function topMarker(i,label,col){
     if(i<0||i>=candles.length)return;
     const x=cx(i);
-    // vertical line on the candle
     ln(x,PAD_T,x,PAD_T+CHART_H,'rgba(255,255,255,0.07)',1,'none',svg);
-    // triangle pointing DOWN from top edge
     const ty=PAD_T+8;
     el('polygon',{points:`${x},${ty+8} ${x-6},${ty-2} ${x+6},${ty-2}`,fill:col},svg);
     tx(x,PAD_T-1,label,col,8,'middle',svg);
@@ -935,22 +960,69 @@ function renderCandleReplay(candles,trade,signalIdx,entryIdx,exitIdx){
     if(i<0||i>=candles.length)return;
     const x=cx(i);
     const yBase=PAD_T+CHART_H;
-    // vertical line
     ln(x,PAD_T,x,PAD_T+CHART_H,col,1.5,'none',svg);
-    // triangle pointing UP from bottom edge
     el('polygon',{points:`${x},${yBase} ${x-7},${yBase+11} ${x+7},${yBase+11}`,fill:col},svg);
     tx(x,yBase+20,line1,col,9,'middle',svg);
     if(line2)tx(x,yBase+31,line2,col,8,'middle',svg);
   }
 
-  // Signal marker (amber, top)
-  topMarker(signalIdx,'SIG','#f59e0b');
+  // ── PDH/PDL specific markers: BRK and RT ───────────────────────────────────
+  // Colors: BRK = amber (same as PDH/PDL level, signals the breakout event)
+  //         RT  = sky blue (same as PDL line, softer — the retest is the setup)
+  //         ENT = blue (unchanged)
+  // Same-candle case (BRK === RT): draw BRK above with offset, RT label below
+  const isPDHPDL=!!(trade.level_type);
+  if(isPDHPDL){
+    const lvlCol=trade.level_type==='PDH'?PDH_COL:PDL_COL;
+    const brkSameAsRT=(brkIdx>=0&&retestIdx>=0&&brkIdx===retestIdx);
+    const brkSameAsEntry=(brkIdx>=0&&brkIdx===entryIdx);
+    const rtSameAsEntry=(retestIdx>=0&&retestIdx===entryIdx);
 
-  // Entry marker (blue, top) — only if different candle from signal
-  if(entryIdx>=0&&entryIdx!==signalIdx){
-    topMarker(entryIdx,'ENT','#3987e5');
-  } else if(entryIdx>=0){
-    tx(cx(entryIdx),PAD_T+22,'ENT','#3987e5',8,'middle',svg);
+    // BRK marker — amber, top of chart
+    if(brkIdx>=0&&brkIdx<candles.length){
+      if(brkSameAsRT){
+        // Same candle: BRK triangle at top, RT label pushed down to avoid overlap
+        topMarker(brkIdx,'BRK',PDH_COL);
+        // RT label below the BRK triangle (y = PAD_T+22 instead of PAD_T-1)
+        tx(cx(brkIdx),PAD_T+22,'RT',lvlCol,8,'middle',svg);
+      } else {
+        topMarker(brkIdx,'BRK',PDH_COL);
+      }
+    }
+
+    // RT marker — level color (amber for PDH, sky-blue for PDL), top of chart
+    // Skip if same as BRK (already handled above) or same as ENT
+    if(!brkSameAsRT&&retestIdx>=0&&retestIdx<candles.length){
+      if(rtSameAsEntry){
+        // RT and ENT on same candle: stagger labels
+        topMarker(retestIdx,'RT',lvlCol);
+        // ENT label pushed below RT triangle
+        tx(cx(retestIdx),PAD_T+22,'ENT','#3987e5',8,'middle',svg);
+      } else {
+        topMarker(retestIdx,'RT',lvlCol);
+      }
+    }
+
+    // ENT marker — blue, top; skip if same candle already handled above
+    if(entryIdx>=0&&entryIdx<candles.length){
+      if(!rtSameAsEntry&&entryIdx!==signalIdx){
+        topMarker(entryIdx,'ENT','#3987e5');
+      } else if(!rtSameAsEntry&&!brkSameAsEntry){
+        // entry == signal, draw ENT label inline
+        tx(cx(entryIdx),PAD_T+22,'ENT','#3987e5',8,'middle',svg);
+      }
+    }
+
+    // SIG is same as retest for PDH/PDL — suppress separate SIG marker
+    // to avoid double-labelling the same candle
+  } else {
+    // Non-PDH/PDL: original SIG + ENT markers
+    topMarker(signalIdx,'SIG','#f59e0b');
+    if(entryIdx>=0&&entryIdx!==signalIdx){
+      topMarker(entryIdx,'ENT','#3987e5');
+    } else if(entryIdx>=0){
+      tx(cx(entryIdx),PAD_T+22,'ENT','#3987e5',8,'middle',svg);
+    }
   }
 
   // Exit marker — large, colored, with time+price for EOD
@@ -995,24 +1067,26 @@ function renderCandleReplay(candles,trade,signalIdx,entryIdx,exitIdx){
   // ── Compute scroll anchors ──
   const wrapW=wrap.clientWidth||350;
 
-  // Entry: center the entry candle in the viewport
   const entryPx=PAD_L+entryIdx*STEP+CAND_W/2;
   const scrollEntry=Math.max(0,entryPx-wrapW/2);
 
-  // Exit: center the exit candle in the viewport (or right-align if near end)
   let scrollExit=0;
   if(exitIdx>=0){
     const exitPx=PAD_L+exitIdx*STEP+CAND_W/2;
     scrollExit=Math.max(0,exitPx-wrapW/2);
   }
 
-  // Full: scroll so entry is at left edge with padding, showing rightward to exit
-  // If the entire slice fits, scrollFull = 0 (show all)
-  // Otherwise: position entry-20 bars at left, which may already show exit if trade is short
   const firstBarPx=PAD_L+Math.max(0,entryIdx-3)*STEP;
   const scrollFull=Math.max(0,firstBarPx-16);
 
-  return{entry:Math.round(scrollEntry),exit:Math.round(scrollExit),full:Math.round(scrollFull)};
+  // BRK anchor — only for PDH/PDL when breakout is on a different candle from entry
+  let scrollBrk=null;
+  if(isPDHPDL&&brkIdx>=0&&brkIdx!==entryIdx){
+    const brkPx=PAD_L+brkIdx*STEP+CAND_W/2;
+    scrollBrk=Math.round(Math.max(0,brkPx-wrapW/2));
+  }
+
+  return{entry:Math.round(scrollEntry),exit:Math.round(scrollExit),full:Math.round(scrollFull),brk:scrollBrk};
 }
 
 // ── UI helpers ──
@@ -1164,6 +1238,14 @@ function tryEntry(c,prev,zH,stop,params,rr){if(!inSession(getHHMM(c.time),params
 //   No inTrade lock — allow_reentry=true is now enforced.
 //   PDH/PDL = previous calendar day's high/low (ET date grouping).
 //
+// Phase 4C additions (replay metadata — no effect on signal generation):
+//   level_type              'PDH' | 'PDL'
+//   level_price             the actual PDH or PDL price used at signal time
+//   breakout_candle_index   global index of the candle that crossed the level
+//   breakout_ts             timestamp of the breakout candle
+//   retest_candle_index     global index of the retest/signal candle (= signal_candle_index)
+//   retest_ts               timestamp of the retest candle (= signal time)
+//
 // Functions unchanged: strategyORB, strategyOB, strategyCombined.
 // Application EOD force-close (runStrategy simulation loop) unchanged.
 function strategyPDHPDL(candles,params){
@@ -1206,6 +1288,8 @@ function strategyPDHPDL(candles,params){
   // ── Signal generation — Python trova_segnali state machine ─────────────────
   const signals=[];
   let broken_pdh=false,broken_pdl=false,pdh_rotto=null,pdl_rotto=null,lastDate=null;
+  // Phase 4C: track breakout candle index per direction (reset with state machine)
+  let brk_pdh_idx=-1,brk_pdl_idx=-1;
 
   candles.forEach((c,i)=>{
     if(!i)return;
@@ -1216,15 +1300,16 @@ function strategyPDHPDL(candles,params){
     const prev=candles[i-1];
 
     // New calendar day (ET): reset breakout state — Python: if data_corrente != ts.date()
-    if(etDate!==lastDate){lastDate=etDate;broken_pdh=false;broken_pdl=false;pdh_rotto=null;pdl_rotto=null;}
+    if(etDate!==lastDate){lastDate=etDate;broken_pdh=false;broken_pdl=false;pdh_rotto=null;pdl_rotto=null;brk_pdh_idx=-1;brk_pdl_idx=-1;}
 
     // Session gate — Python in_sessione: '09:30' <= hhmm <= '16:00' (both inclusive)
     const etHHMM=getETHHMM(c.time);
     if(etHHMM<SESSION_START_ET||etHHMM>SESSION_END_ET)return;
 
     // Breakout detection — Python: prev['Close'] < pdh and row['Close'] > pdh
-    if(prev.close<PDH&&c.close>PDH){broken_pdh=true;pdh_rotto=PDH;broken_pdl=false;pdl_rotto=null;}
-    if(prev.close>PDL&&c.close<PDL){broken_pdl=true;pdl_rotto=PDL;broken_pdh=false;pdh_rotto=null;}
+    // Phase 4C: record breakout candle index at detection time
+    if(prev.close<PDH&&c.close>PDH){broken_pdh=true;pdh_rotto=PDH;brk_pdh_idx=i;broken_pdl=false;pdl_rotto=null;brk_pdl_idx=-1;}
+    if(prev.close>PDL&&c.close<PDL){broken_pdl=true;pdl_rotto=PDL;brk_pdl_idx=i;broken_pdh=false;pdh_rotto=null;brk_pdh_idx=-1;}
 
     // Body filter
     const tot=c.high-c.low;if(!tot)return;
@@ -1235,8 +1320,13 @@ function strategyPDHPDL(candles,params){
     if(broken_pdh&&pdh_rotto!==null){
       if(c.low<=pdh_rotto&&pdh_rotto<=c.high&&c.close>pdh_rotto){
         const entry=Math.round(c.close*100)/100,stop=Math.round((entry-slPts)*100)/100,target=Math.round((entry+slPts*RR)*100)/100;
-        signals.push({time:c.time,type:'LONG',setup:'PDH',level:pdh_rotto,entry,stop,target,trigger:'BODY',signal_candle_index:i});
-        broken_pdh=false; // reset only this flag; broken_pdl unchanged
+        signals.push({time:c.time,type:'LONG',setup:'PDH',level:pdh_rotto,entry,stop,target,trigger:'BODY',
+          signal_candle_index:i,
+          // Phase 4C replay metadata — snapshot of strategy state at signal time
+          level_type:'PDH',level_price:pdh_rotto,
+          breakout_candle_index:brk_pdh_idx,breakout_ts:candles[brk_pdh_idx].time,
+          retest_candle_index:i,retest_ts:c.time});
+        broken_pdh=false;brk_pdh_idx=-1; // reset only this flag; broken_pdl unchanged
         return; // Python: signal fires, move to next candle
       }
     }
@@ -1245,8 +1335,13 @@ function strategyPDHPDL(candles,params){
     if(broken_pdl&&pdl_rotto!==null){
       if(c.low<=pdl_rotto&&pdl_rotto<=c.high&&c.close<pdl_rotto){
         const entry=Math.round(c.close*100)/100,stop=Math.round((entry+slPts)*100)/100,target=Math.round((entry-slPts*RR)*100)/100;
-        signals.push({time:c.time,type:'SHORT',setup:'PDL',level:pdl_rotto,entry,stop,target,trigger:'BODY',signal_candle_index:i});
-        broken_pdl=false;
+        signals.push({time:c.time,type:'SHORT',setup:'PDL',level:pdl_rotto,entry,stop,target,trigger:'BODY',
+          signal_candle_index:i,
+          // Phase 4C replay metadata
+          level_type:'PDL',level_price:pdl_rotto,
+          breakout_candle_index:brk_pdl_idx,breakout_ts:candles[brk_pdl_idx].time,
+          retest_candle_index:i,retest_ts:c.time});
+        broken_pdl=false;brk_pdl_idx=-1;
       }
     }
   });
