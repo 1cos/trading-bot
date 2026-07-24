@@ -10,7 +10,7 @@
   --bg:#0f0f0f;--surface:#1a1a1a;--surface2:#222;
   --border:rgba(255,255,255,0.08);--text:#f0f0f0;--muted:#888;
   --green:#00c896;--red:#ff4d4d;--blue:#3987e5;--amber:#f59e0b;
-  --purple:#a78bfa;--radius:10px;
+  --purple:#a78bfa;--orb:#c084fc;--radius:10px;
 }
 body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;min-height:100vh;}
 header{padding:13px 22px;border-bottom:0.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
@@ -27,30 +27,46 @@ header h1 span{color:var(--blue);}
 .chip{display:inline-block;font-size:8px;font-weight:700;padding:2px 6px;border-radius:8px;letter-spacing:0.5px;margin-left:4px;vertical-align:middle;}
 .cc{background:rgba(57,135,229,0.15);color:var(--blue);border:0.5px solid rgba(57,135,229,0.3);}
 .cp{background:rgba(167,139,250,0.15);color:var(--purple);border:0.5px solid rgba(167,139,250,0.3);}
-.co{background:rgba(0,200,150,0.12);color:var(--green);border:0.5px solid rgba(0,200,150,0.3);}
+
+/* ── Legend row ── */
+.legend{display:flex;gap:16px;flex-wrap:wrap;padding:10px 12px;background:var(--surface2);border-radius:8px;margin-bottom:8px;}
+.leg-item{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted);}
+.leg-swatch{width:24px;height:3px;border-radius:2px;}
+.leg-swatch-dash{width:24px;height:0;border-top:2px dashed;}
+
+/* ── Summary ── */
 .sum-bar{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;}
 .sum-card{background:var(--surface2);border-radius:8px;padding:10px 12px;}
 .sum-card .sk{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:3px;}
 .sum-card .sv{font-size:14px;font-weight:600;}
+
+/* ── Chart ── */
 .chart-wrap{width:100%;background:var(--bg);border-radius:8px;overflow:hidden;}
 .pb-bar{display:flex;gap:5px;align-items:center;margin-top:8px;flex-wrap:wrap;}
 .pb-btn{background:var(--surface2);border:0.5px solid var(--border);color:var(--muted);padding:4px 11px;border-radius:7px;cursor:pointer;font-size:10px;}
 .pb-btn:hover{border-color:var(--blue);color:var(--blue);}
 .pb-btn.active{border-color:var(--blue);color:var(--blue);background:rgba(57,135,229,0.1);}
-.levels-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;}
+
+/* ── Trade level cards ── */
+.levels-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;}
 .lv{border-radius:7px;padding:10px 11px;border:0.5px solid;}
 .lv .lk{font-size:8px;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:3px;}
 .lv .lp{font-size:15px;font-weight:700;}
 .lv .ld{font-size:9px;margin-top:2px;opacity:0.7;}
+.lv-orb{background:rgba(192,132,252,0.08);border-color:rgba(192,132,252,0.35);}.lv-orb .lk,.lv-orb .lp,.lv-orb .ld{color:var(--orb);}
 .lv-e{background:rgba(57,135,229,0.09);border-color:rgba(57,135,229,0.3);}.lv-e .lk,.lv-e .lp,.lv-e .ld{color:var(--blue);}
 .lv-s{background:rgba(255,77,77,0.09);border-color:rgba(255,77,77,0.3);}.lv-s .lk,.lv-s .lp,.lv-s .ld{color:var(--red);}
 .lv-r{background:rgba(0,200,150,0.07);border-color:rgba(0,200,150,0.25);}.lv-r .lk,.lv-r .lp,.lv-r .ld{color:var(--green);}
 .lv-k{background:rgba(136,136,136,0.06);border-color:rgba(136,136,136,0.2);}.lv-k .lk{color:var(--muted);}.lv-k .lp{color:var(--text);}
+
+/* ── Geometry ── */
 .geo-row{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;margin-top:8px;}
 .gc{background:var(--surface2);border-radius:7px;padding:9px 10px;border:0.5px solid var(--border);}
 .gc .gn{font-size:8px;text-transform:uppercase;color:var(--muted);letter-spacing:0.6px;margin-bottom:3px;}
 .gc .gv{font-size:15px;font-weight:700;}
 .gc .gs{font-size:9px;color:var(--muted);margin-top:1px;}
+
+/* ── Rules ── */
 .rule-list{display:flex;flex-direction:column;gap:5px;}
 .rule{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:7px;background:var(--surface2);font-size:11px;line-height:1.5;}
 .ri{width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0;margin-top:1px;}
@@ -58,13 +74,23 @@ header h1 span{color:var(--blue);}
 .ri.fail{background:rgba(255,77,77,0.2);color:var(--red);}
 .ri.warn{background:rgba(245,158,11,0.2);color:var(--amber);}
 .rule strong{color:var(--text);} .rule .sub{color:var(--muted);}
+
+/* ── Info rows ── */
 .info-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:0.5px solid var(--border);font-size:11px;}
 .info-row:last-child{border-bottom:none;}
 .ik{color:var(--muted);} .iv{font-weight:500;}
 .green{color:var(--green);}.red{color:var(--red);}.blue{color:var(--blue);}.amber{color:var(--amber);}
+
+/* ── Callout boxes ── */
 .warn-box{background:rgba(245,158,11,0.07);border:0.5px solid rgba(245,158,11,0.25);border-radius:7px;padding:9px 11px;font-size:11px;color:var(--amber);line-height:1.5;margin-top:8px;}
 .good-box{background:rgba(0,200,150,0.07);border:0.5px solid rgba(0,200,150,0.25);border-radius:7px;padding:9px 11px;font-size:11px;color:var(--green);line-height:1.5;margin-top:8px;}
 .cv-wrap{display:flex;flex-direction:column;align-items:center;padding:12px;background:var(--surface2);border-radius:8px;min-width:90px;}
+
+@media(max-width:640px){
+  .sum-bar{grid-template-columns:1fr 1fr;}
+  .levels-grid{grid-template-columns:1fr 1fr;}
+  .geo-row{grid-template-columns:repeat(3,1fr);}
+}
 </style>
 </head>
 <body>
@@ -73,7 +99,7 @@ header h1 span{color:var(--blue);}
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
     <span class="hb hb-b">BLIND VALIDATION</span>
     <span class="hb hb-a">FIRST CANDIDATE IN SCAN ORDER</span>
-    <a href="brr_prototype.html" class="back">← 3-Candidate Prototype</a>
+    <a href="brr_prototype.html" class="back">← Prototype</a>
     <a href="index.html" class="back">Dashboard</a>
   </div>
 </header>
@@ -84,41 +110,60 @@ header h1 span{color:var(--blue);}
   <div class="section">
     <div class="stitle">Validation Context</div>
     <p style="font-size:12px;color:var(--muted);line-height:1.7;">
-      This candidate was produced by running the frozen prototype detection logic systematically across all 60 sessions in the SPY 5-minute dataset, excluding the three previously documented dates (2026-05-26, 2026-06-08, 2026-07-06).
-      <strong style="color:var(--text);">2026-05-05 is the first result returned in deterministic scan order.</strong>
-      It was not selected for visual attractiveness or profitability. The same preset parameters were used unchanged.
+      Produced by running the frozen prototype detection logic across all 60 SPY 5-minute sessions, excluding
+      the three previously documented dates (2026-05-26, 2026-06-08, 2026-07-06).
+      <strong style="color:var(--text);">2026-05-05 is the first result in deterministic scan order.</strong>
+      It was not selected for visual attractiveness or profitability.
     </p>
     <div class="warn-box" style="margin-top:10px;">
-      ⚠️ <strong>Prototype limitation — min_displacement_ticks not implemented:</strong>
-      The canonical specification defines a binary Stage-3 gate using <code>displacement_pts.ticks >= min_displacement_ticks</code>.
-      The prototype does not yet have an explicit numeric threshold for this gate.
-      The displacement_pts.ticks value for this candidate is <strong>49</strong> (measured from the breakout bar high to the level).
-      Critically, the displacement window contains <strong>0 bars</strong> — the retest begins on the very next bar after the breakout.
-      Under the frozen architecture, whether this constitutes valid displacement depends on the value of min_displacement_ticks once decided.
-      This limitation is flagged here; it does not affect the geometry detection result.
+      ⚠️ <strong>Prototype limitation — min_displacement_ticks not implemented.</strong>
+      The canonical spec defines Stage-3 gate: <code>displacement_pts.ticks &gt;= min_displacement_ticks</code>.
+      No numeric threshold exists yet in the prototype.
+      For this candidate, <strong>displacement_pts.ticks = 49</strong> but the displacement window contains
+      <strong>0 bars</strong> — the retest begins on the bar immediately after the breakout.
+      Whether this constitutes valid displacement depends on the value of min_displacement_ticks once decided.
+      This limitation is flagged; it does not affect the geometry result.
     </div>
   </div>
 
   <!-- Summary -->
   <div class="section">
-    <div class="stitle">Candidate Summary — SPY 2026-05-05</div>
+    <div class="stitle">Candidate Summary</div>
     <div class="sum-bar">
-      <div class="sum-card"><div class="sk">Level (ORB High)</div><div class="sv blue">722.30</div></div>
+      <div class="sum-card"><div class="sk">ORB High (level)</div><div class="sv" style="color:var(--orb);">722.30</div></div>
+      <div class="sum-card"><div class="sk">ORB Low</div><div class="sv" style="color:var(--orb);">721.495</div></div>
       <div class="sum-card"><div class="sk">Breakout</div><div class="sv green">09:50 · C=722.37</div></div>
-      <div class="sum-card"><div class="sk">Disp (0 bars)</div><div class="sv amber">49 ticks above</div></div>
+      <div class="sum-card"><div class="sk">Displacement</div><div class="sv amber">0 bars · 49 ticks</div></div>
       <div class="sum-card"><div class="sk">Failed Retests</div><div class="sv red">1</div></div>
-      <div class="sum-card"><div class="sk">Entry</div><div class="sv blue">10:00 · 722.75</div></div>
+    </div>
+    <div class="sum-bar" style="margin-top:8px;">
+      <div class="sum-card"><div class="sk">Conf candle</div><div class="sv green">10:00</div></div>
+      <div class="sum-card"><div class="sk">Entry</div><div class="sv blue">722.75</div></div>
+      <div class="sum-card"><div class="sk">Stop</div><div class="sv red">722.14</div></div>
+      <div class="sum-card"><div class="sk">2R reached</div><div class="sv green">✅ 13:30</div></div>
+      <div class="sum-card"><div class="sk">3R reached</div><div class="sv green">✅ 14:10</div></div>
     </div>
   </div>
 
   <!-- Chart -->
   <div class="section">
     <div class="stitle">Chart — SPY 5-min — 2026-05-05</div>
-    <div class="chart-wrap"><svg id="chart0" viewBox="0 0 1152 460" style="width:100%;height:auto;display:block;"></svg></div>
+
+    <!-- Inline legend above chart -->
+    <div class="legend">
+      <div class="leg-item"><div class="leg-swatch" style="background:#c084fc;"></div>ORB High / Low</div>
+      <div class="leg-item"><div class="leg-swatch" style="background:#00c896;"></div>Breakout / Confirm</div>
+      <div class="leg-item"><div class="leg-swatch" style="background:#ff4d4d;"></div>Failed retest</div>
+      <div class="leg-item"><div class="leg-swatch-dash" style="border-color:#3987e5;width:24px;"></div>Entry</div>
+      <div class="leg-item"><div class="leg-swatch-dash" style="border-color:#ff4d4d;width:24px;"></div>Stop</div>
+      <div class="leg-item"><div class="leg-swatch-dash" style="border-color:#00c896;width:24px;"></div>2R / 3R / 4R</div>
+    </div>
+
+    <div class="chart-wrap"><svg id="chart0" viewBox="0 0 1100 480" style="width:100%;height:auto;display:block;"></svg></div>
     <div class="pb-bar">
       <span style="font-size:9px;color:var(--muted);">Phase:</span>
       <button class="pb-btn active" onclick="showPhase('all',this)">Full</button>
-      <button class="pb-btn" onclick="showPhase('orb',this)">① Level</button>
+      <button class="pb-btn" onclick="showPhase('orb',this)">① ORB</button>
       <button class="pb-btn" onclick="showPhase('break',this)">② Break</button>
       <button class="pb-btn" onclick="showPhase('disp',this)">③ Displacement</button>
       <button class="pb-btn" onclick="showPhase('retest',this)">④ Retest</button>
@@ -126,30 +171,44 @@ header h1 span{color:var(--blue);}
     </div>
   </div>
 
-  <!-- Trade levels -->
+  <!-- Trade levels — colour-coded distinctly from ORB -->
   <div class="section">
-    <div class="stitle">Trade Parameters</div>
+    <div class="stitle">ORB Range &amp; Trade Parameters</div>
+
+    <!-- Row 1: ORB in purple -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:7px;">
+      <div class="lv lv-orb"><div class="lk">ORB High = Level</div><div class="lp">722.30</div><div class="ld">High of 09:30 candle — detection level</div></div>
+      <div class="lv lv-orb"><div class="lk">ORB Low</div><div class="lp">721.495</div><div class="ld">Low of 09:30 candle — shaded zone lower bound</div></div>
+    </div>
+
+    <!-- Row 2: trade in blue/red/green -->
     <div class="levels-grid">
       <div class="lv lv-e"><div class="lk">Entry</div><div class="lp">722.75</div><div class="ld">Close of conf candle 10:00</div></div>
-      <div class="lv lv-s"><div class="lk">Stop</div><div class="lp">722.14</div><div class="ld">Low of conf candle</div></div>
-      <div class="lv lv-k"><div class="lk">Risk (1R)</div><div class="lp">0.61</div><div class="ld">61 ticks · $0.01 tick</div></div>
-      <div class="lv lv-r"><div class="lk">2R Target</div><div class="lp">723.97</div><div class="ld">+1.22 ✅ reached</div></div>
-      <div class="lv lv-r"><div class="lk">3R Target</div><div class="lp">724.58</div><div class="ld">+1.83 ✅ reached</div></div>
-      <div class="lv lv-r"><div class="lk">4R Target</div><div class="lp">725.19</div><div class="ld">+2.44 ❌ not reached</div></div>
+      <div class="lv lv-s"><div class="lk">Stop</div><div class="lp">722.14</div><div class="ld">Low of conf candle · 0 tick buffer</div></div>
+      <div class="lv lv-k"><div class="lk">Risk 1R</div><div class="lp">0.61</div><div class="ld">61 ticks · $0.01</div></div>
+      <div class="lv lv-r"><div class="lk">2R Target</div><div class="lp">723.97</div><div class="ld">✅ reached 13:30</div></div>
+      <div class="lv lv-r"><div class="lk">3R Target</div><div class="lp">724.58</div><div class="ld">✅ reached 14:10</div></div>
+      <div class="lv" style="background:rgba(136,136,136,0.05);border-color:rgba(136,136,136,0.2);">
+        <div class="lk" style="color:var(--muted);">4R Target</div>
+        <div class="lp" style="color:var(--muted);">725.19</div>
+        <div class="ld" style="color:var(--muted);">❌ not reached</div>
+      </div>
     </div>
+
+    <!-- Stats -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
       <div style="background:var(--surface2);border-radius:8px;padding:10px 12px;">
-        <div class="info-row"><span class="ik">MFE (max favorable excursion)</span><span class="iv green">+2.29 pts</span></div>
-        <div class="info-row"><span class="ik">MAE (max adverse excursion)</span><span class="iv red">−0.96 pts</span></div>
+        <div class="info-row"><span class="ik">MFE</span><span class="iv green">+2.29 pts (15:25, H=725.04)</span></div>
+        <div class="info-row"><span class="ik">MAE</span><span class="iv red">−0.96 pts (10:15, L=721.79)</span></div>
         <div class="info-row"><span class="ik">directional_break_distance</span><span class="iv">+0.07 pts / +7 ticks</span></div>
-        <div class="info-row"><span class="ik">displacement_pts</span><span class="iv amber">49 ticks (breakout bar high − level)</span></div>
-        <div class="info-row"><span class="ik">Displacement window bars</span><span class="iv amber">0 bars — immediate retest</span></div>
-        <div class="info-row"><span class="ik">min_displacement_ticks</span><span class="iv amber">NOT IMPLEMENTED IN PROTOTYPE</span></div>
+        <div class="info-row"><span class="ik">displacement_pts</span><span class="iv amber">0.49 pts / 49 ticks</span></div>
+        <div class="info-row"><span class="ik">Displacement window bars</span><span class="iv amber">0 — retest begins immediately</span></div>
+        <div class="info-row"><span class="ik">min_displacement_ticks</span><span class="iv amber">OPEN — not yet set</span></div>
       </div>
       <div style="background:var(--surface2);border-radius:8px;padding:10px 12px;">
-        <div class="info-row"><span class="ik">ORB O/H/L/C</span><span class="iv">721.77 / 722.30 / 721.50 / 722.29</span></div>
-        <div class="info-row"><span class="ik">Break bar O/H/L/C</span><span class="iv">722.16 / 722.79 / 722.15 / 722.37</span></div>
-        <div class="info-row"><span class="ik">Conf bar O/H/L/C</span><span class="iv">722.60 / 722.79 / 722.14 / 722.75</span></div>
+        <div class="info-row"><span class="ik">ORB (09:30) OHLC</span><span class="iv">721.77 / 722.30 / 721.50 / 722.29</span></div>
+        <div class="info-row"><span class="ik">Break bar (09:50) OHLC</span><span class="iv">722.16 / 722.79 / 722.15 / 722.37</span></div>
+        <div class="info-row"><span class="ik">Conf bar (10:00) OHLC</span><span class="iv">722.60 / 722.79 / 722.14 / 722.75</span></div>
         <div class="info-row"><span class="ik">First retest bar</span><span class="iv">09:55</span></div>
         <div class="info-row"><span class="ik">Failed retests before entry</span><span class="iv red">1 (09:55)</span></div>
       </div>
@@ -158,24 +217,66 @@ header h1 span{color:var(--blue);}
 
   <!-- Rejection candle geometry -->
   <div class="section">
-    <div class="stitle">Rejection Candle Geometry — 10:00 <span class="chip cc">CORE LOGIC: geometry only</span></div>
+    <div class="stitle">Rejection Candle Geometry — 10:00 <span class="chip cc">CORE LOGIC</span></div>
     <div style="display:flex;gap:14px;align-items:flex-start;">
+      <!-- Scaled candle diagram: range=0.645, upper_wick=0.035(5%), body=0.15(23%), lower_wick=0.46(71%) -->
       <div class="cv-wrap" style="min-width:90px;">
         <div style="font-size:8px;color:var(--muted);margin-bottom:8px;text-align:center;">10:00<br>O=722.60 H=722.79<br>L=722.14 C=722.75</div>
-        <div style="width:2px;height:6px;background:var(--muted);border-radius:1px;"></div>
-        <div style="width:16px;height:22px;background:var(--green);border-radius:3px;border:1px solid #00e8a8;"></div>
-        <div style="width:2px;height:42px;background:var(--amber);border-radius:1px;"></div>
-        <div style="font-size:8px;color:var(--muted);margin-top:6px;text-align:center;">🟢 green<br><span style="font-size:7px;">(metadata only)</span></div>
+        <!-- upper wick 5% of 100px total = 5px -->
+        <div style="width:2px;height:5px;background:var(--muted);border-radius:1px;"></div>
+        <!-- body 23% of 100px = 23px; green -->
+        <div style="width:16px;height:23px;background:var(--green);border-radius:3px;border:1px solid #00e8a8;position:relative;">
+          <!-- level marker at 722.30: distance from bottom of body (722.60) down to 722.14 low = 0.46 range, level sits 0.30 below body open -->
+          <!-- level is below body entirely, in the lower wick -->
+        </div>
+        <!-- lower wick 71% of 100px = 72px; amber for rejection emphasis -->
+        <div style="width:2px;height:72px;background:var(--amber);border-radius:1px;position:relative;">
+          <!-- level indicator mark at 722.30 = (722.60-722.30)/(722.60-722.14)*72 = 0.30/0.46*72 = 47px from top of lower wick -->
+          <div style="position:absolute;left:-12px;top:47px;width:26px;height:1px;background:rgba(192,132,252,0.8);"></div>
+          <div style="position:absolute;left:5px;top:44px;font-size:7px;color:var(--orb);white-space:nowrap;">← 722.30</div>
+        </div>
+        <div style="font-size:8px;color:var(--muted);margin-top:8px;text-align:center;">🟢 green<br><span style="font-size:7px;">(color = metadata)</span></div>
       </div>
       <div style="flex:1;">
         <div class="geo-row">
-          <div class="gc"><div class="gn">Rej Wick <span class="chip cp" style="font-size:7px;">≥47%</span></div><div class="gv green">71.3%</div><div class="gs">0.46/0.65 ✓</div></div>
-          <div class="gc"><div class="gn">Body <span class="chip cp" style="font-size:7px;">≤40%</span></div><div class="gv blue">23.3%</div><div class="gs">0.15/0.65 ✓</div></div>
-          <div class="gc"><div class="gn">Opp Wick</div><div class="gv" style="color:var(--muted);">5.4%</div><div class="gs">0.04/0.65</div></div>
-          <div class="gc"><div class="gn">Close Loc <span class="chip cp" style="font-size:7px;">≥80%</span></div><div class="gv blue">94.6%</div><div class="gs">(C−L)/rng ✓</div></div>
-          <div class="gc"><div class="gn">Penetration</div><div class="gv red">−0.16 pts</div><div class="gs">16 ticks below level</div></div>
-          <div class="gc"><div class="gn">Close Beyond</div><div class="gv green">+0.45 pts</div><div class="gs">45 ticks above level</div></div>
+          <div class="gc">
+            <div class="gn">Rej Wick <span class="chip cp" style="font-size:7px;">≥47%</span></div>
+            <div class="gv green">71.3%</div>
+            <div class="gs">0.46 / 0.645 range ✓</div>
+          </div>
+          <div class="gc">
+            <div class="gn">Body <span class="chip cp" style="font-size:7px;">≤40%</span></div>
+            <div class="gv blue">23.3%</div>
+            <div class="gs">0.15 / 0.645 range ✓</div>
+          </div>
+          <div class="gc">
+            <div class="gn">Opp Wick</div>
+            <div class="gv" style="color:var(--muted);">5.4%</div>
+            <div class="gs">0.035 / 0.645 range</div>
+          </div>
+          <div class="gc">
+            <div class="gn">Close Loc <span class="chip cp" style="font-size:7px;">≥80%</span></div>
+            <div class="gv blue">94.6%</div>
+            <div class="gs">(C−L)/range ✓</div>
+          </div>
+          <div class="gc">
+            <div class="gn">Penetration <span class="chip cc" style="font-size:7px;">CORE</span></div>
+            <div class="gv red">0.16 pts</div>
+            <div class="gs">16 ticks below level</div>
+          </div>
+          <div class="gc">
+            <div class="gn">Close Beyond <span class="chip cc" style="font-size:7px;">CORE</span></div>
+            <div class="gv green">+0.45 pts</div>
+            <div class="gs">+45 ticks above level</div>
+          </div>
         </div>
+        <p style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.6;">
+          Range = H − L = 722.785 − 722.14 = <strong style="color:var(--text);">0.645</strong>.
+          Lower wick = min(O,C) − L = 722.60 − 722.14 = 0.46 (71.3%).
+          Body = |C−O| = 0.15 (23.3%).
+          Upper wick = H − max(O,C) = 0.035 (5.4%).
+          The ORB level (722.30) sits entirely within the lower wick — the candle penetrated 16 ticks below it and reclaimed +45 ticks above it.
+        </p>
       </div>
     </div>
   </div>
@@ -184,49 +285,69 @@ header h1 span{color:var(--blue);}
   <div class="section">
     <div class="stitle">Rule-by-Rule Walkthrough</div>
     <div class="rule-list">
+
       <div class="rule"><div class="ri pass">✓</div><div>
-        <strong>Stage 1 — Level (ORB High 722.30)</strong> <span class="chip cp">PARAM</span><br>
-        <span class="sub">09:30 candle: O=721.77 H=722.30 L=721.50 C=722.29. Level = 722.30.</span>
+        <strong>Stage 1 — Level</strong> <span class="chip cp">PARAM: ORB_HIGH</span><br>
+        <span class="sub">09:30 candle: O=721.77 H=722.30 L=721.495 C=722.29.
+        ORB High = 722.30. ORB Low = 721.495. These are distinct values;
+        the shaded purple zone on the chart spans 722.30 → 721.495.</span>
       </div></div>
+
       <div class="rule"><div class="ri pass">✓</div><div>
         <strong>Stage 2 — Confirmed Break</strong> <span class="chip cc">CORE</span><br>
-        <span class="sub">09:50: C=722.37 &gt; 722.30. First candle to close above ORB High. directional_break_distance = +0.07 pts / +7 ticks.
-        Prior candles (09:35, 09:40, 09:45) all closed at or below 722.30.</span>
+        <span class="sub">09:50: C=722.37 &gt; 722.30. First candle to close above ORB High.
+        directional_break_distance = +0.07 pts / +7 ticks.
+        Prior candles 09:35 (C=722.06), 09:40 (C=722.23), 09:45 (C=722.16) all closed at or below 722.30.
+        09:35 opened exactly at the level but closed below it — not a break.</span>
       </div></div>
+
       <div class="rule"><div class="ri warn">!</div><div>
-        <strong>Stage 3 — Displacement</strong> <span class="chip cc">CORE</span> <span class="chip" style="background:rgba(245,158,11,0.15);color:var(--amber);border:0.5px solid rgba(245,158,11,0.3);">LIMITATION</span><br>
-        <span class="sub">displacement_pts.ticks = 49 (breakout bar high 722.79 − level 722.30).
-        Displacement window: <strong>0 bars</strong>. The retest begins at 09:55, the bar immediately after the breakout.
-        The minimum-distance gate (<code>displacement_pts.ticks >= min_displacement_ticks</code>) passes numerically at 49 ticks,
-        but min_displacement_ticks has not been set — this threshold is OPEN per the canonical handoff.
-        Whether this constitutes valid displacement structurally is the open question this candidate surfaces.</span>
+        <strong>Stage 3 — Displacement</strong> <span class="chip cc">CORE</span>
+        <span class="chip" style="background:rgba(245,158,11,0.15);color:var(--amber);border:0.5px solid rgba(245,158,11,0.3);">OPEN THRESHOLD</span><br>
+        <span class="sub">displacement_pts.ticks = 49 (breakout bar high 722.79 − level 722.30 = 0.49 pts).
+        Displacement window = <strong>0 bars</strong>.
+        The 09:55 bar's low (722.29) immediately touches the level — the retest begins on the very next bar after the breakout.
+        The minimum-distance gate (<code>displacement_pts.ticks &gt;= min_displacement_ticks</code>)
+        cannot be evaluated because min_displacement_ticks is OPEN in the canonical handoff.
+        This is the structural question this candidate surfaces.</span>
       </div></div>
+
       <div class="rule"><div class="ri pass">✓</div><div>
-        <strong>Stage 4 — Retest</strong> <span class="chip cc">CORE</span><br>
+        <strong>Stage 4 — Retest contact</strong> <span class="chip cc">CORE</span><br>
         <span class="sub">09:55: L=722.29 ≤ 722.30. First retest contact on the bar immediately following the breakout.</span>
       </div></div>
+
       <div class="rule"><div class="ri fail">✗</div><div>
         <strong>09:55 — Failed rejection attempt</strong> <span class="chip cc">CORE</span><br>
-        <span class="sub">O=722.36 H=722.55 L=722.29 C=722.53. Closes above level (722.53 &gt; 722.30) but geometry fails:
-        REJ_WICK=0.2690 &lt; 0.47 ✗ &nbsp; BODY=0.6542 &gt; 0.40 ✗.
-        Body dominates — candle is a bullish continuation bar, not a rejection candle. Engine continues waiting.</span>
+        <span class="sub">O=722.36 H=722.55 L=722.29 C=722.53. Range = 0.26. Closes above level (722.53 &gt; 722.30) but geometry fails:<br>
+        REJ_WICK = (722.36−722.29)/0.26 = 0.2690 &lt; 0.47 ✗<br>
+        BODY = (722.53−722.36)/0.26 = 0.6542 &gt; 0.40 ✗<br>
+        Body dominates — bullish continuation bar, not a rejection candle. Engine continues waiting.</span>
       </div></div>
+
       <div class="rule"><div class="ri pass">✓</div><div>
         <strong>10:00 — Valid rejection candle</strong> <span class="chip cc">CORE</span><br>
-        <span class="sub">O=722.60 H=722.79 L=722.14 C=722.75. Wick drives to 722.14 (−16 ticks below level). Closes at 722.75 (+45 ticks above level).
-        All geometry passes: rej_wick 71.3% ✓ &nbsp; body 23.3% ✓ &nbsp; close_loc 94.6% ✓.</span>
+        <span class="sub">O=722.60 H=722.79 L=722.14 C=722.75.
+        Wick penetrates to 722.14 (−0.16 pts / −16 ticks below level 722.30).
+        Closes at 722.75 (+0.45 pts / +45 ticks above level).
+        All geometry thresholds pass: rej_wick 71.3% ✓ · body 23.3% ✓ · close_loc 94.6% ✓.</span>
       </div></div>
+
       <div class="rule"><div class="ri pass">✓</div><div>
-        <strong>Stage 5 — Entry / Stop / Targets</strong> <span class="chip cp">PARAM: CONFIRMATION_CLOSE, 0 buffers</span><br>
+        <strong>Entry / Stop / Targets</strong> <span class="chip cp">PARAM: CONFIRMATION_CLOSE, 0 buffers</span><br>
         <span class="sub">Entry = 722.75 (close). Stop = 722.14 (candle low). Risk = 0.61 pts / 61 ticks.
-        2R = 723.97 ✅ reached (10:25, H=723.67) &nbsp; 3R = 724.58 ✅ reached (12:20, H=723.87 — wait, verify below) &nbsp; 4R = 725.19 ❌.</span>
+        2R = 723.97 ✅ reached 13:30 (H=723.975) ·
+        3R = 724.58 ✅ reached 14:10 (H=724.66) ·
+        4R = 725.19 ❌ not reached (session MFE high = 725.04 at 15:25).</span>
       </div></div>
+
     </div>
     <div class="warn-box">
-      ⚠️ The 0-bar displacement window is the key open question this candidate surfaces. The engine detects a geometrically valid rejection candle. Whether the market structure before it constitutes acceptable displacement is the decision that min_displacement_ticks must eventually answer.
+      ⚠️ The 0-bar displacement window is the key open question. The geometry detection is correct.
+      Whether the structure qualifies as valid displacement is what min_displacement_ticks must eventually answer.
     </div>
     <div class="good-box">
-      ✅ Outcome: 2R and 3R were reached. The confirmation candle's rej_wick (71%) and close_loc (95%) are among the strongest in the dataset. MFE = +2.29 pts.
+      ✅ 2R and 3R were reached. rej_wick 71% and close_loc 95% are among the strongest in the dataset. MFE = +2.29 pts. 4R was not reached (session high = 725.04, target = 725.19).
     </div>
   </div>
 
@@ -239,74 +360,97 @@ header h1 span{color:var(--blue);}
         <div class="info-row"><span class="ik">Failed stage</span><span class="iv red">NO_QUALIFYING_REJECTION_CANDLE</span></div>
         <div class="info-row"><span class="ik">Attempts</span><span class="iv">41 retest attempts</span></div>
         <div class="info-row"><span class="ik">Last actual value</span><span class="iv">close 720.67 ≤ level 722.36</span></div>
-        <div class="info-row"><span class="ik">Required</span><span class="iv">rej_wick≥0.47, body≤0.40, close_loc≥0.80, close&gt;level</span></div>
-        <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5;">All 41 retest candles either closed below the level or failed geometry thresholds. The engine correctly produced no candidate.</div>
+        <div class="info-row"><span class="ik">Required</span><span class="iv">close &gt; level AND rej_wick ≥ 0.47 AND body ≤ 0.40 AND close_loc ≥ 0.80</span></div>
+        <p style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5;">
+          A confirmed break above ORB High was found. 41 retest candles followed. None closed above the level
+          while satisfying all three geometry thresholds. Correct rejection.
+        </p>
       </div>
       <div style="background:rgba(255,77,77,0.06);border:0.5px solid rgba(255,77,77,0.2);border-radius:8px;padding:12px;">
         <div style="font-size:10px;font-weight:700;color:var(--red);margin-bottom:8px;">2026-05-04 — REJECTED</div>
         <div class="info-row"><span class="ik">Failed stage</span><span class="iv red">NO_QUALIFYING_REJECTION_CANDLE</span></div>
         <div class="info-row"><span class="ik">Attempts</span><span class="iv">62 retest attempts</span></div>
         <div class="info-row"><span class="ik">Last actual value</span><span class="iv">close 718.07 ≤ level 720.24</span></div>
-        <div class="info-row"><span class="ik">Required</span><span class="iv">rej_wick≥0.47, body≤0.40, close_loc≥0.80, close&gt;level</span></div>
-        <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5;">62 consecutive retest candles, none meeting geometry. Heavy selling pressure kept price below the ORB High throughout the session. Correct rejection.</div>
+        <div class="info-row"><span class="ik">Required</span><span class="iv">close &gt; level AND rej_wick ≥ 0.47 AND body ≤ 0.40 AND close_loc ≥ 0.80</span></div>
+        <p style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5;">
+          62 consecutive retest candles, none passing geometry. Sustained selling kept price below the ORB High all session.
+          Correct rejection.
+        </p>
       </div>
     </div>
   </div>
 
-</div>
+</div><!-- /page -->
 
 <script>
-const LEVEL = 722.30;
+// ── Constants ──
+const LEVEL   = 722.30;
 const ORB_LOW = 721.495;
-const ENTRY = 722.75, STOP = 722.14, R2 = 723.97, R3 = 724.58, R4 = 725.19;
+const ENTRY   = 722.75;
+const STOP    = 722.14;
+const R2      = 723.97;
+const R3      = 724.58;
+const R4      = 725.19;
+
+// ── Color palette ──
+const COL = {
+  orb:     {fill:'#2a1a40', stroke:'#c084fc'},   // purple — ORB only
+  break:   {fill:'#00452d', stroke:'#00c896'},
+  failed:  {fill:'#3d1010', stroke:'#ff4d4d'},
+  confirm: {fill:'#00452d', stroke:'#00ffb8'},
+  postG:   {fill:'#101a14', stroke:'rgba(0,200,150,0.28)'},
+  postR:   {fill:'#1a1010', stroke:'rgba(255,77,77,0.28)'},
+  otherG:  {fill:'#0d150f', stroke:'rgba(0,200,150,0.18)'},
+  otherR:  {fill:'#150d0d', stroke:'rgba(255,77,77,0.18)'},
+};
 
 const CANDLES = [
-  {t:'09:30',o:721.77,h:722.30,l:721.495,c:722.29,tag:'orb'},
-  {t:'09:35',o:722.30,h:722.48,l:721.90,c:722.06,tag:'other'},
-  {t:'09:40',o:722.03,h:722.40,l:721.75,c:722.23,tag:'other'},
-  {t:'09:45',o:722.21,h:722.62,l:722.10,c:722.16,tag:'other'},
-  {t:'09:50',o:722.16,h:722.79,l:722.15,c:722.37,tag:'breakout'},
-  {t:'09:55',o:722.36,h:722.55,l:722.29,c:722.53,tag:'failed'},
-  {t:'10:00',o:722.60,h:722.785,l:722.14,c:722.75,tag:'confirm'},
-  {t:'10:05',o:722.77,h:723.22,l:722.63,c:723.18,tag:'post'},
-  {t:'10:10',o:723.18,h:723.39,l:722.16,c:722.32,tag:'post'},
-  {t:'10:15',o:722.31,h:722.75,l:721.79,c:722.15,tag:'post'},
-  {t:'10:20',o:722.13,h:723.25,l:722.01,c:723.18,tag:'post'},
-  {t:'10:25',o:723.17,h:723.67,l:723.10,c:723.29,tag:'post'},
-  {t:'10:30',o:723.30,h:723.39,l:722.84,c:723.02,tag:'post'},
-  {t:'10:35',o:723.02,h:723.14,l:722.56,c:722.68,tag:'post'},
-  {t:'10:40',o:722.68,h:723.09,l:722.62,c:722.70,tag:'post'},
-  {t:'10:45',o:722.72,h:722.90,l:722.38,c:722.72,tag:'post'},
-  {t:'10:50',o:722.70,h:722.95,l:722.51,c:722.94,tag:'post'},
-  {t:'10:55',o:722.96,h:723.18,l:722.89,c:723.14,tag:'post'},
-  {t:'11:00',o:723.15,h:723.53,l:723.03,c:723.50,tag:'post'},
-  {t:'11:05',o:723.50,h:723.65,l:723.30,c:723.32,tag:'post'},
-  {t:'11:10',o:723.33,h:723.64,l:723.31,c:723.55,tag:'post'},
-  {t:'11:15',o:723.55,h:723.65,l:723.34,c:723.38,tag:'post'},
-  {t:'11:20',o:723.37,h:723.50,l:723.14,c:723.17,tag:'post'},
-  {t:'11:25',o:723.14,h:723.48,l:723.11,c:723.48,tag:'post'},
-  {t:'11:30',o:723.48,h:723.54,l:722.91,c:722.97,tag:'post'},
-  {t:'11:35',o:722.97,h:723.23,l:722.96,c:723.13,tag:'post'},
-  {t:'11:40',o:723.12,h:723.17,l:722.96,c:723.12,tag:'post'},
-  {t:'11:45',o:723.14,h:723.42,l:723.11,c:723.33,tag:'post'},
-  {t:'11:50',o:723.32,h:723.42,l:723.17,c:723.25,tag:'post'},
-  {t:'11:55',o:723.24,h:723.25,l:722.97,c:723.04,tag:'post'},
-  {t:'12:00',o:723.10,h:723.39,l:722.96,c:723.32,tag:'post'},
-  {t:'12:05',o:723.31,h:723.56,l:723.31,c:723.50,tag:'post'},
-  {t:'12:10',o:723.50,h:723.59,l:723.48,c:723.51,tag:'post'},
-  {t:'12:15',o:723.51,h:723.62,l:723.39,c:723.59,tag:'post'},
-  {t:'12:20',o:723.80,h:723.87,l:723.56,c:723.70,tag:'post'},
-  {t:'12:25',o:723.70,h:723.79,l:723.04,c:723.58,tag:'post'},
-  {t:'12:30',o:723.56,h:723.60,l:723.37,c:723.50,tag:'post'},
+  {t:'09:30',o:721.77, h:722.30,  l:721.495,c:722.29, tag:'orb'},
+  {t:'09:35',o:722.30, h:722.48,  l:721.90, c:722.06, tag:'other'},
+  {t:'09:40',o:722.03, h:722.40,  l:721.75, c:722.23, tag:'other'},
+  {t:'09:45',o:722.21, h:722.62,  l:722.10, c:722.16, tag:'other'},
+  {t:'09:50',o:722.16, h:722.79,  l:722.15, c:722.37, tag:'break'},
+  {t:'09:55',o:722.36, h:722.55,  l:722.29, c:722.53, tag:'failed'},
+  {t:'10:00',o:722.60, h:722.785, l:722.14, c:722.75, tag:'confirm'},
+  {t:'10:05',o:722.77, h:723.22,  l:722.63, c:723.18, tag:'post'},
+  {t:'10:10',o:723.18, h:723.39,  l:722.16, c:722.32, tag:'post'},
+  {t:'10:15',o:722.31, h:722.75,  l:721.79, c:722.15, tag:'post'},
+  {t:'10:20',o:722.13, h:723.25,  l:722.01, c:723.18, tag:'post'},
+  {t:'10:25',o:723.17, h:723.67,  l:723.10, c:723.29, tag:'post'},
+  {t:'10:30',o:723.30, h:723.39,  l:722.84, c:723.02, tag:'post'},
+  {t:'10:35',o:723.02, h:723.14,  l:722.56, c:722.68, tag:'post'},
+  {t:'10:40',o:722.68, h:723.09,  l:722.62, c:722.70, tag:'post'},
+  {t:'10:45',o:722.72, h:722.90,  l:722.38, c:722.72, tag:'post'},
+  {t:'10:50',o:722.70, h:722.95,  l:722.51, c:722.94, tag:'post'},
+  {t:'10:55',o:722.96, h:723.18,  l:722.89, c:723.14, tag:'post'},
+  {t:'11:00',o:723.15, h:723.53,  l:723.03, c:723.50, tag:'post'},
+  {t:'11:05',o:723.50, h:723.65,  l:723.30, c:723.32, tag:'post'},
+  {t:'11:10',o:723.33, h:723.64,  l:723.31, c:723.55, tag:'post'},
+  {t:'11:15',o:723.55, h:723.65,  l:723.34, c:723.38, tag:'post'},
+  {t:'11:20',o:723.37, h:723.50,  l:723.14, c:723.17, tag:'post'},
+  {t:'11:25',o:723.14, h:723.48,  l:723.11, c:723.48, tag:'post'},
+  {t:'11:30',o:723.48, h:723.54,  l:722.91, c:722.97, tag:'post'},
+  {t:'11:35',o:722.97, h:723.23,  l:722.96, c:723.13, tag:'post'},
+  {t:'11:40',o:723.12, h:723.17,  l:722.96, c:723.12, tag:'post'},
+  {t:'11:45',o:723.14, h:723.42,  l:723.11, c:723.33, tag:'post'},
+  {t:'11:50',o:723.32, h:723.42,  l:723.17, c:723.25, tag:'post'},
+  {t:'11:55',o:723.24, h:723.25,  l:722.97, c:723.04, tag:'post'},
+  {t:'12:00',o:723.10, h:723.39,  l:722.96, c:723.32, tag:'post'},
+  {t:'12:05',o:723.31, h:723.56,  l:723.31, c:723.50, tag:'post'},
+  {t:'12:10',o:723.50, h:723.59,  l:723.48, c:723.51, tag:'post'},
+  {t:'12:15',o:723.51, h:723.62,  l:723.39, c:723.59, tag:'post'},
+  {t:'12:20',o:723.80, h:723.87,  l:723.56, c:723.70, tag:'post'},
+  {t:'12:25',o:723.70, h:723.79,  l:723.04, c:723.58, tag:'post'},
+  {t:'12:30',o:723.56, h:723.60,  l:723.37, c:723.50, tag:'post'},
 ];
 
 const PHASES = {
-  all:   {s:0,e:CANDLES.length},
-  orb:   {s:0,e:1},
-  break: {s:0,e:5},
-  disp:  {s:0,e:6},   // breakout + immediate retest (0 disp bars)
-  retest:{s:0,e:7},
-  entry: {s:0,e:9},
+  all:    {s:0, e:CANDLES.length},
+  orb:    {s:0, e:1},
+  break:  {s:0, e:5},
+  disp:   {s:0, e:6},   // breakout bar only — 0 displacement bars
+  retest: {s:0, e:7},
+  entry:  {s:0, e:9},
 };
 
 function showPhase(ph, btn){
@@ -315,61 +459,131 @@ function showPhase(ph, btn){
   drawChart(ph);
 }
 
-function drawChart(ph='all'){
+function drawChart(ph = 'all'){
   const svg = document.getElementById('chart0');
-  const W=1152,H=460,PAD={top:46,right:110,bottom:32,left:64};
+  // Tighter right padding — labels drawn INSIDE chart
+  const W=1100, H=480;
+  const PAD={top:54, right:16, bottom:36, left:66};
   const cW=W-PAD.left-PAD.right, cH=H-PAD.top-PAD.bottom;
-  const {s,e}=PHASES[ph];
-  const vis=CANDLES.slice(s,e);
+
+  const {s,e} = PHASES[ph];
+  const vis = CANDLES.slice(s,e);
   if(!vis.length){svg.innerHTML='';return;}
 
-  let pMin=Math.min(...vis.map(c=>c.l),STOP,ORB_LOW)-0.5;
-  let pMax=Math.max(...vis.map(c=>c.h),R4)+0.5;
-  const pRange=pMax-pMin, nC=vis.length;
-  const slotW=cW/Math.max(nC,1), bW=Math.min(slotW*0.58,13);
-  const py=p=>PAD.top+cH*(1-(p-pMin)/pRange);
-  const cx=i=>PAD.left+(i+0.5)*slotW;
-  let h='';
+  let pMin = Math.min(...vis.map(c=>c.l), STOP, ORB_LOW) - 0.55;
+  let pMax = Math.max(...vis.map(c=>c.h), R4) + 0.55;
+  const pRange = pMax - pMin;
+  const nC = vis.length;
+  const slotW = cW / Math.max(nC, 1);
+  const bW = Math.min(slotW * 0.6, 13);
 
-  for(let i=0;i<=5;i++){const p=pMin+pRange*i/5,y=py(p);h+=`<line x1="${PAD.left}" y1="${y}" x2="${W-PAD.right}" y2="${y}" stroke="rgba(255,255,255,0.04)" stroke-width="0.5"/><text x="${PAD.left-4}" y="${y+4}" text-anchor="end" fill="#555" font-size="9">${p.toFixed(2)}</text>`;}
-  h+=`<rect x="${PAD.left}" y="${py(LEVEL)}" width="${cW}" height="${py(ORB_LOW)-py(LEVEL)}" fill="rgba(57,135,229,0.05)"/>`;
+  const py = p => PAD.top + cH * (1 - (p - pMin) / pRange);
+  const cx = i => PAD.left + (i + 0.5) * slotW;
 
-  const lv=(price,col,lbl,dash='')=>{if(price<pMin||price>pMax)return;const y=py(price),da=dash?`stroke-dasharray="${dash}"`:'';h+=`<line x1="${PAD.left}" y1="${y}" x2="${W-PAD.right}" y2="${y}" stroke="${col}" stroke-width="1" ${da} opacity="0.85"/><text x="${W-PAD.right+5}" y="${y+4}" fill="${col}" font-size="9" font-weight="500">${lbl}</text>`;};
+  let h = '';
 
-  lv(LEVEL,'#3987e5',`Level 722.30`,'5,3');
-  if(ph==='all'||ph==='entry'){
-    lv(STOP,'#ff4d4d','Stop 722.14','4,2');
-    lv(ENTRY,'#3987e5','Entry 722.75','3,2');
-    lv(R2,'#00c896','2R 723.97','2,3');
-    lv(R3,'#00c896','3R 724.58','2,3');
-    lv(R4,'#00c896','4R 725.19','2,3');
-  } else if(ph!=='orb'){lv(STOP,'#ff4d4d','Stop 722.14','4,2');}
+  // ── Grid ──
+  for(let i=0; i<=6; i++){
+    const p = pMin + pRange * i / 6;
+    const y = py(p);
+    h += `<line x1="${PAD.left}" y1="${y}" x2="${W-PAD.right}" y2="${y}" stroke="rgba(255,255,255,0.04)" stroke-width="0.5"/>`;
+    h += `<text x="${PAD.left-5}" y="${y+3.5}" text-anchor="end" fill="#555" font-size="9">${p.toFixed(2)}</text>`;
+  }
 
-  vis.forEach((c,i)=>{
-    const x=cx(i),isG=c.c>=c.o;
-    const bTop=py(Math.max(c.o,c.c)),bBot=py(Math.min(c.o,c.c));
-    const wTop=py(c.h),wBot=py(c.l),bH=Math.max(bBot-bTop,1.5);
-    let fill,stroke;
-    if(c.tag==='orb'){fill='#1e3d6e';stroke='#3987e5';}
-    else if(c.tag==='breakout'){fill='#005c3e';stroke='#00c896';}
-    else if(c.tag==='failed'){fill='#3d1010';stroke='#ff4d4d';}
-    else if(c.tag==='confirm'){fill='#005c3e';stroke='#00ffb8';}
-    else{fill=isG?'#101e16':'#1e1010';stroke=isG?'rgba(0,200,150,0.28)':'rgba(255,77,77,0.28)';}
-    h+=`<line x1="${x}" y1="${wTop}" x2="${x}" y2="${bTop}" stroke="${stroke}" stroke-width="1.1" opacity="0.8"/>`;
-    h+=`<line x1="${x}" y1="${bBot}" x2="${x}" y2="${wBot}" stroke="${stroke}" stroke-width="1.1" opacity="0.8"/>`;
-    h+=`<rect x="${x-bW/2}" y="${bTop}" width="${bW}" height="${bH}" fill="${fill}" stroke="${stroke}" stroke-width="0.7" rx="1.5"/>`;
+  // ── ORB zone: shaded rectangle, visibly purple ──
+  {
+    const y1 = py(LEVEL), y2 = py(ORB_LOW);
+    h += `<rect x="${PAD.left}" y="${y1}" width="${cW}" height="${y2-y1}" fill="rgba(192,132,252,0.10)" stroke="none"/>`;
+  }
+
+  // ── Horizontal level lines with INLINE left-side labels ──
+  // Drawn inside chart area to avoid mobile clipping
+  const lvLine = (price, col, lbl, dash='', bold=false) => {
+    if(price < pMin || price > pMax) return;
+    const y = py(price);
+    const da = dash ? `stroke-dasharray="${dash}"` : '';
+    const sw = bold ? '1.4' : '1';
+    h += `<line x1="${PAD.left}" y1="${y}" x2="${W-PAD.right}" y2="${y}" stroke="${col}" stroke-width="${sw}" ${da} opacity="0.9"/>`;
+    // Label on LEFT side, inside chart, with small background
+    const lx = PAD.left + 4;
+    const lw = lbl.length * 5.5 + 6;
+    h += `<rect x="${lx-2}" y="${y-9}" width="${lw}" height="11" fill="rgba(15,15,15,0.82)" rx="2"/>`;
+    h += `<text x="${lx+lw/2-2}" y="${y+0}" text-anchor="middle" fill="${col}" font-size="8.5" font-weight="${bold?'700':'500'}">${lbl}</text>`;
+  };
+
+  // ORB High and ORB Low — purple, solid, bold
+  lvLine(LEVEL,   '#c084fc', 'ORB H 722.30', '', true);
+  lvLine(ORB_LOW, '#c084fc', 'ORB L 721.50', '', false);
+
+  // Trade levels — only when relevant phase
+  if(ph === 'all' || ph === 'entry'){
+    lvLine(STOP,  '#ff4d4d', 'Stop 722.14',  '4,2');
+    lvLine(ENTRY, '#3987e5', 'Entry 722.75', '3,2', true);
+    lvLine(R2,    '#00c896', '2R 723.97',    '2,4');
+    lvLine(R3,    '#00c896', '3R 724.58',    '2,4');
+    lvLine(R4,    '#555',    '4R 725.19',    '2,4');
+  } else if(ph !== 'orb'){
+    lvLine(STOP, '#ff4d4d', 'Stop 722.14', '4,2');
+  }
+
+  // ── Candles ──
+  vis.forEach((c, i) => {
+    const x  = cx(i);
+    const isG = c.c >= c.o;
+    const bTop = py(Math.max(c.o, c.c));
+    const bBot = py(Math.min(c.o, c.c));
+    const wTop = py(c.h);
+    const wBot = py(c.l);
+    const bH   = Math.max(bBot - bTop, 1.5);
+
+    let fill, stroke;
+    switch(c.tag){
+      case 'orb':     fill=COL.orb.fill;     stroke=COL.orb.stroke;     break;
+      case 'break':   fill=COL.break.fill;   stroke=COL.break.stroke;   break;
+      case 'failed':  fill=COL.failed.fill;  stroke=COL.failed.stroke;  break;
+      case 'confirm': fill=COL.confirm.fill; stroke=COL.confirm.stroke; break;
+      case 'post':    fill=isG?COL.postG.fill:COL.postR.fill;   stroke=isG?COL.postG.stroke:COL.postR.stroke; break;
+      default:        fill=isG?COL.otherG.fill:COL.otherR.fill; stroke=isG?COL.otherG.stroke:COL.otherR.stroke;
+    }
+
+    h += `<line x1="${x}" y1="${wTop}" x2="${x}" y2="${bTop}" stroke="${stroke}" stroke-width="1.2" opacity="0.85"/>`;
+    h += `<line x1="${x}" y1="${bBot}" x2="${x}" y2="${wBot}" stroke="${stroke}" stroke-width="1.2" opacity="0.85"/>`;
+    h += `<rect x="${x-bW/2}" y="${bTop}" width="${bW}" height="${bH}" fill="${fill}" stroke="${stroke}" stroke-width="0.8" rx="1.5"/>`;
   });
 
-  const ann=(tag,col,lbl)=>{const idx=vis.findIndex(c=>c.tag===tag);if(idx<0)return;const x=cx(idx),y=py(vis[idx].h)-16;h+=`<rect x="${x-30}" y="${y-12}" width="60" height="14" fill="${col}20" stroke="${col}" stroke-width="0.6" rx="3"/><text x="${x}" y="${y-2}" text-anchor="middle" fill="${col}" font-size="8.5" font-weight="700">${lbl}</text>`;};
-  if(ph!=='orb') ann('breakout','#00c896','② BREAK');
-  ann('failed','#ff4d4d','✗ FAILED');
-  ann('confirm','#00ffb8','⑤ ENTRY');
+  // ── Annotations ──
+  const ann = (tag, col, lbl) => {
+    const idx = vis.findIndex(c => c.tag === tag);
+    if(idx < 0) return;
+    const x = cx(idx), y = py(vis[idx].h) - 18;
+    const w = lbl.length * 5.4 + 10;
+    h += `<rect x="${x-w/2}" y="${y-12}" width="${w}" height="14" fill="${col}22" stroke="${col}" stroke-width="0.7" rx="3"/>`;
+    h += `<text x="${x}" y="${y-1}" text-anchor="middle" fill="${col}" font-size="8.5" font-weight="700">${lbl}</text>`;
+  };
 
-  const ev=Math.max(1,Math.floor(vis.length/14));
-  vis.forEach((c,i)=>{if(i%ev===0||vis.length<=6)h+=`<text x="${cx(i)}" y="${H-PAD.bottom+13}" text-anchor="middle" fill="#555" font-size="9">${c.t}</text>`;});
-  const pl={all:'Full Day',orb:'① Level (ORB High)',break:'② Confirmed Break',disp:'③ Displacement (0 bars)',retest:'④ Retest',entry:'⑤ Rejection + Entry'};
-  h+=`<text x="${PAD.left+4}" y="17" fill="#555" font-size="10" font-weight="600">${pl[ph]||'Full Day'}</text>`;
-  svg.innerHTML=h;
+  if(ph !== 'orb') ann('break',   '#00c896', '② BREAK');
+  ann('failed',  '#ff4d4d', '✗ FAILED');
+  ann('confirm', '#00ffb8', '⑤ ENTRY ✓');
+
+  // ── X-axis labels ──
+  const ev = Math.max(1, Math.floor(vis.length / 14));
+  vis.forEach((c, i) => {
+    if(i % ev === 0 || vis.length <= 6)
+      h += `<text x="${cx(i)}" y="${H-PAD.bottom+15}" text-anchor="middle" fill="#555" font-size="9">${c.t}</text>`;
+  });
+
+  // ── Phase label ──
+  const pl = {
+    all:    'Full Day',
+    orb:    '① ORB Established (purple zone = ORB range)',
+    break:  '② Confirmed Break — 09:50 closes above ORB High',
+    disp:   '③ Displacement — 0 bars (retest starts immediately)',
+    retest: '④ Retest begins — 09:55 touches ORB High',
+    entry:  '⑤ Rejection Candle + Entry — 10:00',
+  };
+  h += `<text x="${PAD.left+6}" y="18" fill="#777" font-size="10" font-weight="600">${pl[ph]||'Full Day'}</text>`;
+
+  svg.innerHTML = h;
 }
 
 drawChart('all');
