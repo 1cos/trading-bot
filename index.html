@@ -135,7 +135,27 @@ tr.clickable:hover td{background:rgba(255,255,255,0.03);}
 .trade-detail-item{background:var(--surface2);border-radius:8px;padding:10px 12px;}
 .trade-detail-item .label{font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:3px;}
 .trade-detail-item .value{font-size:15px;font-weight:500;}
-.candle-chart-wrap{height:280px;position:relative;}
+.candle-chart-wrap{height:320px;position:relative;overflow:hidden;}
+/* Trade Replay candlestick chart */
+.replay-svg-wrap{width:100%;height:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+.replay-svg-wrap svg{display:block;}
+.replay-info-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+.replay-tag{font-size:10px;padding:2px 7px;border-radius:10px;background:var(--surface2);color:var(--muted);border:0.5px solid var(--border);}
+.replay-tag.long{background:rgba(0,200,150,0.12);color:var(--green);border-color:rgba(0,200,150,0.3);}
+.replay-tag.short{background:rgba(255,77,77,0.12);color:var(--red);border-color:rgba(255,77,77,0.3);}
+.replay-tag.stop{background:rgba(255,77,77,0.08);color:var(--red);}
+.replay-tag.target{background:rgba(0,200,150,0.08);color:var(--green);}
+.replay-tag.eod{background:rgba(57,135,229,0.08);color:var(--blue);}
+/* OB zone label */
+.ob-zone-label{font-size:9px;fill:rgba(167,139,250,0.7);}
+/* Mobile modal tweak */
+@media(max-width:767px){
+  .modal{width:96vw;max-height:92vh;border-radius:12px;}
+  .modal-body{padding:12px;}
+  .trade-detail-grid{grid-template-columns:1fr 1fr;gap:8px;}
+  .candle-chart-wrap{height:280px;}
+  .replay-info-row{gap:4px;}
+}
 
 /* Toast */
 #toast{position:fixed;bottom:24px;right:24px;background:#1a1a1a;border:0.5px solid rgba(0,200,150,0.4);color:#00c896;padding:10px 18px;border-radius:10px;font-size:13px;z-index:9999;transition:opacity 0.3s;opacity:0;pointer-events:none;}
@@ -178,8 +198,9 @@ tr.clickable:hover td{background:rgba(255,255,255,0.03);}
     </div>
     <div class="modal-body">
       <div class="trade-detail-grid" id="modal-details"></div>
+      <div class="replay-info-row" id="modal-replay-tags"></div>
       <div class="candle-chart-wrap">
-        <canvas id="candleChart"></canvas>
+        <div class="replay-svg-wrap" id="replay-svg-wrap"></div>
       </div>
     </div>
   </div>
@@ -673,46 +694,225 @@ function toggleNotifPanel(){
   if(p.classList.contains('open')){document.getElementById('notif-dot').style.display='none';}
 }
 
+// ── ET timezone formatter (America/New_York, DST-safe) ──
+const _etTimeFmt=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',hour12:false});
+const _etDateShortFmt=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',month:'short',day:'numeric'});
+function fmtETTime(d){return _etTimeFmt.format(d);}
+function fmtETDate(d){return _etDateShortFmt.format(d);}
+function fmtETDateTime(d){return fmtETDate(d)+' '+fmtETTime(d)+' ET';}
+
 // ── Modal grafico candele ──
 function openTradeModal(trade){
   document.getElementById('trade-modal').classList.add('open');
-  document.getElementById('modal-title').textContent=`${trade.type} ${trade.setup} — ${trade.time.toLocaleDateString('it-IT')} ${trade.time.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}`;
+
+  // Title in ET
+  const dirLabel=trade.type==='LONG'?'▲ LONG':'▼ SHORT';
+  document.getElementById('modal-title').textContent=`${dirLabel} ${trade.setup} — ${fmtETDate(trade.time)} ${fmtETTime(trade.time)} ET`;
 
   const pnlColor=trade.pnlUSD>=0?'var(--green)':'var(--red)';
+  const exitLabel=trade.exit_ts?fmtETTime(trade.exit_ts):'—';
   document.getElementById('modal-details').innerHTML=`
     <div class="trade-detail-item"><div class="label">Entry</div><div class="value">$${trade.entry.toFixed(2)}</div></div>
     <div class="trade-detail-item"><div class="label">Stop</div><div class="value" style="color:var(--red)">$${trade.stop.toFixed(2)}</div></div>
     <div class="trade-detail-item"><div class="label">Target</div><div class="value" style="color:var(--green)">$${trade.target.toFixed(2)}</div></div>
-    <div class="trade-detail-item"><div class="label">Esito</div><div class="value" style="color:${pnlColor}">${trade.esito} ${fmt$(Math.round(trade.pnlUSD))}</div></div>`;
+    <div class="trade-detail-item"><div class="label">Esito</div><div class="value" style="color:${pnlColor}">${trade.esito} ${fmt$(Math.round(trade.pnlUSD))}</div></div>
+    <div class="trade-detail-item"><div class="label">Uscita</div><div class="value">$${trade.uscita?trade.uscita.toFixed(2):'—'}</div></div>
+    <div class="trade-detail-item"><div class="label">P&L pts</div><div class="value" style="color:${pnlColor}">${trade.pnlPts?((trade.pnlPts>=0?'+':'')+trade.pnlPts.toFixed(2)):'—'}</div></div>
+    <div class="trade-detail-item"><div class="label">Exit time ET</div><div class="value" style="font-size:13px">${exitLabel}</div></div>
+    <div class="trade-detail-item"><div class="label">Strategia</div><div class="value" style="font-size:12px">${trade.setup}${trade.trigger?'/'+trade.trigger:''}</div></div>`;
 
-  // Prende 30 candele attorno al trade
-  const idx=allCandles.findIndex(c=>c.time>=trade.time);
-  const start=Math.max(0,idx-10);
-  const slice=allCandles.slice(start,start+30);
-  renderCandleChart(slice,trade);
+  // Replay info tags
+  const esitoCls=trade.esito==='TARGET'?'target':trade.esito==='STOP'?'stop':trade.esito==='EOD'?'eod':'';
+  const dirCls=trade.type==='LONG'?'long':'short';
+  let tagsHtml=`<span class="replay-tag ${dirCls}">${trade.type}</span>`;
+  tagsHtml+=`<span class="replay-tag ${esitoCls}">${trade.esito}</span>`;
+  tagsHtml+=`<span class="replay-tag">Signal: ${fmtETTime(trade.time)}</span>`;
+  if(trade.exit_ts)tagsHtml+=`<span class="replay-tag">Exit: ${fmtETTime(trade.exit_ts)}</span>`;
+  if(trade.ob_high!=null)tagsHtml+=`<span class="replay-tag" style="color:var(--purple);border-color:rgba(167,139,250,0.3)">OB ${trade.ob_low.toFixed(2)}–${trade.ob_high.toFixed(2)}</span>`;
+  document.getElementById('modal-replay-tags').innerHTML=tagsHtml;
+
+  // Candle window: 20 pre-entry, full duration, 5 post-exit
+  const sigIdx=trade.signal_candle_index>=0?trade.signal_candle_index:allCandles.findIndex(c=>c.time.getTime()===trade.time.getTime());
+  const exitIdx=trade.exit_candle_index>=0?trade.exit_candle_index:sigIdx+15;
+  const startIdx=Math.max(0,sigIdx-20);
+  const endIdx=Math.min(allCandles.length-1,exitIdx+5);
+  const slice=allCandles.slice(startIdx,endIdx+1);
+
+  // Offset maps: positions within slice
+  const sliceSignalIdx=sigIdx-startIdx;
+  const sliceEntryIdx=trade.entry_candle_index>=0?trade.entry_candle_index-startIdx:sliceSignalIdx;
+  const sliceExitIdx=exitIdx>=0?exitIdx-startIdx:-1;
+
+  renderCandleReplay(slice,trade,sliceSignalIdx,sliceEntryIdx,sliceExitIdx);
 }
 
 function closeModal(){
   document.getElementById('trade-modal').classList.remove('open');
 }
 
-function renderCandleChart(candles,trade){
-  const canvas=document.getElementById('candleChart');
-  if(candleChartInstance)candleChartInstance.destroy();
+// ── Candlestick Replay Renderer (SVG, no extra framework) ──────────────────
+// Draws real OHLC candles with entry/stop/target lines and event markers.
+// Mobile-friendly: fixed candle width with horizontal scroll when needed.
+function renderCandleReplay(candles,trade,signalIdx,entryIdx,exitIdx){
+  const wrap=document.getElementById('replay-svg-wrap');
+  wrap.innerHTML='';
+  if(!candles.length)return;
 
-  const labels=candles.map(c=>c.time.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}));
-  const closes=candles.map(c=>c.close);
+  // Layout constants
+  const CAND_W=9;      // candle body width
+  const CAND_GAP=3;    // gap between candles
+  const STEP=CAND_W+CAND_GAP;
+  const PAD_L=52;      // left axis
+  const PAD_R=8;
+  const PAD_T=22;      // top for labels
+  const PAD_B=32;      // bottom for time labels
+  const CHART_H=256;   // chart area height (inside padding)
+  const svgH=PAD_T+CHART_H+PAD_B;
+  const svgW=Math.max(PAD_L+PAD_R+candles.length*STEP, 300);
 
-  candleChartInstance=new Chart(canvas,{
-    type:'line',
-    data:{labels,datasets:[
-      {data:closes,borderColor:'#888',borderWidth:1.5,pointRadius:0,tension:0.1,label:'Prezzo'},
-      {data:candles.map(()=>trade.entry),borderColor:'var(--blue)',borderWidth:1,borderDash:[4,4],pointRadius:0,label:'Entry'},
-      {data:candles.map(()=>trade.stop),borderColor:'var(--red)',borderWidth:1,borderDash:[4,4],pointRadius:0,label:'Stop'},
-      {data:candles.map(()=>trade.target),borderColor:'var(--green)',borderWidth:1,borderDash:[4,4],pointRadius:0,label:'Target'},
-    ]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#888',font:{size:10},boxWidth:12}}},scales:{x:{ticks:{color:'#555',font:{size:10}},grid:{color:'rgba(255,255,255,0.03)'}},y:{ticks:{color:'#555',font:{size:10},callback:v=>'$'+v.toFixed(0)},grid:{color:'rgba(255,255,255,0.05)'}}}}
+  // Price range
+  let pMin=Infinity,pMax=-Infinity;
+  candles.forEach(c=>{pMin=Math.min(pMin,c.low);pMax=Math.max(pMax,c.high);});
+  // Expand for lines
+  const prices=[trade.entry,trade.stop,trade.target];
+  prices.forEach(p=>{pMin=Math.min(pMin,p);pMax=Math.max(pMax,p);});
+  const pad=(pMax-pMin)*0.06||0.5;
+  pMin-=pad;pMax+=pad;
+  const priceRange=pMax-pMin;
+  function py(p){return PAD_T+CHART_H-(((p-pMin)/priceRange)*CHART_H);}
+  function cx(i){return PAD_L+i*STEP+CAND_W/2;}
+
+  // SVG helpers
+  const SVG_NS='http://www.w3.org/2000/svg';
+  function el(tag,attrs,parent){const e=document.createElementNS(SVG_NS,tag);Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v));if(parent)parent.appendChild(e);return e;}
+  function line(x1,y1,x2,y2,col,w,dash,parent){return el('line',{x1,y1,x2,y2,stroke:col,'stroke-width':w||1,'stroke-dasharray':dash||'none'},parent);}
+  function rect(x,y,w,h,fill,parent,rx){const r=el('rect',{x,y,width:Math.max(w,1),height:Math.max(h,1),fill,rx:rx||0},parent);return r;}
+  function text(x,y,s,col,sz,anchor,parent){const t=el('text',{x,y,fill:col||'#888','font-size':sz||10,'text-anchor':anchor||'middle','font-family':'-apple-system,sans-serif'},parent);t.textContent=s;return t;}
+
+  const svg=el('svg',{width:svgW,height:svgH,'xmlns':SVG_NS},null);
+
+  // Background
+  rect(0,0,svgW,svgH,'#1a1a1a',svg);
+
+  // Y-axis grid + labels (5 ticks)
+  const nTicks=5;
+  for(let ti=0;ti<=nTicks;ti++){
+    const p=pMin+(priceRange*ti/nTicks);
+    const yy=py(p);
+    line(PAD_L,yy,svgW-PAD_R,yy,'rgba(255,255,255,0.04)',1,'none',svg);
+    text(PAD_L-4,yy+3,'$'+p.toFixed(0),'#555',9,'end',svg);
+  }
+
+  // OB zone shading (if OB trade)
+  if(trade.ob_high!=null&&trade.ob_low!=null){
+    const y1=py(trade.ob_high),y2=py(trade.ob_low);
+    rect(PAD_L,Math.min(y1,y2),svgW-PAD_L-PAD_R,Math.abs(y2-y1),'rgba(167,139,250,0.07)',svg);
+    // OB top/bottom dashed lines
+    line(PAD_L,py(trade.ob_high),svgW-PAD_R,py(trade.ob_high),'rgba(167,139,250,0.4)',1,'3,3',svg);
+    line(PAD_L,py(trade.ob_low),svgW-PAD_R,py(trade.ob_low),'rgba(167,139,250,0.4)',1,'3,3',svg);
+    text(PAD_L+4,py(trade.ob_high)-3,'OB High','rgba(167,139,250,0.7)',8,'start',svg);
+    text(PAD_L+4,py(trade.ob_low)+10,'OB Low','rgba(167,139,250,0.7)',8,'start',svg);
+  }
+
+  // Horizontal price lines — entry, stop, target
+  const hLines=[
+    {p:trade.entry,col:'#3987e5',label:'Entry '+trade.entry.toFixed(2),dash:'4,3'},
+    {p:trade.stop,col:'#ff4d4d',label:'Stop '+trade.stop.toFixed(2),dash:'4,3'},
+    {p:trade.target,col:'#00c896',label:'Target '+trade.target.toFixed(2),dash:'4,3'},
+  ];
+  hLines.forEach(({p,col,label,dash})=>{
+    const yy=py(p);
+    line(PAD_L,yy,svgW-PAD_R,yy,col,1,dash,svg);
+    text(PAD_L+2,yy-3,label,col,8,'start',svg);
   });
+
+  // Candles
+  candles.forEach((c,i)=>{
+    const x=PAD_L+i*STEP;
+    const isUp=c.close>=c.open;
+    const col=isUp?'#00c896':'#ff4d4d';
+    const bodyY=py(Math.max(c.open,c.close));
+    const bodyH=Math.max(Math.abs(py(c.open)-py(c.close)),1);
+    // Wick
+    line(cx(i),py(c.high),cx(i),py(c.low),col,1,'none',svg);
+    // Body
+    rect(x,bodyY,CAND_W,bodyH,col,svg);
+  });
+
+  // Event markers: signal / entry / exit
+  function drawMarker(i,label,col,yOff){
+    if(i<0||i>=candles.length)return;
+    const x=cx(i);
+    const yTop=PAD_T-4+yOff;
+    // triangle pointing down
+    const pts=`${x},${PAD_T+6} ${x-5},${PAD_T-4} ${x+5},${PAD_T-4}`;
+    const tri=el('polygon',{points:pts,fill:col},svg);
+    text(x,PAD_T-6,label,col,8,'middle',svg);
+  }
+
+  // Signal marker (amber)
+  if(signalIdx>=0&&signalIdx<candles.length){
+    drawMarker(signalIdx,'SIG','#f59e0b',0);
+  }
+  // Entry marker (blue) — only if different from signal
+  if(entryIdx>=0&&entryIdx<candles.length&&entryIdx!==signalIdx){
+    drawMarker(entryIdx,'ENT','#3987e5',0);
+  } else if(entryIdx>=0&&entryIdx===signalIdx){
+    // Combined: draw below signal marker
+    text(cx(entryIdx),PAD_T+18,'ENT','#3987e5',8,'middle',svg);
+  }
+  // Exit marker (color by outcome)
+  if(exitIdx>=0&&exitIdx<candles.length){
+    const exitCol=trade.esito==='TARGET'?'#00c896':trade.esito==='STOP'?'#ff4d4d':'#3987e5';
+    const exitLabel=trade.esito==='TARGET'?'TGT':trade.esito==='STOP'?'STP':trade.esito==='EOD'?'EOD':'?';
+    // Draw at bottom
+    const yExit=PAD_T+CHART_H+2;
+    const pts=`${cx(exitIdx)},${yExit} ${cx(exitIdx)-5},${yExit+8} ${cx(exitIdx)+5},${yExit+8}`;
+    el('polygon',{points:pts,fill:exitCol},svg);
+    text(cx(exitIdx),yExit+20,exitLabel,exitCol,8,'middle',svg);
+  }
+
+  // OB origin candle highlight (purple bracket)
+  if(trade.ob_origin_ts){
+    const obI=candles.findIndex(c=>c.time.getTime()===trade.ob_origin_ts.getTime());
+    if(obI>=0){
+      rect(PAD_L+obI*STEP-1,PAD_T,CAND_W+2,CHART_H,'rgba(167,139,250,0.06)',svg);
+      line(PAD_L+obI*STEP-1,PAD_T,PAD_L+obI*STEP-1,PAD_T+CHART_H,'rgba(167,139,250,0.5)',1,'none',svg);
+      text(cx(obI),PAD_T+CHART_H+12,'OB','rgba(167,139,250,0.8)',8,'middle',svg);
+    }
+  }
+  // Retest candle highlight
+  if(trade.retest_ts&&trade.ob_origin_ts&&trade.retest_ts.getTime()!==trade.ob_origin_ts.getTime()){
+    const rtI=candles.findIndex(c=>c.time.getTime()===trade.retest_ts.getTime());
+    if(rtI>=0){
+      line(PAD_L+rtI*STEP-1,PAD_T,PAD_L+rtI*STEP-1,PAD_T+CHART_H,'rgba(245,158,11,0.4)',1,'none',svg);
+      text(cx(rtI),PAD_T+CHART_H+12,'RT','rgba(245,158,11,0.8)',8,'middle',svg);
+    }
+  }
+
+  // X-axis time labels — show every ~10th candle in ET
+  const labelStep=Math.max(1,Math.floor(candles.length/8));
+  candles.forEach((c,i)=>{
+    if(i%labelStep===0||i===candles.length-1){
+      text(cx(i),PAD_T+CHART_H+PAD_B-4,fmtETTime(c.time),'#555',9,'middle',svg);
+    }
+  });
+
+  // Date change vertical lines
+  for(let i=1;i<candles.length;i++){
+    if(fmtETDate(candles[i].time)!==fmtETDate(candles[i-1].time)){
+      line(cx(i)-STEP/2,PAD_T,cx(i)-STEP/2,PAD_T+CHART_H,'rgba(255,255,255,0.08)',1,'none',svg);
+      text(cx(i),PAD_T+4,fmtETDate(candles[i].time),'rgba(255,255,255,0.25)',8,'middle',svg);
+    }
+  }
+
+  wrap.appendChild(svg);
+
+  // Auto-scroll to entry candle
+  if(entryIdx>=0){
+    const scrollX=Math.max(0,PAD_L+entryIdx*STEP-wrap.clientWidth/2);
+    wrap.scrollLeft=scrollX;
+  }
 }
 
 // ── UI helpers ──
@@ -935,7 +1135,7 @@ function strategyPDHPDL(candles,params){
     if(broken_pdh&&pdh_rotto!==null){
       if(c.low<=pdh_rotto&&pdh_rotto<=c.high&&c.close>pdh_rotto){
         const entry=Math.round(c.close*100)/100,stop=Math.round((entry-slPts)*100)/100,target=Math.round((entry+slPts*RR)*100)/100;
-        signals.push({time:c.time,type:'LONG',setup:'PDH',level:pdh_rotto,entry,stop,target,trigger:'BODY'});
+        signals.push({time:c.time,type:'LONG',setup:'PDH',level:pdh_rotto,entry,stop,target,trigger:'BODY',signal_candle_index:i});
         broken_pdh=false; // reset only this flag; broken_pdl unchanged
         return; // Python: signal fires, move to next candle
       }
@@ -945,7 +1145,7 @@ function strategyPDHPDL(candles,params){
     if(broken_pdl&&pdl_rotto!==null){
       if(c.low<=pdl_rotto&&pdl_rotto<=c.high&&c.close<pdl_rotto){
         const entry=Math.round(c.close*100)/100,stop=Math.round((entry+slPts)*100)/100,target=Math.round((entry-slPts*RR)*100)/100;
-        signals.push({time:c.time,type:'SHORT',setup:'PDL',level:pdl_rotto,entry,stop,target,trigger:'BODY'});
+        signals.push({time:c.time,type:'SHORT',setup:'PDL',level:pdl_rotto,entry,stop,target,trigger:'BODY',signal_candle_index:i});
         broken_pdl=false;
       }
     }
@@ -953,9 +1153,9 @@ function strategyPDHPDL(candles,params){
   return signals;
 }
 
-function strategyORB(candles,params){const signals=[],byDay={};candles.forEach(c=>{const d=getDateStr(c.time);if(!byDay[d])byDay[d]=[];byDay[d].push(c);});Object.values(byDay).forEach(dc=>{const orb=dc.filter(c=>{const h=getHHMM(c.time);return h>=930&&h<930+params.orb_min;});if(!orb.length)return;const orbH=Math.max(...orb.map(c=>c.high));let broken=false,count=0;dc.forEach((c,i)=>{if(!i||count>=params.max_entries)return;const prev=dc[i-1];if(prev.close>orbH)broken=true;if(!broken)return;const e=tryEntry(c,prev,orbH,c.low,params,params.rr_orb);if(e){signals.push({time:c.time,type:'LONG',setup:'ORB',...e});broken=false;count++;}});});return signals;}
+function strategyORB(candles,params){const signals=[],byDay={};candles.forEach((c,gi)=>{const d=getDateStr(c.time);if(!byDay[d])byDay[d]=[];byDay[d].push({...c,_gi:gi});});Object.values(byDay).forEach(dc=>{const orb=dc.filter(c=>{const h=getHHMM(c.time);return h>=930&&h<930+params.orb_min;});if(!orb.length)return;const orbH=Math.max(...orb.map(c=>c.high));let broken=false,count=0;dc.forEach((c,i)=>{if(!i||count>=params.max_entries)return;const prev=dc[i-1];if(prev.close>orbH)broken=true;if(!broken)return;const e=tryEntry(c,prev,orbH,c.low,params,params.rr_orb);if(e){signals.push({time:c.time,type:'LONG',setup:'ORB',...e,signal_candle_index:c._gi});broken=false;count++;}});});return signals;}
 
-function strategyOB(candles,params){const signals=[];for(let i=1;i<candles.length-params.lookback;i++){const c=candles[i];if(c.close>=c.open)continue;const tot=c.high-c.low;if(!tot)continue;if(Math.abs(c.close-c.open)/tot<params.momentum)continue;const obH=c.high,obL=c.low;let maxF=-Infinity;for(let j=i+1;j<Math.min(i+params.lookback,candles.length);j++)maxF=Math.max(maxF,candles[j].high);if(maxF<=obH*1.001)continue;for(let j=i+1;j<Math.min(i+50,candles.length);j++){const r=candles[j],prev=candles[j-1];const e=tryEntry(r,prev,obH,obL,params,params.rr_ob);if(e){signals.push({time:r.time,type:'LONG',setup:'OB',...e});break;}}}return signals;}
+function strategyOB(candles,params){const signals=[];for(let i=1;i<candles.length-params.lookback;i++){const c=candles[i];if(c.close>=c.open)continue;const tot=c.high-c.low;if(!tot)continue;if(Math.abs(c.close-c.open)/tot<params.momentum)continue;const obH=c.high,obL=c.low;let maxF=-Infinity;let retestIdx=-1;for(let j=i+1;j<Math.min(i+params.lookback,candles.length);j++){if(candles[j].high>maxF){maxF=candles[j].high;}if(retestIdx<0&&candles[j].low<=obH)retestIdx=j;}if(maxF<=obH*1.001)continue;for(let j=i+1;j<Math.min(i+50,candles.length);j++){const r=candles[j],prev=candles[j-1];const e=tryEntry(r,prev,obH,obL,params,params.rr_ob);if(e){signals.push({time:r.time,type:'LONG',setup:'OB',...e,ob_high:obH,ob_low:obL,ob_origin_ts:c.time,momentum_ts:c.time,retest_ts:retestIdx>=0?candles[retestIdx].time:r.time,signal_candle_index:j});break;}}}return signals;}
 
 function strategyCombined(candles,params){const all=[...strategyPDHPDL(candles,{...params,rr:params.rr_comb}),...strategyORB(candles,{...params,rr_orb:params.rr_comb}),...strategyOB(candles,{...params,rr_ob:params.rr_comb})].sort((a,b)=>a.time-b.time);if(params.conf<=1)return all;const merged=[];all.forEach(s=>{const nearby=all.filter(s2=>s2!==s&&Math.abs(s2.time-s.time)<15*60*1000&&Math.abs(s2.entry-s.entry)<s.entry*0.005);if(nearby.length>=params.conf-1&&!merged.find(m=>Math.abs(m.time-s.time)<5*60*1000))merged.push(s);});return merged;}
 
@@ -965,10 +1165,18 @@ function runStrategy(candles,params){let signals=[];if(params.strategy==='pdh_pd
 // Simulation loop — UTC-based EOD detection.
 // Market close: 16:00 ET = 20:00 UTC → getHHMM (UTC) >= 2000.
 // lastC filter also uses UTC: last bar with getHHMM < 2000 on the same UTC day.
-const trades=signals.map(s=>{const future=candles.filter(c=>c.time>s.time);let esito='APERTO',uscita=s.entry;
-for(const c of future){const hhmm=getHHMM(c.time);if(!isSameDay(c.time,s.time)||hhmm>=2000){const lastC=future.filter(x=>isSameDay(x.time,s.time)&&getHHMM(x.time)<2000).pop();uscita=lastC?lastC.close:s.entry;esito='EOD';break;}if(s.type==='LONG'){if(c.low<=s.stop){esito='STOP';uscita=s.stop;break;}if(c.high>=s.target){esito='TARGET';uscita=s.target;break;}}else{if(c.high>=s.stop){esito='STOP';uscita=s.stop;break;}if(c.low<=s.target){esito='TARGET';uscita=s.target;break;}}}
+const trades=signals.map(s=>{
+// Find signal candle index in global allCandles
+const sigIdx=candles.findIndex(c=>c.time.getTime()===s.time.getTime());
+// Entry candle is same as signal candle for these strategies
+const entryIdx=sigIdx;
+const future=candles.slice(sigIdx+1);
+let esito='APERTO',uscita=s.entry,exitIdx=-1,exit_ts=null;
+for(let fi=0;fi<future.length;fi++){const c=future[fi];const hhmm=getHHMM(c.time);
+if(!isSameDay(c.time,s.time)||hhmm>=2000){const lastC=future.slice(0,fi).filter(x=>isSameDay(x.time,s.time)&&getHHMM(x.time)<2000).pop();uscita=lastC?lastC.close:s.entry;esito='EOD';exitIdx=lastC?candles.indexOf(lastC):sigIdx;exit_ts=lastC?lastC.time:s.time;break;}
+if(s.type==='LONG'){if(c.low<=s.stop){esito='STOP';uscita=s.stop;exitIdx=sigIdx+1+fi;exit_ts=c.time;break;}if(c.high>=s.target){esito='TARGET';uscita=s.target;exitIdx=sigIdx+1+fi;exit_ts=c.time;break;}}else{if(c.high>=s.stop){esito='STOP';uscita=s.stop;exitIdx=sigIdx+1+fi;exit_ts=c.time;break;}if(c.low<=s.target){esito='TARGET';uscita=s.target;exitIdx=sigIdx+1+fi;exit_ts=c.time;break;}}}
 let pnlPts=0,pnlUSD=0;if(esito!=='APERTO'){pnlPts=s.type==='LONG'?uscita-s.entry:s.entry-uscita;pnlUSD=calcPnlDollars(pnlPts,params);}
-return{...s,uscita,esito,pnlPts,pnlUSD};});
+return{...s,uscita,esito,pnlPts,pnlUSD,entry_ts:s.time,exit_ts,signal_candle_index:sigIdx,entry_candle_index:entryIdx,exit_candle_index:exitIdx};});
 const closed=trades.filter(t=>t.esito!=='APERTO');const aperti=trades.filter(t=>t.esito==='APERTO');const eods=closed.filter(t=>t.esito==='EOD');const wins=closed.filter(t=>t.esito==='TARGET');const losses=closed.filter(t=>t.esito==='STOP');const wr=closed.length?wins.length/closed.length*100:0;const totalUSD=closed.reduce((s,t)=>s+t.pnlUSD,0);const avgUSD=closed.length?totalUSD/closed.length:0;const maxWin=wins.length?Math.max(...wins.map(t=>t.pnlUSD)):0;const maxLoss=losses.length?Math.min(...losses.map(t=>t.pnlUSD)):0;let cum=0;const equity=closed.map(t=>{cum+=t.pnlUSD;return{time:t.time,cum};});const wickT=closed.filter(t=>t.trigger==='WICK');const engT=closed.filter(t=>t.trigger==='ENG');return{trades,closed,aperti,eods,wr,totalUSD,avgUSD,maxWin,maxLoss,equity,wickT,engT};}
 
 function fmt$(v){return(v>=0?'+':'')+v.toLocaleString('it-IT',{style:'currency',currency:'USD',minimumFractionDigits:0,maximumFractionDigits:0});}
