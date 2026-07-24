@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>BRR Prototype — 3 Candidates</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#0f0f0f;--surface:#1a1a1a;--surface2:#222;--surface3:#2a2a2a;
+  --border:rgba(255,255,255,0.08);--text:#f0f0f0;--muted:#888;
+  --green:#00c896;--red:#ff4d4d;--blue:#3987e5;--amber:#f59e0b;
+  --purple:#a78bfa;--radius:10px;
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;min-height:100vh;}
+header{padding:13px 22px;border-bottom:0.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+header h1{font-size:14px;font-weight:500;}
+header h1 span{color:var(--blue);}
+.hbadge{padding:3px 10px;border-radius:20px;font-size:10px;font-weight:600;letter-spacing:0.5px;white-space:nowrap;}
+.hbadge-b{background:rgba(57,135,229,0.12);color:var(--blue);border:0.5px solid rgba(57,135,229,0.3);}
+.hbadge-g{background:rgba(0,200,150,0.10);color:var(--green);border:0.5px solid rgba(0,200,150,0.25);}
+.back{background:var(--surface2);border:0.5px solid var(--border);color:var(--muted);padding:5px 11px;border-radius:8px;font-size:11px;text-decoration:none;}
+.back:hover{border-color:var(--blue);color:var(--blue);}
+
+/* tabs */
+.tab-bar{display:flex;border-bottom:0.5px solid var(--border);background:var(--surface);}
+.tab-btn{padding:11px 22px;font-size:12px;cursor:pointer;color:var(--muted);border:none;background:none;border-bottom:2px solid transparent;transition:all 0.15s;}
+.tab-btn:hover{color:var(--text);}
+.tab-btn.active{color:var(--blue);border-bottom-color:var(--blue);}
+
+/* page */
+.page{max-width:1200px;margin:0 auto;padding:18px 22px;display:flex;flex-direction:column;gap:12px;}
+.section{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px;}
+.stitle{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.9px;margin-bottom:10px;}
+
+/* chip */
+.chip{display:inline-block;font-size:8px;font-weight:700;padding:2px 6px;border-radius:8px;letter-spacing:0.5px;margin-left:4px;vertical-align:middle;}
+.cc{background:rgba(57,135,229,0.15);color:var(--blue);border:0.5px solid rgba(57,135,229,0.3);}
+.cp{background:rgba(167,139,250,0.15);color:var(--purple);border:0.5px solid rgba(167,139,250,0.3);}
+.co{background:rgba(0,200,150,0.12);color:var(--green);border:0.5px solid rgba(0,200,150,0.3);}
+.cm{background:rgba(136,136,136,0.10);color:var(--muted);border:0.5px solid rgba(136,136,136,0.2);}
+
+/* summary bar */
+.sum-bar{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;}
+.sum-card{background:var(--surface2);border-radius:8px;padding:10px 12px;}
+.sum-card .sk{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:3px;}
+.sum-card .sv{font-size:14px;font-weight:600;}
+
+/* chart */
+.chart-wrap{width:100%;background:var(--bg);border-radius:8px;overflow:hidden;}
+.pb-bar{display:flex;gap:5px;align-items:center;margin-top:8px;flex-wrap:wrap;}
+.pb-btn{background:var(--surface2);border:0.5px solid var(--border);color:var(--muted);padding:4px 11px;border-radius:7px;cursor:pointer;font-size:10px;}
+.pb-btn:hover{border-color:var(--blue);color:var(--blue);}
+.pb-btn.active{border-color:var(--blue);color:var(--blue);background:rgba(57,135,229,0.1);}
+.pb-lbl{font-size:9px;color:var(--muted);}
+
+/* rule list */
+.rule-list{display:flex;flex-direction:column;gap:5px;}
+.rule{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:7px;background:var(--surface2);font-size:11px;line-height:1.5;}
+.ri{width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0;margin-top:1px;}
+.ri.pass{background:rgba(0,200,150,0.2);color:var(--green);}
+.ri.fail{background:rgba(255,77,77,0.2);color:var(--red);}
+.rule strong{color:var(--text);}
+.rule .sub{color:var(--muted);}
+
+/* geo grid */
+.geo-row{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;margin-top:8px;}
+.geo-card{background:var(--surface2);border-radius:7px;padding:9px 10px;border:0.5px solid var(--border);}
+.geo-card .gn{font-size:8px;text-transform:uppercase;color:var(--muted);letter-spacing:0.6px;margin-bottom:3px;}
+.geo-card .gv{font-size:15px;font-weight:700;}
+.geo-card .gs{font-size:9px;color:var(--muted);margin-top:1px;}
+
+/* trade levels */
+.levels-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;}
+.lv-card{border-radius:7px;padding:10px 11px;border:0.5px solid;}
+.lv-card .lk{font-size:8px;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:3px;}
+.lv-card .lp{font-size:15px;font-weight:700;}
+.lv-card .ld{font-size:9px;margin-top:2px;opacity:0.7;}
+.lv-e{background:rgba(57,135,229,0.09);border-color:rgba(57,135,229,0.3);}.lv-e .lk,.lv-e .lp,.lv-e .ld{color:var(--blue);}
+.lv-s{background:rgba(255,77,77,0.09);border-color:rgba(255,77,77,0.3);}.lv-s .lk,.lv-s .lp,.lv-s .ld{color:var(--red);}
+.lv-r{background:rgba(0,200,150,0.07);border-color:rgba(0,200,150,0.25);}.lv-r .lk,.lv-r .lp,.lv-r .ld{color:var(--green);}
+.lv-rk{background:rgba(136,136,136,0.06);border-color:rgba(136,136,136,0.2);}.lv-rk .lk{color:var(--muted);}.lv-rk .lp{color:var(--text);}
+
+/* failed retests */
+.fr-list{display:flex;flex-direction:column;gap:5px;}
+.fr{background:rgba(255,77,77,0.06);border:0.5px solid rgba(255,77,77,0.2);border-radius:7px;padding:8px 10px;font-size:11px;}
+.fr .ft{color:var(--red);font-weight:600;margin-bottom:3px;}
+.fr .fr-sub{color:var(--muted);}
+
+/* candle diagram */
+.cv-wrap{display:flex;flex-direction:column;align-items:center;padding:12px;background:var(--surface2);border-radius:8px;min-width:90px;gap:0;}
+.cv-wup{width:2px;border-radius:1px;background:var(--muted);}
+.cv-body{width:16px;border-radius:2px;}
+.cv-wdn{width:2px;border-radius:1px;}
+.cv-lbl{font-size:8px;color:var(--muted);text-align:center;margin-top:6px;}
+
+/* verdict */
+.verdict-row{display:flex;gap:8px;}
+.verdict-btn{flex:1;padding:11px;border-radius:var(--radius);border:0.5px solid var(--border);background:var(--surface2);cursor:pointer;font-size:12px;font-weight:500;text-align:center;transition:all 0.15s;}
+.verdict-btn .ico{font-size:18px;display:block;margin-bottom:3px;}
+.verdict-btn.yes:hover,.verdict-btn.yes.sel{background:rgba(0,200,150,0.15);border-color:var(--green);color:var(--green);}
+.verdict-btn.almost:hover,.verdict-btn.almost.sel{background:rgba(245,158,11,0.15);border-color:var(--amber);color:var(--amber);}
+.verdict-btn.no:hover,.verdict-btn.no.sel{background:rgba(255,77,77,0.15);border-color:var(--red);color:var(--red);}
+
+.info-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:0.5px solid var(--border);font-size:11px;}
+.info-row:last-child{border-bottom:none;}
+.ik{color:var(--muted);}
+.iv{font-weight:500;}
+.green{color:var(--green);}.red{color:var(--red);}.blue{color:var(--blue);}.amber{color:var(--amber);}.purple{color:var(--purple);}
+
+.note{background:rgba(245,158,11,0.07);border:0.5px solid rgba(245,158,11,0.25);border-radius:7px;padding:9px 11px;font-size:11px;color:var(--amber);line-height:1.5;margin-top:8px;}
+.divider{height:0.5px;background:var(--border);margin:10px 0;}
+
+/* preset box */
+.preset-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;}
+.pr-card{background:var(--surface2);border-radius:7px;padding:9px 10px;border:0.5px solid rgba(167,139,250,0.2);}
+.pr-card .pk{font-size:8px;text-transform:uppercase;letter-spacing:0.6px;color:var(--purple);margin-bottom:3px;}
+.pr-card .pv{font-size:12px;font-weight:600;}
+.pr-card .ps{font-size:9px;color:var(--muted);margin-top:1px;}
+
+.tab-content{display:none;}
+.tab-content.active{display:block;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Break–Retest–Rejection <span>Phase 1 Prototype</span></h1>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <span class="hbadge hbadge-b">ISOLATED PROTOTYPE</span>
+    <span class="hbadge hbadge-g">3 CANDIDATES — SPY 5m</span>
+    <a href="index.html" class="back">← Dashboard</a>
+    <a href="orb_candidate_review.html" class="back">Spec Review</a>
+  </div>
+</header>
+
+<!-- ── Preset summary ── -->
+<div style="background:var(--surface);border-bottom:0.5px solid var(--border);padding:12px 22px;">
+  <div style="max-width:1200px;margin:0 auto;">
+    <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;">
+      Frozen Preset <span class="chip cp">EXAMPLE PARAMETER</span> — Logic is Level-agnostic <span class="chip cc">CORE LOGIC</span>
+    </div>
+    <div class="preset-grid">
+      <div class="pr-card"><div class="pk">Level Source</div><div class="pv">ORB High</div><div class="ps">09:30 candle · SPY 5m</div></div>
+      <div class="pr-card"><div class="pk">Direction</div><div class="pv">LONG</div><div class="ps">Break above → retest from above</div></div>
+      <div class="pr-card"><div class="pk">Min Rej Wick</div><div class="pv">≥ 47%</div><div class="ps">Lower wick / range (LONG)</div></div>
+      <div class="pr-card"><div class="pk">Max Body</div><div class="pv">≤ 40%</div><div class="ps">|C−O| / range</div></div>
+      <div class="pr-card"><div class="pk">Min Close Loc</div><div class="pv">≥ 80%</div><div class="ps">(C−L) / range</div></div>
+      <div class="pr-card"><div class="pk">Entry Model</div><div class="pv">Close</div><div class="ps">Conf candle close · 0 tick buffer</div></div>
+      <div class="pr-card"><div class="pk">Stop</div><div class="pv">Candle Low</div><div class="ps">0 tick stop buffer</div></div>
+      <div class="pr-card"><div class="pk">Targets</div><div class="pv">2R · 3R · 4R</div><div class="ps">Risk = entry − stop</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Candidate tabs ── -->
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="showTab(0,this)">① 2026-05-26</button>
+  <button class="tab-btn" onclick="showTab(1,this)">② 2026-06-08</button>
+  <button class="tab-btn" onclick="showTab(2,this)">③ 2026-07-06</button>
+  <button class="tab-btn" onclick="showTab(3,this)">Verdict</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     CANDIDATE 1 — 2026-05-26
+══════════════════════════════════════════════════ -->
+<div class="tab-content active" id="tab0">
+<div class="page">
+
+  <!-- Summary -->
+  <div class="section">
+    <div class="stitle">Candidate 1 — SPY 2026-05-26 — ORB High 750.44</div>
+    <div class="sum-bar">
+      <div class="sum-card"><div class="sk">Level (ORB High)</div><div class="sv blue">750.44</div></div>
+      <div class="sum-card"><div class="sk">Breakout</div><div class="sv green">09:40 · C=750.63</div></div>
+      <div class="sum-card"><div class="sk">Displacement</div><div class="sv">1 bar · +0.68 pts</div></div>
+      <div class="sum-card"><div class="sk">Failed Retests</div><div class="sv red">2</div></div>
+      <div class="sum-card"><div class="sk">Entry</div><div class="sv blue">11:05 · 750.89</div></div>
+    </div>
+  </div>
+
+  <!-- Chart -->
+  <div class="section">
+    <div class="stitle">Chart — 5-min Candles</div>
+    <div class="chart-wrap"><svg id="chart0" viewBox="0 0 1152 460" style="width:100%;height:auto;display:block;"></svg></div>
+    <div class="pb-bar">
+      <span class="pb-lbl">Phase:</span>
+      <button class="pb-btn active" onclick="phase(0,'all',this)">Full</button>
+      <button class="pb-btn" onclick="phase(0,'orb',this)">① Level</button>
+      <button class="pb-btn" onclick="phase(0,'break',this)">② Break</button>
+      <button class="pb-btn" onclick="phase(0,'disp',this)">③ Displacement</button>
+      <button class="pb-btn" onclick="phase(0,'retest',this)">④ Retest</button>
+      <button class="pb-btn" onclick="phase(0,'entry',this)">⑤ Entry</button>
+    </div>
+  </div>
+
+  <!-- Trade levels -->
+  <div class="section">
+    <div class="stitle">Trade Parameters</div>
+    <div class="levels-grid">
+      <div class="lv-card lv-e"><div class="lk">Entry</div><div class="lp">750.89</div><div class="ld">Close of conf candle 11:05</div></div>
+      <div class="lv-card lv-s"><div class="lk">Stop</div><div class="lp">750.37</div><div class="ld">Low of conf candle</div></div>
+      <div class="lv-card lv-rk"><div class="lk">Risk (1R)</div><div class="lp">0.53</div><div class="ld">Entry − Stop</div></div>
+      <div class="lv-card lv-r"><div class="lk">2R Target</div><div class="lp">751.94</div><div class="ld">+1.05</div></div>
+      <div class="lv-card lv-r"><div class="lk">3R Target</div><div class="lp">752.47</div><div class="ld">+1.58</div></div>
+      <div class="lv-card lv-r"><div class="lk">4R Target</div><div class="lp">752.99</div><div class="ld">+2.10</div></div>
+    </div>
+  </div>
+
+  <!-- Rejection candle geometry -->
+  <div class="section">
+    <div class="stitle">Rejection Candle Geometry — 11:05 <span class="chip cc">CORE LOGIC: geometry only — no color filter</span></div>
+    <div style="display:flex;gap:14px;align-items:flex-start;">
+      <div class="cv-wrap" style="min-width:80px;">
+        <div style="font-size:8px;color:var(--muted);margin-bottom:8px;text-align:center;">11:05<br>O=750.77 H=750.97<br>L=750.37 C=750.89</div>
+        <div class="cv-wup" style="height:9px;"></div>
+        <div class="cv-body" style="height:27px;background:var(--green);border:1px solid #00e8a8;"></div>
+        <div class="cv-wdn" style="height:36px;background:var(--amber);"></div>
+        <div class="cv-lbl">🟢 green<br><span style="font-size:7px;">(metadata only)</span></div>
+      </div>
+      <div style="flex:1;">
+        <div class="geo-row">
+          <div class="geo-card"><div class="gn">Rej Wick <span class="chip cp" style="font-size:7px;">PARAM ≥47%</span></div><div class="gv green">67%</div><div class="gs">0.40/0.60 ✓ passes</div></div>
+          <div class="geo-card"><div class="gn">Body <span class="chip cp" style="font-size:7px;">PARAM ≤40%</span></div><div class="gv blue">20%</div><div class="gs">0.12/0.60 ✓ passes</div></div>
+          <div class="geo-card"><div class="gn">Opp Wick</div><div class="gv" style="color:var(--muted);">13%</div><div class="gs">0.08/0.60</div></div>
+          <div class="geo-card"><div class="gn">Close Loc <span class="chip cp" style="font-size:7px;">PARAM ≥80%</span></div><div class="gv blue">87%</div><div class="gs">(C−L)/rng ✓ passes</div></div>
+          <div class="geo-card"><div class="gn">Penetration</div><div class="gv red">−0.08 pts</div><div class="gs">Level 750.44 − L 750.37</div></div>
+          <div class="geo-card"><div class="gn">Close above</div><div class="gv green">+0.45 pts</div><div class="gs">C 750.89 − Level 750.44</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rule-by-rule -->
+  <div class="section">
+    <div class="stitle">Rule-by-Rule Walkthrough</div>
+    <div class="rule-list">
+      <div class="rule"><div class="ri pass">✓</div><div><strong>Level established — ORB High 750.44</strong> <span class="chip cp">PARAM</span><br><span class="sub">09:30 candle: O=750.01 H=750.44 L=749.36 C=749.43. High of 09:30 bar is the level.</span></div></div>
+      <div class="rule"><div class="ri pass">✓</div><div><strong>Confirmed break — candle closes above level</strong> <span class="chip cc">CORE</span><br><span class="sub">09:40: C=750.63 > 750.44. First bar to close above ORB High. Wick-only breaks before this were not counted.</span></div></div>
+      <div class="rule"><div class="ri pass">✓</div><div><strong>Displacement — price moved away from level</strong> <span class="chip cc">CORE</span><br><span class="sub">Observed: 1 bar (09:45) with low 750.64 > 750.44. Max high 751.12 (+0.68 pts). Displacement measurement method is a future parameter — observation recorded.</span></div></div>
+      <div class="rule"><div class="ri pass">✓</div><div><strong>Retest begins — price returns to level</strong> <span class="chip cc">CORE</span><br><span class="sub">09:50: low=749.58 ≤ 750.44. First retest candle touches the level.</span></div></div>
+      <div class="rule"><div class="ri fail">✗</div><div><strong>09:50 — FAILED RETEST (geometry)</strong> <span class="chip cc">CORE</span><br><span class="sub">O=750.98 H=751.04 L=749.58 C=750.14. Closes below level (750.14 ≤ 750.44). Rej wick=0.38 &lt; 0.47, body=0.58 &gt; 0.40, close_loc=0.38 &lt; 0.80. Multiple failures. Engine continues waiting.</span></div></div>
+      <div class="rule"><div class="ri fail">✗</div><div><strong>09:55 — FAILED RETEST (geometry)</strong> <span class="chip cc">CORE</span><br><span class="sub">O=750.16 H=750.78 L=750.09 C=750.78. Closes above level, but rej_wick=0.09 &lt; 0.47 and body=0.91 &gt; 0.40. Engulfing-style candle — body too large. Engine continues waiting.</span></div></div>
+      <div class="rule"><div class="ri pass">✓</div><div><strong>10:00–11:00 — Price consolidates above level, engine waits</strong><br><span class="sub">Multiple bars trade near/above level but no wick touches it. Engine remains on watch.</span></div></div>
+      <div class="rule"><div class="ri pass">✓</div><div><strong>11:05 — Valid rejection candle</strong> <span class="chip cc">CORE</span><br><span class="sub">O=750.77 H=750.97 L=750.37 C=750.89. Wick penetrates to 750.37 (below 750.44), closes at 750.89 (above). All geometry thresholds passed: wick 67% ✓ body 20% ✓ close_loc 87% ✓.</span></div></div>
+      <div class="rule"><div class="ri pass">✓</div><div><strong>Entry at confirmation close</strong> <span class="chip cp">PARAM: Model A</span><br><span class="sub">Entry = 750.89. Stop = 750.37 (candle low). Risk = 0.52 pts.</span></div></div>
+    </div>
+    <div class="note" style="margin-top:8px;">⚠️ Outcome: price dropped below stop shortly after entry (11:10+ low 750.47 then 750.06 at 11:15). This candidate was not selected for profitability — it demonstrates the correct detection sequence including 2 failed retests before the valid confirmation.</div>
+  </div>
+
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     CANDIDATE 2 — 2026-06-08
+══════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab1">
+<div class="page">
+
+  <div class="section">
+    <div class="stitle">Candidate 2 — SPY 2026-06-08 — ORB High 744.51</div>
+    <div class="sum-bar">
+      <div class="sum-card"><div class="sk">Level (ORB High)</div><div class="sv blue">744.51</div></div>
+      <div class="sum-card"><div class="sk">Breakout</div><div class="sv green">10:55 · C=744.995</div></div>
+      <div class="sum-card"><div class="sk">Displacement</div><div class="sv">3 bars · +0.83 pts</div></div>
+      <div class="sum-card"><div class="sk">Failed Retests</div><div class="sv red">1</div></div>
+      <div class="sum-card"><div class="sk">Entry</div><div class="sv blue">11:20 · 744.93</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="stitle">Chart — 5-min Candles</div>
+    <div class="chart-wrap"><svg id="chart1" viewBox="0 0 1152 460" style="width:100%;height:auto;display:block;"></svg></div>
+    <div class="pb-bar">
+      <span class="pb-lbl">Phase:</span>
+      <button class="pb-btn active" onclick="phase(1,'all',this)">Full</button>
+      <button class="pb-btn" onclick="phase(1,'orb',this)">① Level</button>
+      <button class="pb-btn" onclick="phase(1,'break',this)">② Break</button>
+      <button class="pb-btn" onclick="phase(1,'disp',this)">③ Displacement</button>
+      <button class="pb-btn" onclick="phase(1,'retest',this)">④ Retest</button>
+      <button class="pb-btn" onclick="phase(1,'entry',this)">⑤ Entry</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="stitle">Trade Parameters</div>
+    <div class="levels-grid">
+      <div class="lv-card lv-e"><div class="lk">Entry</div><div class="lp">744.93</div><div class="ld">Close of conf candle 11:20</div></div>
+      <div class="lv-card lv-s"><div class="lk">Stop</div><div class="lp">744.14</div><div class="ld">Low of conf candle</div></div>
+      <div class="lv-card lv-rk"><div class="lk">Risk (1R)</div><div class="lp">0.79</div><div class="ld">Entry − Stop</div></div>
+      <div class="lv-card lv-r"><div class="lk">2R Target</div><div class="lp">746.51</div><div class="ld">+1.58</div></div>
+      <div class="lv-card lv-r"><div class="lk">3R Target</div><div class="lp">747.30</div><div class="ld">+2.37</div></div>
+      <div class="lv-card lv-r"><div class="lk">4R Target</div><div class="lp">748.09</div><div class="ld">+3.16</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="stitle">Rejection Candle Geometry — 11:20 <span class="chip cc">CORE LOGIC: geometry only — no color filter</span></div>
+    <div style="display:flex;gap:14px;align-items:flex-start;">
+      <div class="cv-wrap" style="min-width:80px;">
+        <div style="font-size:8px;color:var(--muted);margin-bottom:8px;text-align:center;">11:20<br>O=744.84 H=745.08<br>L=744.14 C=744.93</div>
+        <div class="cv-wup" style="height:12px;"></div>
+        <div class="cv-body" style="height:8px;background:var(--green);border:1px solid #00e8a8;"></div>
+        <div class="cv-wdn" style="height:56px;background:var(--amber);"></div>
+        <div class="cv-lbl">🟢 green<br><span style="font-size:7px;">(metadata only)</span></div>
+      </div>
+      <div style="flex:1;">
+        <div class="geo-row">
+          <div class="geo-card"><div class="gn">Rej Wick <span class="chip cp" style="font-size:7px;">PARAM ≥47%</span></div><div class="gv green">74%</div><div class="gs">0.70/0.94 ✓ passes</div></div>
+          <div class="geo-card"><div class="gn">Body <span class="chip cp" style="font-size:7px;">PARAM ≤40%</span></div><div class="gv blue">10%</div><div class="gs">0.09/0.94 ✓ passes</div></div>
+          <div class="geo-card"><div class="gn">Opp Wick</div><div class="gv" style="color:var(--muted);">16%</div><div class="gs">0.15/0.94</div></div>
+          <div class="geo-card"><div class="gn">Close Loc <span class="chip cp" style="font-size:7px;">PARAM ≥80%</span></div><div class="gv blue">84%</div><div class="gs">(C−L)/rng ✓ passes</div></div>
+          <div class="geo-card"><div class="gn">Penetration</div><div class="gv red">−0.37 pts</div><div class="gs">Level 744.51 − L 744.14</div></div>
+          <div class="geo-card"><div class="gn">Close above</div><div class="gv green">+0.42 pts</div><div class="gs">C 744.93 − Level 744.51</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="stitle">Rule-by-Rule Walkthrough</div>
+    <div class="rule-list">
+      <div class="rule"><div class="ri pass">✓</div><div><strong>Level — ORB High 744.51</strong> <span class="chip cp">PARAM</span><br><span class="sub">09:30 candle: O=743.36 H=744.51 L=742.15 C=742.19. The 09:30 bar is wide and bearish — price spent the morning well below the level.</span></div></div>
+      <div class="rule"><div class="ri pass">✓</div><div><strong>Confirmed break — 10:55</strong> <span class="chip cc">CORE</span><br><span class="sub">C=744.995 > 744.51. First candle to close above ORB High. The morning (09:35–10:50) had 15 bars all closing below the level.</span></div></div>
+      <div class="rule"><div class="ri pass">✓</div><div><strong>Displacement — 11:00 through 11:10</strong> <span class="chip cc">CORE</span><br><span class="sub">Observed: 3 bars with low > 744.51. Max high 745.34 (+0.83 pts above level). Momentum clearly established before retest.</span></div></div>
+      <div class="rule"><div class="ri pass">✓</div><div><strong>Retest begins — 11:15</strong> <span class="chip cc">CORE</span><br><span class="sub">L=744.39 ≤ 744.51. First retest candle touches the level from above.</span></div></div>
+      <div class="rule"><div class="ri fail">✗</div><div><strong>11:15 — FAILED RETEST (close_loc)</strong> <span class="chip cc">CORE</span><br><span class="sub">O=744.77 H=745.16 L=744.39 C=744.84. Closes above level (744.84 > 744.51) but close_loc=0.59 &lt; 0.80. The close is too low in the candle range — price did not reject convincingly enough. Engine waits.</span></div></div>
+      <div class="rule"><div class="ri pass">✓</div><div><strong>11:20 — Valid rejection candle</strong> <span class="chip cc">CORE</span><br><span class="sub">O=744.84 H=745.08 L=744.14 C=744.93. Wick penetrates to 744.14 (−0.37 below level). Closes at 744.93 (+0.42 above). All geometry: wick 74% ✓ body 10% ✓ close_loc 84% ✓. Very clean textbook hammer shape.</span></div></div>
+      <div class="rule"><div class="ri pass">✓</div><div><strong>Entry at confirmation close</strong> <span class="chip cp">PARAM: Model A</span><br><span class="sub">Entry = 744.93. Stop = 744.14. Risk = 0.79 pts.</span></div></div>
+    </div>
+    <div class="note" style="margin-top:8px;">⚠️ Outcome: stop hit at 11:25 (L=743.11). This is the cleanest geometry of the three candidates — rej_wick 74%, body only 10%. Selected as a textbook visual example of the rejection candle rule.</div>
+  </div>
+
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     CANDIDATE 3 — 2026-07-06
+══════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab2">
+<div class="page">
+
+  <div class="section">
+    <div class="stitle">Candidate 3 — SPY 2026-07-06 — ORB High 749.49</div>
+    <div class="sum-bar">
+      <div class="sum-card"><div class="sk">Level (ORB High)</div><div class="sv blue">749.49</div></div>
+      <div class="sum-card"><div class="sk">Breakout</div><div class="sv green">10:20 · C=749.65</div></div>
+      <div class="sum-card"><div class="sk">Displacement</div><div class="sv">2 bars · +0.69 pts</div></div>
+      <div class="sum-card"><div class="sk">Failed Retests</div><div class="sv red">1</div></div>
+      <div class="sum-card"><div class="sk">Entry</div><div class="sv blue">10:40 · 749.67</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="stitle">Chart — 5-min Candles</div>
+    <div class="chart-wrap"><svg id="chart2" viewBox="0 0 1152 460" style="width:100%;height:auto;display:block;"></svg></div>
+    <div class="pb-bar">
+      <span class="pb-lbl">Phase:</span>
+      <button class="pb-btn active" onclick="phase(2,'all',this)">Full</button>
+      <button class="pb-btn" onclick="phase(2,'orb',this)">① Level</button>
+      <button class="pb-btn" onclick="phase(2,'break',this)">② Break</button>
+      <button class="pb-btn" onclick="phase(2,'disp',this)">③ Displacement</button>
+      <button class="pb-btn" onclick="phase(2,'retest',this)">④ Retest</button>
+      <button class="pb-btn" onclick="phase(2,'entry',this)">⑤ Entry</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="stitle">Trade Parameters</div>
+    <div class="levels-grid">
+      <div class="lv-card lv-e"><div class="lk">Entry</div><div class="lp">749.67</div><div class="ld">Close of conf candle 10:40</div></div>
+      <div class="lv-card lv-s"><div class="lk">Stop</div><div class="lp">749.10</div><div class="ld">Low of conf candle</div></div>
+      <div class="lv-card lv-rk"><div class="lk">Risk (1R)</div><div class="lp">0.57</div><div class="ld">Entry − Stop</div></div>
+      <div class="lv-card lv-r"><div class="lk">2R Target</div><div class="lp">750.81</div><div class="ld">+1.14</div></div>
+      <div class="lv-card lv-r"><div class="lk">3R Target</div><div class="lp">751.38</div><div class="ld">+1.71</div></div>
+      <div class="lv-card lv-r"><div class="lk">4R Target</div><div class="lp">751.95</div><div class="ld">+2.28</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="stitle">Rejection Candle Geometry — 10:40 <span class="chip cc">CORE LOGIC: geometry only — no color filter</span></div>
+    <div style="display:flex;gap:14px;align-items:flex-start;">
+      <div class="cv-wrap" style="min-width:80px;">
+        <div style="font-size:8px;color:var(--muted);margin-bottom:8px;text-align:center;">10:40<br>O=749.65 H=749.76<br>L=749.10 C=749.67</div>
+        <div class="cv-wup" style="height:9px;"></div>
+        <div class="cv-body" style="height:3px;background:var(--green);border:1px solid #00e8a8;"></div>
+        <div class="cv-wdn" style="height:60px;background:var(--amber);"></div>
+        <div class="cv-lbl">🟢 green<br><span style="font-size:7px;">(metadata only)</span></div>
+      </div>
+      <div style="flex:1;">
+        <div class="geo-row">
+          <div class="geo-card"><div class="gn">Rej Wick <span class="chip cp" style="font-size:7px;">PARAM ≥47%</span></div><div class="gv green">84%</div><div class="gs">0.55/0.66 ✓ passes</div></div>
+          <div class="geo-card"><div class="gn">Body <span class="chip cp" style="font-size:7px;">PARAM ≤40%</span></div><div class="gv blue">3%</div><div class="gs">0.02/0.66 ✓ passes</div></div>
+          <div class="geo-card"><div class="gn">Opp Wick</div><div class="gv" style="color:var(--muted);">13%</div><div class="gs">0.09/0.66</div></div>
+          <div class="geo-card"><div class="gn">Close Loc <span class="chip cp" style="font-size:7px;">PARAM ≥80%</span></div><div class="gv blue">87%</div><div class="gs">(C−L)/rng ✓ passes</div></div>
+          <div class="geo-card"><div class="gn">Penetration</div><div class="gv red">−0.39 pts</div><div class="gs">Level 749.49 − L 749.10</div></div>
+          <div class="geo-card"><div class="gn">Close above</div><div class="gv green">+0.18 pts</div><div class="gs">C 749.67 − Level 749.49</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="stitle">Rule-by-Rule Walkthrough</div>
+    <div class="rule-list">
+      <div class="rule"><div class="ri pass">✓</div><div><strong>Level — ORB High 749.49</strong> <span class="chip cp">PARAM</span><br><span class="sub">09:30 candle: O=748.74 H=749.49 L=748.12 C=749.16. Morning opened with choppy price action below the level.</span></div></div>
+      <div class="rule"><div class="ri pass">✓</div><div><strong>Confirmed break — 10:20</strong> <span class="chip cc">CORE</span><br><span class="sub">C=749.65 > 749.49. 9 bars between 09:35 and 10:15 all closed below the level. The breakout at 10:20 is the first close above.</span></div></div>
+      <div class="rule"><div class="ri pass">✓</div><div><strong>Displacement — 10:25 and 10:30</strong> <span class="chip cc">CORE</span><br><span class="sub">Observed: 2 bars with low > 749.49. Max high 750.17 (+0.69 pts). Clean directional move with two full bars above the level.</span></div></div>
+      <div class="rule"><div class="ri pass">✓</div><div><strong>Retest begins — 10:35</strong> <span class="chip cc">CORE</span><br><span class="sub">L=749.44 ≤ 749.49. First retest candle touches the level.</span></div></div>
+      <div class="rule"><div class="ri fail">✗</div><div><strong>10:35 — FAILED RETEST (close_loc)</strong> <span class="chip cc">CORE</span><br><span class="sub">O=749.70 H=749.86 L=749.44 C=749.67. Closes above level but close_loc=0.54 &lt; 0.80. The close sits in the middle of the candle — not a convincing rejection. Engine waits.</span></div></div>
+      <div class="rule"><div class="ri pass">✓</div><div><strong>10:40 — Valid rejection candle — strongest geometry of all 3</strong> <span class="chip cc">CORE</span><br><span class="sub">O=749.65 H=749.76 L=749.10 C=749.67. Wick drives to 749.10 (−0.39 below level), body is nearly a doji (3%), closes at 749.67. Rej_wick 84% — the most pronounced rejection candle in the dataset. All thresholds pass by a wide margin.</span></div></div>
+      <div class="rule"><div class="ri pass">✓</div><div><strong>Entry at confirmation close</strong> <span class="chip cp">PARAM: Model A</span><br><span class="sub">Entry = 749.67. Stop = 749.10. Risk = 0.57 pts.</span></div></div>
+    </div>
+    <div class="note" style="margin-top:8px;">✅ Outcome: price moved to 2R (750.81) by 11:25. The 84% rejection wick and near-doji body on this candle make it the most visually obvious rejection of the three candidates.</div>
+  </div>
+
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     VERDICT TAB
+══════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab3">
+<div class="page">
+
+  <div class="section">
+    <div class="stitle">Summary — All 3 Candidates</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+      <!-- C1 -->
+      <div style="background:var(--surface2);border-radius:8px;padding:12px;">
+        <div style="font-size:10px;font-weight:700;color:var(--blue);margin-bottom:8px;">① 2026-05-26</div>
+        <div class="info-row"><span class="ik">Level</span><span class="iv">750.44</span></div>
+        <div class="info-row"><span class="ik">Breakout</span><span class="iv green">09:40</span></div>
+        <div class="info-row"><span class="ik">Disp bars</span><span class="iv">1 (+0.68 pts)</span></div>
+        <div class="info-row"><span class="ik">Failed retests</span><span class="iv red">2</span></div>
+        <div class="info-row"><span class="ik">Conf candle</span><span class="iv green">11:05</span></div>
+        <div class="info-row"><span class="ik">Rej wick</span><span class="iv green">67%</span></div>
+        <div class="info-row"><span class="ik">Body</span><span class="iv blue">20%</span></div>
+        <div class="info-row"><span class="ik">Close loc</span><span class="iv blue">87%</span></div>
+        <div class="info-row"><span class="ik">Entry / Stop</span><span class="iv">750.89 / 750.37</span></div>
+        <div class="info-row"><span class="ik">Risk</span><span class="iv">0.52</span></div>
+        <div class="info-row"><span class="ik">2R / 3R / 4R</span><span class="iv green">751.94 / 752.47 / 752.99</span></div>
+        <div class="info-row"><span class="ik">Outcome</span><span class="iv red">Stop hit 11:10</span></div>
+      </div>
+      <!-- C2 -->
+      <div style="background:var(--surface2);border-radius:8px;padding:12px;">
+        <div style="font-size:10px;font-weight:700;color:var(--blue);margin-bottom:8px;">② 2026-06-08</div>
+        <div class="info-row"><span class="ik">Level</span><span class="iv">744.51</span></div>
+        <div class="info-row"><span class="ik">Breakout</span><span class="iv green">10:55</span></div>
+        <div class="info-row"><span class="ik">Disp bars</span><span class="iv">3 (+0.83 pts)</span></div>
+        <div class="info-row"><span class="ik">Failed retests</span><span class="iv red">1</span></div>
+        <div class="info-row"><span class="ik">Conf candle</span><span class="iv green">11:20</span></div>
+        <div class="info-row"><span class="ik">Rej wick</span><span class="iv green">74%</span></div>
+        <div class="info-row"><span class="ik">Body</span><span class="iv blue">10%</span></div>
+        <div class="info-row"><span class="ik">Close loc</span><span class="iv blue">84%</span></div>
+        <div class="info-row"><span class="ik">Entry / Stop</span><span class="iv">744.93 / 744.14</span></div>
+        <div class="info-row"><span class="ik">Risk</span><span class="iv">0.79</span></div>
+        <div class="info-row"><span class="ik">2R / 3R / 4R</span><span class="iv green">746.51 / 747.30 / 748.09</span></div>
+        <div class="info-row"><span class="ik">Outcome</span><span class="iv red">Stop hit 11:25</span></div>
+      </div>
+      <!-- C3 -->
+      <div style="background:var(--surface2);border-radius:8px;padding:12px;border:0.5px solid rgba(0,200,150,0.25);">
+        <div style="font-size:10px;font-weight:700;color:var(--green);margin-bottom:8px;">③ 2026-07-06 ← strongest geometry</div>
+        <div class="info-row"><span class="ik">Level</span><span class="iv">749.49</span></div>
+        <div class="info-row"><span class="ik">Breakout</span><span class="iv green">10:20</span></div>
+        <div class="info-row"><span class="ik">Disp bars</span><span class="iv">2 (+0.69 pts)</span></div>
+        <div class="info-row"><span class="ik">Failed retests</span><span class="iv red">1</span></div>
+        <div class="info-row"><span class="ik">Conf candle</span><span class="iv green">10:40</span></div>
+        <div class="info-row"><span class="ik">Rej wick</span><span class="iv green">84%</span></div>
+        <div class="info-row"><span class="ik">Body</span><span class="iv blue">3%</span></div>
+        <div class="info-row"><span class="ik">Close loc</span><span class="iv blue">87%</span></div>
+        <div class="info-row"><span class="ik">Entry / Stop</span><span class="iv">749.67 / 749.10</span></div>
+        <div class="info-row"><span class="ik">Risk</span><span class="iv">0.57</span></div>
+        <div class="info-row"><span class="ik">2R / 3R / 4R</span><span class="iv green">750.81 / 751.38 / 751.95</span></div>
+        <div class="info-row"><span class="ik">Outcome</span><span class="iv green">2R reached 11:25</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="stitle">Your Verdict — Would you have taken these trades?</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">
+      Review all three candidates. If the detection sequence matches your intent, the engine is correct and we can proceed to build the full configurable Strategy Builder.
+    </p>
+    <div class="verdict-row">
+      <button class="verdict-btn yes" onclick="setVerdict('yes',this)"><span class="ico">✅</span>YES — Engine understood correctly<br><span style="font-size:10px;font-weight:400;">All 3 are trades I would take</span></button>
+      <button class="verdict-btn almost" onclick="setVerdict('almost',this)"><span class="ico">⚠️</span>ALMOST — Adjust thresholds<br><span style="font-size:10px;font-weight:400;">Logic correct, some params wrong</span></button>
+      <button class="verdict-btn no" onclick="setVerdict('no',this)"><span class="ico">❌</span>NO — Misunderstood<br><span style="font-size:10px;font-weight:400;">Detection logic is wrong</span></button>
+    </div>
+    <div id="verdict-note" style="display:none;margin-top:10px;padding:12px;border-radius:8px;font-size:12px;"></div>
+  </div>
+
+</div>
+</div>
+
+<script>
+// ── Candle data ──
+const DATA = [
+  { // C1: 2026-05-26
+    level:750.44, orb_low:749.36,
+    candles:[
+      {t:'09:30',o:750.01,h:750.44,l:749.36,c:749.43,tag:'orb'},
+      {t:'09:35',o:749.45,h:750.00,l:749.13,c:749.73,tag:'other'},
+      {t:'09:40',o:749.72,h:750.70,l:749.69,c:750.63,tag:'breakout'},
+      {t:'09:45',o:750.65,h:751.12,l:750.64,c:750.98,tag:'disp'},
+      {t:'09:50',o:750.98,h:751.04,l:749.58,c:750.14,tag:'failed'},
+      {t:'09:55',o:750.16,h:750.78,l:750.09,c:750.78,tag:'failed'},
+      {t:'10:00',o:750.77,h:751.16,l:750.54,c:751.11,tag:'other'},
+      {t:'10:05',o:751.14,h:751.42,l:751.08,c:751.32,tag:'other'},
+      {t:'10:10',o:751.32,h:751.45,l:751.07,c:751.44,tag:'other'},
+      {t:'10:15',o:751.44,h:751.64,l:751.19,c:751.60,tag:'other'},
+      {t:'10:20',o:751.59,h:751.80,l:751.46,c:751.53,tag:'other'},
+      {t:'10:25',o:751.53,h:751.87,l:751.31,c:751.54,tag:'other'},
+      {t:'10:30',o:751.55,h:751.77,l:751.35,c:751.39,tag:'other'},
+      {t:'10:35',o:751.38,h:752.11,l:751.37,c:751.72,tag:'other'},
+      {t:'10:40',o:751.72,h:752.13,l:751.72,c:752.04,tag:'other'},
+      {t:'10:45',o:752.03,h:752.07,l:751.71,c:751.73,tag:'other'},
+      {t:'10:50',o:751.73,h:752.02,l:751.44,c:751.53,tag:'other'},
+      {t:'10:55',o:751.53,h:751.58,l:751.00,c:751.40,tag:'other'},
+      {t:'11:00',o:751.39,h:751.47,l:750.65,c:750.76,tag:'other'},
+      {t:'11:05',o:750.77,h:750.97,l:750.37,c:750.89,tag:'confirm'},
+      {t:'11:10',o:750.89,h:750.97,l:750.47,c:750.59,tag:'other'},
+      {t:'11:15',o:750.59,h:750.63,l:750.06,c:750.40,tag:'other'},
+      {t:'11:20',o:750.40,h:750.46,l:749.98,c:750.15,tag:'other'},
+      {t:'11:25',o:750.15,h:750.43,l:749.73,c:749.85,tag:'other'},
+      {t:'11:30',o:749.85,h:750.00,l:749.55,c:749.84,tag:'other'},
+    ]
+  },
+  { // C2: 2026-06-08
+    level:744.51, orb_low:742.15,
+    candles:[
+      {t:'09:30',o:743.36,h:744.51,l:742.15,c:742.19,tag:'orb'},
+      {t:'09:35',o:742.19,h:742.66,l:741.58,c:741.60,tag:'other'},
+      {t:'09:40',o:741.60,h:743.10,l:741.48,c:742.72,tag:'other'},
+      {t:'09:45',o:742.73,h:743.52,l:742.10,c:742.58,tag:'other'},
+      {t:'09:50',o:742.56,h:743.73,l:741.91,c:743.20,tag:'other'},
+      {t:'09:55',o:743.22,h:743.33,l:740.80,c:740.85,tag:'other'},
+      {t:'10:00',o:740.80,h:742.33,l:740.60,c:741.18,tag:'other'},
+      {t:'10:05',o:741.17,h:742.52,l:741.06,c:742.32,tag:'other'},
+      {t:'10:10',o:742.32,h:742.46,l:741.42,c:741.64,tag:'other'},
+      {t:'10:15',o:741.63,h:741.80,l:740.85,c:741.55,tag:'other'},
+      {t:'10:20',o:741.48,h:742.37,l:741.18,c:742.14,tag:'other'},
+      {t:'10:25',o:742.16,h:743.02,l:741.95,c:742.48,tag:'other'},
+      {t:'10:30',o:742.44,h:742.98,l:742.30,c:742.87,tag:'other'},
+      {t:'10:35',o:742.90,h:743.67,l:742.72,c:743.27,tag:'other'},
+      {t:'10:40',o:743.26,h:743.50,l:741.97,c:742.57,tag:'other'},
+      {t:'10:45',o:742.58,h:744.35,l:742.58,c:743.54,tag:'other'},
+      {t:'10:50',o:743.58,h:744.35,l:743.30,c:744.11,tag:'other'},
+      {t:'10:55',o:744.13,h:745.02,l:743.65,c:745.00,tag:'breakout'},
+      {t:'11:00',o:744.98,h:745.27,l:744.62,c:744.64,tag:'disp'},
+      {t:'11:05',o:744.63,h:745.34,l:744.57,c:745.12,tag:'disp'},
+      {t:'11:10',o:745.12,h:745.20,l:744.68,c:744.72,tag:'disp'},
+      {t:'11:15',o:744.77,h:745.16,l:744.39,c:744.84,tag:'failed'},
+      {t:'11:20',o:744.84,h:745.08,l:744.14,c:744.93,tag:'confirm'},
+      {t:'11:25',o:744.93,h:744.93,l:743.11,c:743.23,tag:'other'},
+      {t:'11:30',o:743.25,h:743.38,l:741.87,c:742.16,tag:'other'},
+      {t:'11:35',o:742.16,h:743.63,l:741.91,c:743.50,tag:'other'},
+      {t:'11:40',o:743.48,h:743.90,l:743.16,c:743.69,tag:'other'},
+      {t:'11:45',o:743.71,h:744.35,l:743.28,c:743.37,tag:'other'},
+      {t:'11:50',o:743.34,h:744.16,l:743.34,c:743.53,tag:'other'},
+      {t:'11:55',o:743.50,h:743.52,l:742.49,c:742.77,tag:'other'},
+      {t:'12:00',o:742.75,h:743.26,l:742.16,c:742.85,tag:'other'},
+      {t:'12:05',o:742.88,h:743.23,l:742.49,c:742.63,tag:'other'},
+    ]
+  },
+  { // C3: 2026-07-06
+    level:749.485, orb_low:748.12,
+    candles:[
+      {t:'09:30',o:748.74,h:749.485,l:748.12,c:749.16,tag:'orb'},
+      {t:'09:35',o:749.16,h:749.16,l:747.41,c:748.29,tag:'other'},
+      {t:'09:40',o:748.31,h:748.66,l:747.72,c:748.64,tag:'other'},
+      {t:'09:45',o:748.62,h:749.10,l:748.30,c:748.94,tag:'other'},
+      {t:'09:50',o:748.95,h:749.54,l:748.25,c:748.88,tag:'other'},
+      {t:'09:55',o:748.87,h:748.97,l:748.31,c:748.50,tag:'other'},
+      {t:'10:00',o:748.54,h:749.01,l:747.97,c:748.38,tag:'other'},
+      {t:'10:05',o:748.34,h:749.05,l:748.05,c:748.81,tag:'other'},
+      {t:'10:10',o:748.81,h:749.45,l:748.60,c:749.40,tag:'other'},
+      {t:'10:15',o:749.40,h:749.48,l:748.96,c:749.18,tag:'other'},
+      {t:'10:20',o:749.19,h:749.84,l:749.04,c:749.65,tag:'breakout'},
+      {t:'10:25',o:749.67,h:749.98,l:749.56,c:749.94,tag:'disp'},
+      {t:'10:30',o:749.93,h:750.17,l:749.62,c:749.70,tag:'disp'},
+      {t:'10:35',o:749.70,h:749.86,l:749.44,c:749.67,tag:'failed'},
+      {t:'10:40',o:749.65,h:749.755,l:749.10,c:749.67,tag:'confirm'},
+      {t:'10:45',o:749.65,h:749.87,l:749.50,c:749.75,tag:'other'},
+      {t:'10:50',o:749.75,h:750.04,l:749.60,c:749.89,tag:'other'},
+      {t:'10:55',o:749.86,h:750.28,l:749.70,c:750.28,tag:'other'},
+      {t:'11:00',o:750.28,h:750.42,l:749.95,c:750.18,tag:'other'},
+      {t:'11:05',o:750.18,h:750.30,l:750.00,c:750.25,tag:'other'},
+      {t:'11:10',o:750.26,h:750.40,l:749.82,c:750.11,tag:'other'},
+      {t:'11:15',o:750.10,h:750.10,l:749.61,c:749.99,tag:'other'},
+      {t:'11:20',o:749.99,h:750.37,l:749.76,c:750.37,tag:'other'},
+      {t:'11:25',o:750.33,h:750.81,l:750.22,c:750.76,tag:'other'},
+      {t:'11:30',o:750.78,h:750.96,l:750.59,c:750.62,tag:'other'},
+      {t:'11:35',o:750.62,h:750.71,l:750.35,c:750.63,tag:'other'},
+      {t:'11:40',o:750.63,h:750.85,l:750.56,c:750.81,tag:'other'},
+    ]
+  }
+];
+
+// ── Trade params per candidate ──
+const TRADES = [
+  {entry:750.89,stop:750.37,r2:751.94,r3:752.47,r4:752.99},
+  {entry:744.93,stop:744.14,r2:746.51,r3:747.30,r4:748.09},
+  {entry:749.67,stop:749.10,r2:750.81,r3:751.38,r4:751.95},
+];
+
+// ── Phase windows ──
+function phaseSlice(ci, ph) {
+  const c = DATA[ci].candles;
+  const bkIdx = c.findIndex(x=>x.tag==='breakout');
+  const dpIdx = c.findIndex(x=>x.tag==='disp');
+  const rtIdx = c.findIndex(x=>x.tag==='failed'||x.tag==='confirm');
+  const cfIdx = c.findIndex(x=>x.tag==='confirm');
+  if(ph==='orb')     return c.slice(0, 1);
+  if(ph==='break')   return c.slice(0, bkIdx+1);
+  if(ph==='disp')    return c.slice(0, dpIdx>=0?dpIdx+3:bkIdx+3);
+  if(ph==='retest')  return c.slice(0, rtIdx>=0?rtIdx+2:cfIdx+1);
+  if(ph==='entry')   return c.slice(0, cfIdx+3);
+  return c; // all
+}
+
+function phase(ci, ph, btn) {
+  const bar = btn.closest('.pb-bar');
+  bar.querySelectorAll('.pb-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  drawChart(ci, ph);
+}
+
+function drawChart(ci, ph='all') {
+  const svg = document.getElementById('chart'+ci);
+  const W=1152, H=460, PAD={top:46,right:108,bottom:32,left:64};
+  const cW=W-PAD.left-PAD.right, cH=H-PAD.top-PAD.bottom;
+  const d = DATA[ci];
+  const tr = TRADES[ci];
+  const vis = phaseSlice(ci, ph);
+  if(!vis.length){svg.innerHTML='';return;}
+
+  const extras = [d.level, tr.stop, tr.r2, tr.r3, tr.r4];
+  let pMin = Math.min(...vis.map(c=>c.l), ...extras) - 0.5;
+  let pMax = Math.max(...vis.map(c=>c.h), ...extras) + 0.5;
+  const pRange = pMax-pMin;
+  const nC = vis.length;
+  const slotW = cW/Math.max(nC,1);
+  const bW = Math.min(slotW*0.58, 13);
+  const py = p => PAD.top + cH*(1-(p-pMin)/pRange);
+  const cx = i => PAD.left + (i+0.5)*slotW;
+
+  let h = '';
+
+  // grid
+  for(let i=0;i<=5;i++){
+    const p=pMin+pRange*i/5, y=py(p);
+    h+=`<line x1="${PAD.left}" y1="${y}" x2="${W-PAD.right}" y2="${y}" stroke="rgba(255,255,255,0.04)" stroke-width="0.5"/>`;
+    h+=`<text x="${PAD.left-4}" y="${y+4}" text-anchor="end" fill="#555" font-size="9">${p.toFixed(2)}</text>`;
+  }
+
+  // ORB zone
+  h+=`<rect x="${PAD.left}" y="${py(d.level)}" width="${cW}" height="${py(d.orb_low)-py(d.level)}" fill="rgba(57,135,229,0.05)"/>`;
+
+  // levels
+  const lv=(price,col,lbl,dash='')=>{
+    if(price<pMin||price>pMax) return;
+    const y=py(price), da=dash?`stroke-dasharray="${dash}"`:'';
+    h+=`<line x1="${PAD.left}" y1="${y}" x2="${W-PAD.right}" y2="${y}" stroke="${col}" stroke-width="1" ${da} opacity="0.85"/>`;
+    h+=`<text x="${W-PAD.right+5}" y="${y+4}" fill="${col}" font-size="9" font-weight="500">${lbl}</text>`;
+  };
+  lv(d.level,'#3987e5',`Level ${d.level}`,'5,3');
+  if(ph==='entry'||ph==='all'){
+    lv(tr.stop,'#ff4d4d',`Stop ${tr.stop}`,'4,2');
+    lv(tr.entry,'#3987e5',`Entry ${tr.entry}`,'3,2');
+    lv(tr.r2,'#00c896',`2R ${tr.r2}`,'2,3');
+    lv(tr.r3,'#00c896',`3R ${tr.r3}`,'2,3');
+    lv(tr.r4,'#00c896',`4R ${tr.r4}`,'2,3');
+  } else if(ph!=='orb') {
+    lv(tr.stop,'#ff4d4d',`Stop ${tr.stop}`,'4,2');
+  }
+
+  // candles
+  vis.forEach((c,i)=>{
+    const x=cx(i), isG=c.c>=c.o;
+    const bTop=py(Math.max(c.o,c.c)), bBot=py(Math.min(c.o,c.c));
+    const wTop=py(c.h), wBot=py(c.l);
+    const bH=Math.max(bBot-bTop,1.5);
+    let fill,stroke;
+    if(c.tag==='orb')     {fill='#1e3d6e';stroke='#3987e5';}
+    else if(c.tag==='breakout'){fill='#005c3e';stroke='#00c896';}
+    else if(c.tag==='disp'){fill=isG?'#1a3a28':'#3a1818';stroke=isG?'rgba(0,200,150,0.5)':'rgba(255,77,77,0.5)';}
+    else if(c.tag==='failed'){fill='#3d1010';stroke='#ff4d4d';}
+    else if(c.tag==='confirm'){fill='#005c3e';stroke='#00ffb8';}
+    else {fill=isG?'#101e16':'#1e1010';stroke=isG?'rgba(0,200,150,0.28)':'rgba(255,77,77,0.28)';}
+    h+=`<line x1="${x}" y1="${wTop}" x2="${x}" y2="${bTop}" stroke="${stroke}" stroke-width="1.1" opacity="0.8"/>`;
+    h+=`<line x1="${x}" y1="${bBot}" x2="${x}" y2="${wBot}" stroke="${stroke}" stroke-width="1.1" opacity="0.8"/>`;
+    h+=`<rect x="${x-bW/2}" y="${bTop}" width="${bW}" height="${bH}" fill="${fill}" stroke="${stroke}" stroke-width="0.7" rx="1.5"/>`;
+  });
+
+  // annotations
+  const ann=(tag,col,lbl)=>{
+    const idx=vis.findIndex(c=>c.tag===tag);
+    if(idx<0) return;
+    const x=cx(idx), y=py(vis[idx].h)-16;
+    h+=`<rect x="${x-30}" y="${y-12}" width="60" height="14" fill="${col}20" stroke="${col}" stroke-width="0.6" rx="3"/>`;
+    h+=`<text x="${x}" y="${y-2}" text-anchor="middle" fill="${col}" font-size="8.5" font-weight="700">${lbl}</text>`;
+  };
+  if(ph!=='orb') ann('breakout','#00c896','② BREAK');
+  ann('failed','#ff4d4d','✗ FAILED');
+  ann('confirm','#00ffb8','⑤ ENTRY');
+
+  // x labels
+  const ev=Math.max(1,Math.floor(vis.length/14));
+  vis.forEach((c,i)=>{
+    if(i%ev===0||vis.length<=6)
+      h+=`<text x="${cx(i)}" y="${H-PAD.bottom+13}" text-anchor="middle" fill="#555" font-size="9">${c.t}</text>`;
+  });
+
+  // phase label
+  const pl={all:'Full View',orb:'① Level',break:'② Confirmed Break',disp:'③ Displacement',retest:'④ Retest',entry:'⑤ Rejection + Entry'};
+  h+=`<text x="${PAD.left+4}" y="17" fill="#555" font-size="10" font-weight="600">${pl[ph]||'Full View'}</text>`;
+
+  svg.innerHTML = h;
+}
+
+// draw all three
+drawChart(0,'all');
+drawChart(1,'all');
+drawChart(2,'all');
+
+// ── Tab switching ──
+function showTab(idx, btn) {
+  document.querySelectorAll('.tab-content').forEach((t,i)=>t.classList.toggle('active',i===idx));
+  document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',i===idx));
+}
+
+// ── Verdict ──
+function setVerdict(choice,btn){
+  document.querySelectorAll('.verdict-btn').forEach(b=>b.classList.remove('sel'));
+  btn.classList.add('sel');
+  const n=document.getElementById('verdict-note');
+  const msgs={
+    yes:{bg:'rgba(0,200,150,0.08)',brd:'rgba(0,200,150,0.3)',col:'#00c896',
+      txt:'✅ YES recorded. The engine has correctly understood Break–Retest–Rejection logic. Next step: build the full configurable Strategy Builder with all level sources, timeframes, and parameter controls.'},
+    almost:{bg:'rgba(245,158,11,0.08)',brd:'rgba(245,158,11,0.3)',col:'#f59e0b',
+      txt:'⚠️ ALMOST recorded. Please specify which threshold or detection rule needs adjustment. Thresholds (wick%, body%, close_loc%) can be modified without changing the core logic.'},
+    no:{bg:'rgba(255,77,77,0.08)',brd:'rgba(255,77,77,0.3)',col:'#ff4d4d',
+      txt:'❌ NO recorded. Please describe exactly which step of the detection sequence is wrong so the prototype can be corrected before proceeding.'}
+  };
+  const m=msgs[choice];
+  n.style.cssText=`display:block;background:${m.bg};border:0.5px solid ${m.brd};color:${m.col};padding:12px;border-radius:8px;font-size:12px;`;
+  n.textContent=m.txt;
+}
+</script>
+</body>
+</html>
