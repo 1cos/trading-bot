@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>ORB Candidate Review — SPY 2026-05-29</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#0f0f0f;--surface:#1a1a1a;--surface2:#222;
+  --border:rgba(255,255,255,0.08);--text:#f0f0f0;--muted:#888;
+  --green:#00c896;--red:#ff4d4d;--blue:#3987e5;--amber:#f59e0b;
+  --purple:#a78bfa;--orange:#fb923c;--radius:10px;
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;min-height:100vh;}
+header{padding:14px 24px;border-bottom:0.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+header h1{font-size:16px;font-weight:500;display:flex;align-items:center;gap:10px;}
+header h1 span{color:var(--blue);}
+.back-btn{background:var(--surface2);border:0.5px solid var(--border);color:var(--muted);padding:6px 12px;border-radius:8px;cursor:pointer;font-size:12px;text-decoration:none;display:inline-flex;align-items:center;gap:5px;}
+.back-btn:hover{border-color:var(--blue);color:var(--blue);}
+.proof-badge{background:rgba(57,135,229,0.12);color:var(--blue);border:0.5px solid rgba(57,135,229,0.3);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;}
+.page{max-width:1200px;margin:0 auto;padding:20px 24px;}
+.section{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:16px;}
+.section-title{font-size:10px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:12px;}
+.chart-container{width:100%;background:var(--bg);border-radius:8px;overflow:hidden;position:relative;}
+svg text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
+.verdict-row{display:flex;gap:10px;margin-top:16px;}
+.verdict-btn{flex:1;padding:12px;border-radius:var(--radius);border:0.5px solid var(--border);background:var(--surface2);cursor:pointer;font-size:13px;font-weight:500;text-align:center;transition:all 0.15s;}
+.verdict-btn.yes:hover,.verdict-btn.yes.selected{background:rgba(0,200,150,0.15);border-color:var(--green);color:var(--green);}
+.verdict-btn.almost:hover,.verdict-btn.almost.selected{background:rgba(245,158,11,0.15);border-color:var(--amber);color:var(--amber);}
+.verdict-btn.no:hover,.verdict-btn.no.selected{background:rgba(255,77,77,0.15);border-color:var(--red);color:var(--red);}
+.verdict-btn .ico{font-size:20px;display:block;margin-bottom:4px;}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.info-block{background:var(--surface2);border-radius:8px;padding:12px;}
+.info-block h4{font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:0.8px;margin-bottom:8px;}
+.info-row{display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;border-bottom:0.5px solid var(--border);}
+.info-row:last-child{border-bottom:none;}
+.info-label{font-size:11px;color:var(--muted);}
+.info-val{font-size:12px;font-weight:500;}
+.info-val.green{color:var(--green);}
+.info-val.red{color:var(--red);}
+.info-val.blue{color:var(--blue);}
+.info-val.amber{color:var(--amber);}
+.info-val.purple{color:var(--purple);}
+.rule-list{display:flex;flex-direction:column;gap:6px;}
+.rule{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:8px;background:var(--surface2);font-size:12px;line-height:1.5;}
+.rule-icon{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;margin-top:1px;}
+.rule-icon.pass{background:rgba(0,200,150,0.2);color:var(--green);}
+.rule-icon.fail{background:rgba(255,77,77,0.2);color:var(--red);}
+.rule-icon.na{background:rgba(136,136,136,0.2);color:var(--muted);}
+.rule strong{color:var(--text);}
+.rule span{color:var(--muted);}
+.trade-levels{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px;}
+.level-card{border-radius:8px;padding:10px 12px;border:0.5px solid;}
+.level-card .lname{font-size:10px;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;}
+.level-card .lprice{font-size:16px;font-weight:600;}
+.level-card .ldelta{font-size:11px;margin-top:2px;opacity:0.7;}
+.entry-card{background:rgba(57,135,229,0.1);border-color:rgba(57,135,229,0.3);}
+.entry-card .lname,.entry-card .ldelta{color:var(--blue);}
+.entry-card .lprice{color:var(--blue);}
+.stop-card{background:rgba(255,77,77,0.1);border-color:rgba(255,77,77,0.3);}
+.stop-card .lname,.stop-card .ldelta{color:var(--red);}
+.stop-card .lprice{color:var(--red);}
+.r2-card{background:rgba(0,200,150,0.08);border-color:rgba(0,200,150,0.25);}
+.r2-card .lname,.r2-card .ldelta{color:var(--green);}
+.r2-card .lprice{color:var(--green);}
+.r3-card{background:rgba(0,200,150,0.12);border-color:rgba(0,200,150,0.35);}
+.r3-card .lname,.r3-card .ldelta{color:var(--green);}
+.r3-card .lprice{color:var(--green);}
+.r4-card{background:rgba(0,200,150,0.16);border-color:rgba(0,200,150,0.45);}
+.r4-card .lname,.r4-card .ldelta{color:var(--green);}
+.r4-card .lprice{color:var(--green);}
+.warning-note{background:rgba(245,158,11,0.08);border:0.5px solid rgba(245,158,11,0.3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--amber);margin-top:10px;}
+.playback-ctrl{display:flex;gap:8px;align-items:center;margin-top:10px;}
+.pb-btn{background:var(--surface2);border:0.5px solid var(--border);color:var(--muted);padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px;}
+.pb-btn:hover{border-color:var(--blue);color:var(--blue);}
+.pb-btn.active{border-color:var(--blue);color:var(--blue);background:rgba(57,135,229,0.1);}
+.pb-label{font-size:11px;color:var(--muted);}
+</style>
+</head>
+<body>
+<header>
+  <h1>📈 ORB Candidate Review <span>— Proof of Understanding</span></h1>
+  <div style="display:flex;gap:10px;align-items:center;">
+    <span class="proof-badge">ISOLATED VIEW</span>
+    <a href="index.html" class="back-btn">← Dashboard</a>
+  </div>
+</header>
+
+<div class="page">
+
+  <!-- ═══ CHART ═══ -->
+  <div class="section">
+    <div class="section-title">SPY 5-min Chart — 2026-05-29 — ORB High Retest Setup</div>
+    <div class="chart-container" id="chart-wrap">
+      <svg id="orb-chart" width="1152" height="520" viewBox="0 0 1152 520" style="width:100%;height:auto;"></svg>
+    </div>
+    <div class="playback-ctrl">
+      <span class="pb-label">Playback:</span>
+      <button class="pb-btn active" onclick="showPhase('all')">Full Day</button>
+      <button class="pb-btn" onclick="showPhase('orb')">ORB Only</button>
+      <button class="pb-btn" onclick="showPhase('breakout')">→ Breakout</button>
+      <button class="pb-btn" onclick="showPhase('disp')">→ Displacement</button>
+      <button class="pb-btn" onclick="showPhase('retest')">→ Retest</button>
+      <button class="pb-btn" onclick="showPhase('entry')">→ Entry</button>
+    </div>
+  </div>
+
+  <!-- ═══ TRADE LEVELS ═══ -->
+  <div class="section">
+    <div class="section-title">Trade Levels</div>
+    <div class="trade-levels">
+      <div class="level-card entry-card"><div class="lname">Entry</div><div class="lprice">756.60</div><div class="ldelta">Close of confirmation candle @ 10:25</div></div>
+      <div class="level-card stop-card"><div class="lname">Stop</div><div class="lprice">755.84</div><div class="ldelta">−0.76 / −1R below confirmation low</div></div>
+      <div class="level-card r2-card"><div class="lname">2R Target</div><div class="lprice">758.12</div><div class="ldelta">+1.52 / 2× risk</div></div>
+      <div class="level-card r3-card"><div class="lname">3R Target</div><div class="lprice">758.88</div><div class="ldelta">+2.28 / 3× risk</div></div>
+    </div>
+    <div class="trade-levels" style="margin-top:8px;grid-template-columns:1fr 1fr;">
+      <div class="level-card r4-card"><div class="lname">4R Target</div><div class="lprice">759.64</div><div class="ldelta">+3.04 / 4× risk</div></div>
+      <div class="level-card" style="background:rgba(136,136,136,0.05);border-color:rgba(136,136,136,0.2);">
+        <div class="lname" style="color:var(--muted)">Risk Amount (1R)</div>
+        <div class="lprice" style="color:var(--text)">$0.76</div>
+        <div class="ldelta" style="color:var(--muted)">Entry 756.60 − Stop 755.84</div>
+      </div>
+    </div>
+    <div class="warning-note">⚠️ Outcome: price hit stop (10:35, L=755.62) — this candidate was chosen for setup clarity, NOT for profitability. All 10 rules are demonstrated visually. The trade lost.</div>
+  </div>
+
+  <!-- ═══ RULE-BY-RULE EXPLANATION ═══ -->
+  <div class="section">
+    <div class="section-title">Rule-by-Rule Explanation</div>
+    <div class="rule-list">
+      <div class="rule"><div class="rule-icon pass">✓</div><div><strong>Rule 1 — ORB Established:</strong> <span>09:30 candle (the 5-minute opening range). High: 756.29 · Low: 755.50 · Open: 755.90 · Close: 756.01</span></div></div>
+      <div class="rule"><div class="rule-icon pass">✓</div><div><strong>Rule 2 — Candle closes above ORB High:</strong> <span>09:35 candle. O=755.99 H=756.72 L=755.96 C=756.72. Close 756.72 &gt; ORB High 756.29 (+0.43). Body closed above — wick alone not sufficient, body close satisfied.</span></div></div>
+      <div class="rule"><div class="rule-icon pass">✓</div><div><strong>Rule 3 — Meaningful displacement:</strong> <span>09:40 through 10:15 = 8 consecutive candles where LOW stays above ORB High 756.29. Max reached: 758.08 at 10:00 (+1.79 / +0.24% above ORB). Clear bullish momentum.</span></div></div>
+      <div class="rule"><div class="rule-icon pass">✓</div><div><strong>Rule 4 — Price returns to retest ORB High:</strong> <span>10:15 candle low dips to 756.47 — approaching. 10:20 candle low reaches 756.26, first wick breach of ORB High 756.29. Retest phase begins.</span></div></div>
+      <div class="rule"><div class="rule-icon pass">✓</div><div><strong>Rule 5 — First touching candle is NOT automatic entry:</strong> <span>10:20 is the first candle to touch ORB High. It does NOT automatically trigger entry — the engine waits for confirmation.</span></div></div>
+      <div class="rule"><div class="rule-icon pass">✓</div><div><strong>Rule 6 — Valid confirmation candle (10:25):</strong> <span>O=756.25 H=756.71 L=755.84 C=756.60 🟢 GREEN. Wick penetrates to 755.84 (below ORB High 756.29) → rejects → closes 756.60 (above). Lower-wick ratio 0.47 (47% of range). Bullish hammer / pin shape. Buyers regained control.</span></div></div>
+      <div class="rule"><div class="rule-icon pass">✓</div><div><strong>Rule 7 — Earlier failed retest rejected:</strong> <span>10:20 candle. O=756.74 H=756.96 L=756.26 C=756.26 🔴 RED. Low 756.26 &lt; ORB High 756.29. Close 756.26 ≤ ORB High. Engine rejects it and continues waiting. This is the "failed retest" marker.</span></div></div>
+      <div class="rule"><div class="rule-icon pass">✓</div><div><strong>Rule 8 — Entry at close of valid confirmation candle:</strong> <span>Entry = 756.60 (close of 10:25 candle).</span></div></div>
+      <div class="rule"><div class="rule-icon pass">✓</div><div><strong>Rule 9 — Stop below confirmation candle low:</strong> <span>Stop = 755.84 (low of 10:25 confirmation candle). Risk = 0.76. NOT below ORB Low (755.50). NOT a fixed stop.</span></div></div>
+      <div class="rule"><div class="rule-icon pass">✓</div><div><strong>Rule 10 — 2R / 3R / 4R displayed:</strong> <span>2R = 758.12 · 3R = 758.88 · 4R = 759.64</span></div></div>
+    </div>
+  </div>
+
+  <!-- ═══ DETAILED STATS ═══ -->
+  <div class="section">
+    <div class="section-title">Detailed Statistics</div>
+    <div class="info-grid">
+      <div class="info-block">
+        <h4>ORB Created — 09:30</h4>
+        <div class="info-row"><span class="info-label">Time</span><span class="info-val blue">09:30 ET</span></div>
+        <div class="info-row"><span class="info-label">Open</span><span class="info-val">755.9000</span></div>
+        <div class="info-row"><span class="info-label">High (ORB High)</span><span class="info-val green">756.2900</span></div>
+        <div class="info-row"><span class="info-label">Low (ORB Low)</span><span class="info-val red">755.5000</span></div>
+        <div class="info-row"><span class="info-label">Close</span><span class="info-val">756.0050</span></div>
+        <div class="info-row"><span class="info-label">ORB Range</span><span class="info-val">0.79 pts</span></div>
+      </div>
+      <div class="info-block">
+        <h4>Breakout — 09:35</h4>
+        <div class="info-row"><span class="info-label">Timestamp</span><span class="info-val blue">09:35 ET</span></div>
+        <div class="info-row"><span class="info-label">Close</span><span class="info-val green">756.7200</span></div>
+        <div class="info-row"><span class="info-label">Distance above ORB High</span><span class="info-val green">+0.43 pts</span></div>
+        <div class="info-row"><span class="info-label">Candle type</span><span class="info-val green">Green / Bullish</span></div>
+        <div class="info-row"><span class="info-label">Body covers ORB level</span><span class="info-val green">Yes — full close above</span></div>
+        <div class="info-row"><span class="info-label">Wick-only breakout?</span><span class="info-val green">No — qualifies</span></div>
+      </div>
+      <div class="info-block">
+        <h4>Displacement Phase — 09:40 to 10:15</h4>
+        <div class="info-row"><span class="info-label">Candles staying above ORB High</span><span class="info-val blue">8 candles</span></div>
+        <div class="info-row"><span class="info-label">Max high reached</span><span class="info-val green">758.08 (@ 10:00)</span></div>
+        <div class="info-row"><span class="info-label">Max displacement</span><span class="info-val green">+1.79 pts (+0.24%)</span></div>
+        <div class="info-row"><span class="info-label">Lowest low during disp</span><span class="info-val">756.47 (10:15)</span></div>
+        <div class="info-row"><span class="info-label">Direction</span><span class="info-val green">Consistently bullish</span></div>
+      </div>
+      <div class="info-block">
+        <h4>Failed Retest — 10:20</h4>
+        <div class="info-row"><span class="info-label">Timestamp</span><span class="info-val red">10:20 ET</span></div>
+        <div class="info-row"><span class="info-label">Open</span><span class="info-val">756.74</span></div>
+        <div class="info-row"><span class="info-label">High</span><span class="info-val">756.96</span></div>
+        <div class="info-row"><span class="info-label">Low</span><span class="info-val red">756.26</span></div>
+        <div class="info-row"><span class="info-label">Close</span><span class="info-val red">756.26</span></div>
+        <div class="info-row"><span class="info-label">Close vs ORB High</span><span class="info-val red">756.26 ≤ 756.29 — REJECTED</span></div>
+        <div class="info-row"><span class="info-label">Candle color</span><span class="info-val red">Red — no bullish rejection</span></div>
+        <div class="info-row"><span class="info-label">Decision</span><span class="info-val red">Engine continues waiting</span></div>
+      </div>
+      <div class="info-block">
+        <h4>Valid Confirmation — 10:25</h4>
+        <div class="info-row"><span class="info-label">Timestamp</span><span class="info-val green">10:25 ET</span></div>
+        <div class="info-row"><span class="info-label">Open</span><span class="info-val">756.25</span></div>
+        <div class="info-row"><span class="info-label">High</span><span class="info-val">756.71</span></div>
+        <div class="info-row"><span class="info-label">Low (wick below ORB)</span><span class="info-val red">755.84</span></div>
+        <div class="info-row"><span class="info-label">Close</span><span class="info-val green">756.60</span></div>
+        <div class="info-row"><span class="info-label">Body ratio</span><span class="info-val">40% of range</span></div>
+        <div class="info-row"><span class="info-label">Lower wick ratio</span><span class="info-val green">47% of range</span></div>
+        <div class="info-row"><span class="info-label">Candle color</span><span class="info-val green">🟢 Green</span></div>
+        <div class="info-row"><span class="info-label">Shape</span><span class="info-val green">Bullish pin / hammer</span></div>
+        <div class="info-row"><span class="info-label">Closes above ORB High?</span><span class="info-val green">Yes — 756.60 &gt; 756.29 ✓</span></div>
+      </div>
+      <div class="info-block">
+        <h4>Trade Parameters</h4>
+        <div class="info-row"><span class="info-label">Entry</span><span class="info-val blue">756.60</span></div>
+        <div class="info-row"><span class="info-label">Stop</span><span class="info-val red">755.84</span></div>
+        <div class="info-row"><span class="info-label">Risk (1R)</span><span class="info-val">0.76 pts</span></div>
+        <div class="info-row"><span class="info-label">2R Target</span><span class="info-val green">758.12</span></div>
+        <div class="info-row"><span class="info-label">3R Target</span><span class="info-val green">758.88</span></div>
+        <div class="info-row"><span class="info-label">4R Target</span><span class="info-val green">759.64</span></div>
+        <div class="info-row"><span class="info-label">Stop hit?</span><span class="info-val red">Yes — 10:35, L=755.62</span></div>
+        <div class="info-row"><span class="info-label">2R hit?</span><span class="info-val red">No</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ VERDICT ═══ -->
+  <div class="section">
+    <div class="section-title">Your Verdict</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Inspect the chart and rules above. Does this represent the setup you intended?</p>
+    <div class="verdict-row">
+      <button class="verdict-btn yes" onclick="verdict('yes',this)"><span class="ico">✅</span>YES — This is a trade I would take</button>
+      <button class="verdict-btn almost" onclick="verdict('almost',this)"><span class="ico">⚠️</span>ALMOST — Adjust specific rules</button>
+      <button class="verdict-btn no" onclick="verdict('no',this)"><span class="ico">❌</span>NO — The strategy is misunderstood</button>
+    </div>
+    <div id="verdict-note" style="display:none;margin-top:12px;padding:12px;border-radius:8px;font-size:13px;"></div>
+  </div>
+
+</div>
+
+<script>
+// ── Candle data: SPY 2026-05-29, 09:30–11:55 ──
+const CANDLES = [
+  {t:'09:30',o:755.90,h:756.29,l:755.50,c:756.01,tag:'orb'},
+  {t:'09:35',o:755.99,h:756.72,l:755.96,c:756.72,tag:'breakout'},
+  {t:'09:40',o:756.73,h:757.49,l:756.57,c:757.47,tag:'disp'},
+  {t:'09:45',o:757.48,h:757.75,l:757.28,c:757.63,tag:'disp'},
+  {t:'09:50',o:757.63,h:757.91,l:757.34,c:757.91,tag:'disp'},
+  {t:'09:55',o:757.90,h:757.90,l:757.56,c:757.82,tag:'disp'},
+  {t:'10:00',o:757.82,h:758.08,l:757.55,c:757.70,tag:'disp'},
+  {t:'10:05',o:757.68,h:757.80,l:757.26,c:757.31,tag:'disp'},
+  {t:'10:10',o:757.32,h:757.76,l:757.19,c:757.31,tag:'disp'},
+  {t:'10:15',o:757.31,h:757.32,l:756.47,c:756.75,tag:'disp'},
+  {t:'10:20',o:756.74,h:756.96,l:756.26,c:756.26,tag:'failed'},
+  {t:'10:25',o:756.25,h:756.71,l:755.84,c:756.60,tag:'confirm'},
+  {t:'10:30',o:756.60,h:756.91,l:756.21,c:756.91,tag:'post'},
+  {t:'10:35',o:756.90,h:756.96,l:755.62,c:755.63,tag:'post'},
+  {t:'10:40',o:755.64,h:755.95,l:755.10,c:755.18,tag:'post'},
+  {t:'10:45',o:755.12,h:755.31,l:754.69,c:755.01,tag:'post'},
+  {t:'10:50',o:754.97,h:756.74,l:754.90,c:755.83,tag:'post'},
+  {t:'10:55',o:755.83,h:756.53,l:755.82,c:756.04,tag:'post'},
+  {t:'11:00',o:756.03,h:756.40,l:755.89,c:756.33,tag:'post'},
+  {t:'11:05',o:756.33,h:756.77,l:756.00,c:756.70,tag:'post'},
+  {t:'11:10',o:756.70,h:757.32,l:756.69,c:757.31,tag:'post'},
+  {t:'11:15',o:757.31,h:757.42,l:756.87,c:756.88,tag:'post'},
+  {t:'11:20',o:756.87,h:757.01,l:756.30,c:756.88,tag:'post'},
+  {t:'11:25',o:756.89,h:757.27,l:756.49,c:756.78,tag:'post'},
+  {t:'11:30',o:756.81,h:757.24,l:756.72,c:757.00,tag:'post'},
+  {t:'11:35',o:757.00,h:757.31,l:756.76,c:757.17,tag:'post'},
+  {t:'11:40',o:757.16,h:757.34,l:756.50,c:756.71,tag:'post'},
+];
+
+const ORB_HIGH  = 756.29;
+const ORB_LOW   = 755.50;
+const ENTRY     = 756.60;
+const STOP      = 755.84;
+const R2        = 758.12;
+const R3        = 758.88;
+const R4        = 759.64;
+
+let currentPhase = 'all';
+const PHASES = {
+  all:     { start:0, end:CANDLES.length },
+  orb:     { start:0, end:1 },
+  breakout:{ start:0, end:2 },
+  disp:    { start:0, end:10 },
+  retest:  { start:0, end:11 },
+  entry:   { start:0, end:13 },
+};
+
+function showPhase(phase){
+  currentPhase = phase;
+  document.querySelectorAll('.pb-btn').forEach(b=>b.classList.remove('active'));
+  event.target.classList.add('active');
+  drawChart();
+}
+
+function drawChart(){
+  const svg = document.getElementById('orb-chart');
+  const W = 1152, H = 520;
+  const PAD = { top:50, right:80, bottom:36, left:68 };
+  const cW = W - PAD.left - PAD.right;
+  const cH = H - PAD.top - PAD.bottom;
+
+  const phase = PHASES[currentPhase];
+  const vis = CANDLES.slice(phase.start, phase.end);
+  if(vis.length === 0){ svg.innerHTML=''; return; }
+
+  // Price range
+  let pMin = Math.min(...vis.map(c=>c.l), STOP, ORB_LOW) - 0.4;
+  let pMax = Math.max(...vis.map(c=>c.h), R4, ORB_HIGH) + 0.4;
+  if(currentPhase==='orb' || currentPhase==='breakout'){
+    pMin = Math.min(pMin, ORB_LOW-0.3);
+    pMax = Math.max(pMax, ORB_HIGH+0.8);
+  }
+  const pRange = pMax - pMin;
+
+  const nC = vis.length;
+  const cSlotW = cW / Math.max(nC, 1);
+  const bodyW = Math.min(cSlotW * 0.55, 14);
+
+  function px(price){ return PAD.top + cH * (1 - (price - pMin)/pRange); }
+  function cx(i){ return PAD.left + (i + 0.5) * cSlotW; }
+
+  let html = '';
+
+  // ── Grid lines ──
+  const gridLevels = 6;
+  for(let i=0; i<=gridLevels; i++){
+    const p = pMin + (pRange * i/gridLevels);
+    const y = px(p);
+    html += `<line x1="${PAD.left}" y1="${y}" x2="${W-PAD.right}" y2="${y}" stroke="rgba(255,255,255,0.04)" stroke-width="0.5"/>`;
+    html += `<text x="${PAD.left-4}" y="${y+4}" text-anchor="end" fill="#666" font-size="9">${p.toFixed(2)}</text>`;
+  }
+
+  // ── Level lines ──
+  function drawLevel(price, color, label, dash=''){
+    if(price < pMin || price > pMax) return;
+    const y = px(price);
+    const dashAttr = dash ? `stroke-dasharray="${dash}"` : '';
+    html += `<line x1="${PAD.left}" y1="${y}" x2="${W-PAD.right}" y2="${y}" stroke="${color}" stroke-width="1" ${dashAttr} opacity="0.9"/>`;
+    html += `<text x="${W-PAD.right+5}" y="${y+4}" fill="${color}" font-size="9" font-weight="500">${label}</text>`;
+  }
+
+  drawLevel(ORB_HIGH, '#3987e5', 'ORB H 756.29', '5,3');
+  drawLevel(ORB_LOW,  '#3987e5', 'ORB L 755.50', '5,3');
+
+  // Only draw trade levels if we are at entry phase
+  if(currentPhase === 'all' || currentPhase === 'entry'){
+    drawLevel(ENTRY, '#3987e5', 'Entry 756.60', '4,2');
+    drawLevel(STOP,  '#ff4d4d', 'Stop 755.84', '4,2');
+    drawLevel(R2,    '#00c896', '2R 758.12', '3,3');
+    drawLevel(R3,    '#00c896', '3R 758.88', '3,3');
+    drawLevel(R4,    '#00c896', '4R 759.64', '3,3');
+  } else if(currentPhase !== 'orb'){
+    drawLevel(ENTRY, '#3987e5', 'Entry 756.60', '4,2');
+    drawLevel(STOP,  '#ff4d4d', 'Stop 755.84', '4,2');
+  }
+
+  // ── ORB shading ──
+  {
+    const y1 = px(ORB_HIGH), y2 = px(ORB_LOW);
+    html += `<rect x="${PAD.left}" y="${y1}" width="${cW}" height="${y2-y1}" fill="rgba(57,135,229,0.06)" stroke="none"/>`;
+  }
+
+  // ── Candles ──
+  vis.forEach((c, i)=>{
+    const x = cx(i);
+    const isGreen = c.c >= c.o;
+    const bodyTop    = px(Math.max(c.o, c.c));
+    const bodyBot    = px(Math.min(c.o, c.c));
+    const wickTop    = px(c.h);
+    const wickBot    = px(c.l);
+    const bodyH      = Math.max(bodyBot - bodyTop, 1.5);
+
+    // Color by tag
+    let fillColor, strokeColor;
+    if(c.tag==='orb')     { fillColor = isGreen?'#3987e5':'#1e5fa3'; strokeColor='#3987e5'; }
+    else if(c.tag==='breakout'){ fillColor='#00c896'; strokeColor='#00c896'; }
+    else if(c.tag==='disp'){ fillColor=isGreen?'#2d8a6a':'#7a3a3a'; strokeColor=isGreen?'#00c896':'#ff4d4d'; }
+    else if(c.tag==='failed'){ fillColor='#7a2020'; strokeColor='#ff4d4d'; }
+    else if(c.tag==='confirm'){ fillColor='#00c896'; strokeColor='#00e8b0'; }
+    else { fillColor=isGreen?'#1e4a3a':'#3a1e1e'; strokeColor=isGreen?'rgba(0,200,150,0.5)':'rgba(255,77,77,0.5)'; }
+
+    // Wicks
+    html += `<line x1="${x}" y1="${wickTop}" x2="${x}" y2="${bodyTop}" stroke="${strokeColor}" stroke-width="1.2" opacity="0.8"/>`;
+    html += `<line x1="${x}" y1="${bodyBot}" x2="${x}" y2="${wickBot}" stroke="${strokeColor}" stroke-width="1.2" opacity="0.8"/>`;
+    // Body
+    const bx = x - bodyW/2;
+    html += `<rect x="${bx}" y="${bodyTop}" width="${bodyW}" height="${bodyH}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="0.7" rx="1.5"/>`;
+  });
+
+  // ── Phase markers / annotations ──
+  if(currentPhase !== 'orb'){
+    // Breakout label
+    const bIdx = CANDLES.findIndex(c=>c.tag==='breakout');
+    if(bIdx >= phase.start && bIdx < phase.end){
+      const i = bIdx - phase.start;
+      const x = cx(i);
+      const y = px(CANDLES[bIdx].h) - 16;
+      html += `<rect x="${x-30}" y="${y-12}" width="60" height="15" fill="rgba(0,200,150,0.2)" stroke="#00c896" stroke-width="0.5" rx="4"/>`;
+      html += `<text x="${x}" y="${y-1}" text-anchor="middle" fill="#00c896" font-size="9" font-weight="600">BREAKOUT</text>`;
+    }
+  }
+
+  // Failed retest
+  const fIdx = CANDLES.findIndex(c=>c.tag==='failed');
+  if(fIdx >= phase.start && fIdx < phase.end){
+    const i = fIdx - phase.start;
+    const x = cx(i);
+    const y = px(CANDLES[fIdx].h) - 16;
+    html += `<rect x="${x-28}" y="${y-12}" width="56" height="15" fill="rgba(255,77,77,0.2)" stroke="#ff4d4d" stroke-width="0.5" rx="4"/>`;
+    html += `<text x="${x}" y="${y-1}" text-anchor="middle" fill="#ff4d4d" font-size="9" font-weight="600">✗ FAILED</text>`;
+  }
+
+  // Valid confirm
+  const cIdx = CANDLES.findIndex(c=>c.tag==='confirm');
+  if(cIdx >= phase.start && cIdx < phase.end){
+    const i = cIdx - phase.start;
+    const x = cx(i);
+    const y = px(CANDLES[cIdx].h) - 16;
+    html += `<rect x="${x-28}" y="${y-12}" width="56" height="15" fill="rgba(0,200,150,0.25)" stroke="#00c896" stroke-width="0.8" rx="4"/>`;
+    html += `<text x="${x}" y="${y-1}" text-anchor="middle" fill="#00e8b0" font-size="9" font-weight="700">ENTRY ✓</text>`;
+    // Entry arrow
+    const entryY = px(ENTRY);
+    html += `<polygon points="${x-6},${entryY+18} ${x+6},${entryY+18} ${x},${entryY+8}" fill="#3987e5" opacity="0.9"/>`;
+  }
+
+  // ── X-axis labels ──
+  const labelEvery = Math.max(1, Math.floor(vis.length / 14));
+  vis.forEach((c, i)=>{
+    if(i % labelEvery === 0 || vis.length <= 6){
+      const x = cx(i);
+      html += `<text x="${x}" y="${H-PAD.bottom+16}" text-anchor="middle" fill="#555" font-size="9">${c.t}</text>`;
+    }
+  });
+
+  // ── Legend ──
+  const legY = 14;
+  const items = [
+    {col:'#3987e5', label:'ORB Candle'},
+    {col:'#00c896', label:'Breakout / Confirm'},
+    {col:'rgba(0,200,150,0.5)', label:'Displacement'},
+    {col:'#ff4d4d', label:'Failed Retest'},
+    {col:'rgba(255,255,255,0.3)', label:'Post-entry'},
+  ];
+  let lx = PAD.left;
+  items.forEach(it=>{
+    html += `<rect x="${lx}" y="${legY-9}" width="9" height="9" fill="${it.col}" rx="2"/>`;
+    html += `<text x="${lx+12}" y="${legY}" fill="#666" font-size="9">${it.label}</text>`;
+    lx += it.label.length*4.8 + 24;
+  });
+
+  svg.innerHTML = html;
+}
+
+drawChart();
+
+function verdict(choice, btn){
+  document.querySelectorAll('.verdict-btn').forEach(b=>b.classList.remove('selected'));
+  btn.classList.add('selected');
+  const note = document.getElementById('verdict-note');
+  const msgs = {
+    yes: {bg:'rgba(0,200,150,0.08)',border:'rgba(0,200,150,0.3)',color:'#00c896',
+      text:'✅ Recorded: YES. This setup is confirmed. The next step is to build the production ORB strategy function based on these rules.'},
+    almost: {bg:'rgba(245,158,11,0.08)',border:'rgba(245,158,11,0.3)',color:'#f59e0b',
+      text:'⚠️ Recorded: ALMOST. Please specify which rules need adjustment. Common refinements: lower-wick ratio threshold, minimum displacement requirement, or confirmation candle body size.'},
+    no: {bg:'rgba(255,77,77,0.08)',border:'rgba(255,77,77,0.3)',color:'#ff4d4d',
+      text:'❌ Recorded: NO. The strategy was misunderstood. Please describe what is wrong so the candidate search can be corrected before proceeding.'}
+  };
+  const m = msgs[choice];
+  note.style.display='block';
+  note.style.background=m.bg;
+  note.style.border=`0.5px solid ${m.border}`;
+  note.style.color=m.color;
+  note.textContent=m.text;
+}
+</script>
+</body>
+</html>
