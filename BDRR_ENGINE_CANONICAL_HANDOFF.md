@@ -207,7 +207,9 @@ engine_version:         string
 
 status:                 enum        VALID | INVALID
 failed_stage:           enum | null
-    LEVEL_NOT_FOUND | BREAK_NOT_FOUND | DISPLACEMENT_MINIMUM_NOT_MET
+    LEVEL_NOT_FOUND | BREAK_NOT_FOUND
+    | DISPLACEMENT_MINIMUM_NOT_MET
+    | RETEST_BEFORE_DISPLACEMENT
     | RETEST_NOT_FOUND | NO_QUALIFYING_REJECTION_CANDLE
     null if VALID
 failed_rules:           RuleFailure[]   empty if VALID
@@ -866,18 +868,34 @@ If the gate fails, status = INVALID, failed_stage = DISPLACEMENT_MINIMUM_NOT_MET
 
 Passing this gate does not automatically satisfy any additional independent Stage-3 rules that may be defined in future presets. If such rules exist and are enabled, each is evaluated independently. Failure of any enabled Stage-3 rule produces INVALID with its own RuleFailure. The minimum-distance gate is the only currently defined Stage-3 rule.
 
-**Structural classification — IMMEDIATE_BREAK_RETEST** 
+**Structural classification — IMMEDIATE_BREAK_RETEST** `FROZEN`
 
 A displacement phase must exist BEFORE the first retest contact begins. This means at least one completed post-break bar must have its LOW strictly above the level before any bar touches or penetrates the level from above.
 
-If the first post-break bar immediately contacts the level (its LOW ≤ level), the sequence is classified as:
+If the first post-break bar immediately contacts the level (its LOW ≤ level), the structural failure is:
 
+```
+failure_reason:          RETEST_BEFORE_DISPLACEMENT
+sequence_classification: IMMEDIATE_BREAK_RETEST
+```
 
+Definition: the first post-break contact with the level occurred before any completed post-break displacement phase existed.
 
-This is not a geometry failure. It is a structural classification: the level was never abandoned before it was retested. The Break, Displacement, Retest, and Rejection phases cannot all begin and end within one or two candles. A valid BDRR requires chronological separation between the break and the retest.
+This is not a geometry failure and not a numeric threshold failure. It is a structural classification: the level was never abandoned before it was retested. The Break, Displacement, Retest, and Rejection phases cannot all begin and end within one or two candles. A valid BDRR requires chronological separation between the break and the retest.
 
 IMMEDIATE_BREAK_RETEST sequences produce a DetectionResult with:
-
+```
+status:       INVALID
+failed_stage: RETEST_BEFORE_DISPLACEMENT
+failed_rules: [{rule_id:      "DISP.RETEST_BEFORE_DISPLACEMENT",
+                value_type:   INTEGER,
+                actual_value: "0",
+                operator:     GTE,
+                required_value: "1",
+                unit:         "bars",
+                message:      "first post-break bar contacted the level;
+                               no displacement phase existed before retest began"}]
+```
 
 Strategies may later define a separate preset category for IMMEDIATE_BREAK_RETEST if they wish to trade them, but they are not BDRR setups.
 
