@@ -528,8 +528,8 @@ function drawChart(ph = 'all'){
   lvLeft(LEVEL,   '#c084fc', 'ORB H 722.30', '', true,  '1.5');
   lvLeft(ORB_LOW, '#c084fc', 'ORB L 721.50', '', false, '1');
 
-  // Stop — always drawn on every phase (visible as soon as trade context exists)
-  if(ph !== 'orb' && ph !== 'break') drawStop();
+  // Stop — only visible once the confirmation candle (10:00) exists
+  if(ph === 'all' || ph === 'entry') drawStop();
 
   // Remaining trade levels — only when relevant phase
   if(ph === 'all' || ph === 'entry'){
