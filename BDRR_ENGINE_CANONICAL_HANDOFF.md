@@ -1383,6 +1383,152 @@ Post-exit price movement is not attributed to the trade.
 
 ---
 
+# Part 12 — Current Executable Implementation Status
+
+**FROZEN** — This section is a status record of code and tests as they exist in this repository at the end of this session. It documents what now runs, not a new specification decision. It does not alter, override, or supersede any FROZEN threshold, formula, or validation finding recorded earlier in this document (Parts 1–11). Historical validation findings and oracle values are unchanged.
+
+## 12.1 Starting Point
+
+**FROZEN** — At the start of this session, the repository contained the frozen BDRR specification (this document) and static validation review pages (`brr_prototype.html`, `brr_validation_20260505.html`, `bdrr_qqq_validation.html`, `orb_candidate_review.html`) with hand-computed, hardcoded results. No executable BDRR detection engine existed anywhere in the repository.
+
+## 12.2 Engine Module
+
+**FROZEN** — A new, isolated, deterministic engine module now exists at `estrategie/bdrr_engine.js`. It is separate from `index.html` and from the PDH/PDL and ORB strategy code already in the repository. It has no UI integration.
+
+*(Note on path: the instruction text for this task said `strategie/bdrr_engine.js`. The actual, existing directory in this repository is `estrategie/`. This document records the real path so a new session is not sent looking for a nonexistent folder.)*
+
+## 12.3 Implemented and Tested Stages
+
+**Stage 1 — Session Context**
+- accepts a single trading session's candles (one ET calendar date) per call
+- timezone: America/New_York
+- session open: 09:30
+
+**Stage 1 — ORB Construction**
+- 5-minute ORB window
+- uses only the first session candle beginning at 09:30
+- ORB High is the active detection level
+- ORB Low is returned for completeness but is not an active detection level
+
+**Stage 2 — Break**
+- LONG direction only
+- first candle whose close is strictly greater than ORB High
+- a wick beyond the level without a qualifying close does not count
+- no numeric minimum break-distance threshold
+
+**Stage 3 — Displacement**
+- the breakout candle itself is never counted as a displacement bar
+- displacement begins on the first post-break candle
+- a displacement bar exists only while its low is strictly greater than the level
+- the first candle whose low is less than or equal to the level begins the retest and ends the displacement window
+- `RETEST_BEFORE_DISPLACEMENT` is a mandatory structural failure when zero displacement bars exist before that first contact
+- `min_displacement_ticks` is disabled in the initial preset (no numeric threshold applied)
+
+**Stage 4 — Retest Window**
+- begins at the first retest contact (that candle is included in the window)
+- multiple retest attempts are allowed
+- no maximum failed-retest count is imposed
+- no setup-age limit is imposed
+- penetration-through-level and displacement-retracement-percentage metrics are computed and reported per contact
+- no rejection qualification of any kind is performed in Stage 4
+
+**Stage 5 — Rejection Qualification**
+- LONG / ORB_HIGH only
+- the first qualifying rejection candle is selected chronologically; scanning stops immediately once it is found
+- minimum rejection wick ratio: 0.47
+- maximum body ratio: 0.40
+- minimum favorable close location: 0.80
+- minimum penetration threshold: disabled (reported, not gated)
+- minimum close-beyond-level threshold: disabled (reported, not gated)
+- opposite wick ratio is reported only, never gated
+- a zero-range candle cannot qualify
+- no candle after the confirmation candle is inspected (no look-ahead)
+
+## 12.4 Current Exported Functions
+
+**FROZEN** — `estrategie/bdrr_engine.js` currently exports exactly:
+```
+buildSessionContext
+buildORB
+findBreak
+findDisplacement
+findRetestWindow
+findRejection
+```
+No entry, stop, target, position-sizing, or outcome-evaluation function exists in this module.
+
+## 12.5 Current Validated Oracle Fixtures
+
+**FROZEN** — Machine-readable oracle fixtures exist at:
+```
+dati/bdrr_spy_oracle.json
+dati/bdrr_qqq_oracle.json
+```
+Candidate coverage:
+- SPY: 3 VALID candidates + 1 INVALID research candidate (2026-05-05, structurally rejected under `RETEST_BEFORE_DISPLACEMENT`; its trade-plan-shaped fields are explicitly marked non-executable/hypothetical)
+- QQQ: 4 VALID candidates
+
+These fixtures transcribe already-documented values only; no new detection results were computed to build them beyond two explicitly frozen corrections (SPY 2026-05-26 stop-breach timestamp; QQQ 2026-05-13 displacement window and MFE-through-terminal-target).
+
+## 12.6 Current Tests and Latest Reported Results
+
+**FROZEN** — Test files (actual path `estrategie/`, not `strategie/` — see note in §12.2):
+```
+estrategie/test_bdrr_oracle_validation.js
+estrategie/test_bdrr_stage1_stage2.js
+estrategie/test_bdrr_stage3.js
+estrategie/test_bdrr_stage4.js
+estrategie/test_bdrr_stage5.js
+```
+Latest reported results:
+- oracle validation: 263 checks, 0 failures
+- Stage 1/2: 35 checks, 0 failures
+- Stage 3: 39 checks, 0 failures
+- Stage 4: 41 checks, 0 failures
+- Stage 5: 127 checks, 0 failures
+
+## 12.7 Not Yet Implemented
+
+**NOT STARTED** — Full pipeline orchestrator (single call chaining Stage 1 through Stage 5 across a multi-day dataset).
+
+**NOT STARTED** — Trade plan construction.
+
+**NOT STARTED** — Entry calculation module.
+
+**NOT STARTED** — Stop calculation module.
+
+**NOT STARTED** — Target calculation module.
+
+**NOT STARTED** — Chronological outcome evaluation.
+
+**NOT STARTED** — Same-bar ambiguity evaluation.
+
+**NOT STARTED** — MFE/MAE engine.
+
+**NOT STARTED** — Multi-day runner.
+
+**NOT STARTED** — Backtest aggregation.
+
+**NOT STARTED** — Strategy configuration UI.
+
+**NOT STARTED** — ORB Low execution (structurally present in the schema; not exercised by the engine).
+
+**NOT STARTED** — SHORT execution (structurally present in the schema; not exercised by the engine).
+
+**NOT STARTED** — 1-minute data validation.
+
+**NOT STARTED** — MES/MNQ futures validation.
+
+**NOT STARTED** — Paper or live bot execution.
+
+## 12.8 Next Session Starting Point
+
+**FROZEN** — The next Claude session must begin with trade planning and chronological outcome evaluation, built on top of the existing Stage 1–5 engine (`estrategie/bdrr_engine.js`) unchanged. It should not re-derive or re-validate Stage 1–5; those are tested and frozen as of this section.
+
+---
+
+---
+
 # Architectural Freeze Statement
 
 **Detection determines whether the setup exists.** The Detection Engine runs a deterministic structural algorithm against raw market data. It produces a `DetectionResult` for every candidate examined and a `SetupCandidate` for every VALID result. Distance fields that are declared non-negative use formulas that guarantee non-negativity. Retracement is measured from the deepest directional position, not the shallowest. The Stage-3 minimum-distance gate is a binary rule using `displacement_pts.ticks`. The Stage-3 structural rule (`RETEST_BEFORE_DISPLACEMENT`) is a second binary gate: at least one completed post-break bar must have its LOW strictly above the level before any retest contact. Sequences that fail this rule are classified as `IMMEDIATE_BREAK_RETEST` and are INVALID regardless of geometry. Both Stage-3 rules are frozen. The engine's output is immutable the moment it is written.

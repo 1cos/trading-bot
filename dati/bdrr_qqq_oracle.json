@@ -1,0 +1,490 @@
+{
+  "schema_version": "bdrr_oracle_fixture/v1",
+  "instrument": "QQQ",
+  "generated_from": [
+    "BDRR_ENGINE_CANONICAL_HANDOFF.md",
+    "bdrr_qqq_validation.html"
+  ],
+  "generated_by": "manual transcription, no detection logic executed",
+  "preset": {
+    "timeframe": "5m",
+    "timezone": "America/New_York",
+    "session_open": "09:30",
+    "orb_start": "session_open",
+    "orb_duration_minutes": 5,
+    "level_source": "ORB_HIGH",
+    "direction": "LONG",
+    "tick_size": 0.01,
+    "min_displacement_ticks": null,
+    "min_displacement_ticks_status": "DISABLED_IN_INITIAL_PRESET — do not invent a numeric threshold",
+    "retest_before_displacement_gate": "MANDATORY — at least one completed post-break bar with low strictly above level before first retest contact",
+    "same_bar_stop_target_rule": "AMBIGUOUS — counted as neither win nor loss; stop-first ordering NOT applied when stop and target occur on the same OHLC candle",
+    "mfe_mae_boundary_rule": "MFE/MAE accrue only through the first terminal event bar (inclusive); no post-terminal-event price movement is attributed to the trade"
+  },
+  "instrument_note": "QQQ is an ETF (Nasdaq-100 proxy), not a futures instrument. Futures cross-instrument validation (MES, MNQ) remains pending per BDRR_ENGINE_CANONICAL_HANDOFF.md Part 9.",
+  "candidates": [
+    {
+      "candidate_id": "QQQ_2026-04-29",
+      "instrument": "QQQ",
+      "date": "2026-04-29",
+      "timeframe": "5m",
+      "timezone": "America/New_York",
+      "direction": "LONG",
+      "level_source": "ORB_HIGH",
+      "level_price": 658.84,
+      "orb_low": 656.76,
+      "break": {
+        "timestamp": "09:50",
+        "close": 659.05,
+        "directional_break_distance_pts": 0.21,
+        "directional_break_distance_ticks": 21
+      },
+      "displacement": {
+        "bar_count": 1,
+        "window": [
+          "09:55"
+        ],
+        "window_ohlc": [
+          {
+            "t": "09:55",
+            "o": 659.1,
+            "h": 659.27,
+            "l": 658.865,
+            "c": 658.9344
+          }
+        ],
+        "max_high": 659.27,
+        "displacement_pts": 0.43,
+        "displacement_ticks": 43
+      },
+      "retest": {
+        "first_contact_timestamp": "10:00",
+        "failed_retests": [
+          {
+            "timestamp": "10:00",
+            "o": 658.925,
+            "h": 659.02,
+            "l": 658.08,
+            "c": 658.47
+          },
+          {
+            "timestamp": "10:05",
+            "o": 658.6899,
+            "h": 658.6899,
+            "l": 657.91,
+            "c": 658.16
+          },
+          {
+            "timestamp": "10:10",
+            "o": 658.16,
+            "h": 659.145,
+            "l": 657.9,
+            "c": 658.78
+          },
+          {
+            "timestamp": "10:15",
+            "o": 658.784,
+            "h": 659.1398,
+            "l": 658.51,
+            "c": 658.9599
+          },
+          {
+            "timestamp": "10:20",
+            "o": 658.93,
+            "h": 659.49,
+            "l": 658.6401,
+            "c": 659.465
+          },
+          {
+            "timestamp": "11:50",
+            "o": 660.5,
+            "h": 660.62,
+            "l": 658.42,
+            "c": 658.9
+          }
+        ],
+        "failed_retest_count": 6,
+        "penetration_pts": 0.3,
+        "penetration_ticks": 30,
+        "note": "6 failed retests span 10:00–11:50; the intervening bars (10:25–11:45) trade above the level without a qualifying rejection until the 11:50 failure and 11:55 confirmation."
+      },
+      "confirmation": {
+        "timestamp": "11:55",
+        "o": 659.23,
+        "h": 659.48,
+        "l": 658.5401,
+        "c": 659.37,
+        "rej_wick": 0.734,
+        "body": 0.149,
+        "close_loc": 0.883
+      },
+      "detection_status": "VALID",
+      "failed_stage": null,
+      "failure_reason": null,
+      "entry": 659.37,
+      "stop": 658.54,
+      "risk": {
+        "points": 0.83,
+        "ticks": 83
+      },
+      "targets": {
+        "r2": {
+          "price": 661.03,
+          "reached": false
+        },
+        "r3": {
+          "price": 661.86,
+          "reached": false
+        },
+        "r4": {
+          "price": 662.69,
+          "reached": false
+        }
+      },
+      "first_terminal_event": {
+        "type": "STOP",
+        "timestamp": "12:20",
+        "low": 658.53,
+        "corrected": false
+      },
+      "realized_outcome": "-0.83 pts / -1R (stopped at 12:20)",
+      "mfe_before_exit": {
+        "points": 0.79,
+        "timestamp": "12:10",
+        "high": 660.16
+      },
+      "mae_before_exit": null,
+      "source_notes": "bdrr_qqq_validation.html Candidate 1; BDRR_ENGINE_CANONICAL_HANDOFF.md Part 10. Full candle array cross-checked: stop bar (12:20, low=658.53) and confirmation bar (11:55) both verified against published OHLC.",
+      "unresolved_fields": [
+        "mae_before_exit: not stated anywhere in source"
+      ]
+    },
+    {
+      "candidate_id": "QQQ_2026-05-06",
+      "instrument": "QQQ",
+      "date": "2026-05-06",
+      "timeframe": "5m",
+      "timezone": "America/New_York",
+      "direction": "LONG",
+      "level_source": "ORB_HIGH",
+      "level_price": 689.16,
+      "orb_low": 686.48,
+      "break": {
+        "timestamp": "09:40",
+        "close": 689.97,
+        "directional_break_distance_pts": 0.81,
+        "directional_break_distance_ticks": 81
+      },
+      "displacement": {
+        "bar_count": 1,
+        "window": [
+          "09:45"
+        ],
+        "window_ohlc": [
+          {
+            "t": "09:45",
+            "o": 689.96,
+            "h": 690.42,
+            "l": 689.37,
+            "c": 689.66
+          }
+        ],
+        "max_high": 690.42,
+        "displacement_pts": 1.33,
+        "displacement_ticks": 133,
+        "inconsistency_flag": "Documented displacement_pts is +1.33 pts / 133 ticks at 09:45, but the published candle high for 09:45 is 690.42 (level 689.16), which yields +1.26 pts / 126 ticks, not +1.33. This 0.07 pt discrepancy is present in bdrr_qqq_validation.html itself and is NOT corrected here — only the three corrections explicitly specified for this task (SPY 2026-05-26 stop time, QQQ 2026-05-13 displacement range, QQQ 2026-05-13 MFE) were applied. Documented value (1.33/133) is transcribed as authoritative; the discrepancy is flagged, not resolved."
+      },
+      "retest": {
+        "first_contact_timestamp": "09:50",
+        "failed_retests": [],
+        "failed_retest_count": 0,
+        "note": "Retest contact and confirmation occur on the same bar (09:50); confirmation_bar.low (688.46) equals stop price by definition of the stop formula."
+      },
+      "confirmation": {
+        "timestamp": "09:50",
+        "o": 689.64,
+        "h": 690.49,
+        "l": 688.46,
+        "c": 690.28,
+        "rej_wick": 0.581,
+        "body": 0.315,
+        "close_loc": 0.897
+      },
+      "detection_status": "VALID",
+      "failed_stage": null,
+      "failure_reason": null,
+      "entry": 690.28,
+      "stop": 688.46,
+      "risk": {
+        "points": 1.82,
+        "ticks": 182
+      },
+      "targets": {
+        "r2": {
+          "price": 693.92,
+          "reached": false
+        },
+        "r3": {
+          "price": 695.74,
+          "reached": false
+        },
+        "r4": {
+          "price": 697.56,
+          "reached": false
+        }
+      },
+      "first_terminal_event": {
+        "type": "STOP",
+        "timestamp": "10:00",
+        "low": 688.28,
+        "corrected": false
+      },
+      "realized_outcome": "-1.82 pts / -1R (stopped at 10:00)",
+      "mfe_before_exit": {
+        "points": 0.24,
+        "timestamp": "09:55",
+        "high": 690.52
+      },
+      "mae_before_exit": null,
+      "source_notes": "bdrr_qqq_validation.html Candidate 2; BDRR_ENGINE_CANONICAL_HANDOFF.md Part 10. Stop bar (10:00, low=688.28) and MFE bar (09:55, high=690.52) both verified against published OHLC.",
+      "unresolved_fields": [
+        "mae_before_exit: not stated anywhere in source",
+        "displacement_pts/ticks: see inconsistency_flag above — documented value transcribed as-is, not independently reconciled with raw candle high"
+      ]
+    },
+    {
+      "candidate_id": "QQQ_2026-05-13",
+      "instrument": "QQQ",
+      "date": "2026-05-13",
+      "timeframe": "5m",
+      "timezone": "America/New_York",
+      "direction": "LONG",
+      "level_source": "ORB_HIGH",
+      "level_price": 709.95,
+      "orb_low": 708.28,
+      "break": {
+        "timestamp": "10:50",
+        "close": 710.54,
+        "directional_break_distance_pts": 0.59,
+        "directional_break_distance_ticks": 59
+      },
+      "displacement": {
+        "bar_count": 6,
+        "window": [
+          "10:55",
+          "11:00",
+          "11:05",
+          "11:10",
+          "11:15",
+          "11:20"
+        ],
+        "window_ohlc": [
+          {
+            "t": "10:55",
+            "o": 710.58,
+            "h": 710.85,
+            "l": 710.26,
+            "c": 710.7426,
+            "clearance_pts": 0.31
+          },
+          {
+            "t": "11:00",
+            "o": 711.07,
+            "h": 711.53,
+            "l": 710.68,
+            "c": 711.15,
+            "clearance_pts": 0.73
+          },
+          {
+            "t": "11:05",
+            "o": 711.18,
+            "h": 711.21,
+            "l": 710.69,
+            "c": 711.0501,
+            "clearance_pts": 0.74
+          },
+          {
+            "t": "11:10",
+            "o": 711.11,
+            "h": 711.15,
+            "l": 710.25,
+            "c": 710.83,
+            "clearance_pts": 0.3
+          },
+          {
+            "t": "11:15",
+            "o": 710.8396,
+            "h": 711.2799,
+            "l": 710.75,
+            "c": 711.0898,
+            "clearance_pts": 0.8
+          },
+          {
+            "t": "11:20",
+            "o": 711.05,
+            "h": 711.297,
+            "l": 710.45,
+            "c": 710.7455,
+            "clearance_pts": 0.5
+          }
+        ],
+        "max_high": 711.53,
+        "displacement_pts": 1.58,
+        "displacement_ticks": 158,
+        "corrected": true,
+        "correction_note": "FROZEN CORRECTION (applied this task): displacement window is 10:55–11:20 (6 bars, all tagged 'disp' in bdrr_qqq_validation.html's own candle array). The page's scan-card info-row separately stated '(11:00–11:15)', which is inconsistent with its own candle tags and rule-by-rule walkthrough ('6 bars (10:55–11:20)'). 10:55–11:20 is now authoritative; the per-bar clearance values (0.31, 0.73, 0.74, 0.30, 0.80, 0.50) were independently re-verified against each bar's low minus level and match exactly."
+      },
+      "retest": {
+        "first_contact_timestamp": "11:25",
+        "failed_retests": [],
+        "failed_retest_count": 0,
+        "note": "Retest contact and confirmation occur on the same bar (11:25), no failed attempts."
+      },
+      "confirmation": {
+        "timestamp": "11:25",
+        "o": 710.732,
+        "h": 710.732,
+        "l": 709.85,
+        "c": 710.57,
+        "rej_wick": 0.816,
+        "body": 0.184,
+        "close_loc": 0.816,
+        "opp_wick": 0.0,
+        "penetration_pts": 0.1,
+        "penetration_ticks": 10,
+        "close_beyond_level_pts": 0.62,
+        "close_beyond_level_ticks": 62
+      },
+      "detection_status": "VALID",
+      "failed_stage": null,
+      "failure_reason": null,
+      "entry": 710.57,
+      "stop": 709.85,
+      "risk": {
+        "points": 0.72,
+        "ticks": 72
+      },
+      "targets": {
+        "r2": {
+          "price": 712.01,
+          "reached": true
+        },
+        "r3": {
+          "price": 712.73,
+          "reached": true
+        },
+        "r4": {
+          "price": 713.45,
+          "reached": true,
+          "timestamp": "12:20",
+          "high": 713.6571
+        }
+      },
+      "first_terminal_event": {
+        "type": "TARGET",
+        "target": "r4",
+        "timestamp": "12:20",
+        "high": 713.6571,
+        "corrected": false
+      },
+      "realized_outcome": "All three targets (2R/3R/4R) reached; no stop before any target",
+      "mfe_before_exit": {
+        "points": 2.88,
+        "r_multiple": 4,
+        "timestamp": "12:20",
+        "terminal_price": 713.45,
+        "calculation_basis": "CAPPED_AT_TERMINAL_TARGET",
+        "corrected": true,
+        "correction_note": "FROZEN CORRECTION (applied this task, superseding the prior correction in this same field): the trade terminates at the first intrabar touch of the 4R target (713.45), not at the full high of the 12:20 candle (713.6571). With only 5-minute OHLC data, price movement within the terminal candle after that intrabar touch cannot be attributed to the open trade, since the position is no longer open once the target is touched. MFE is therefore capped at the terminal target price: MFE = 713.45 - 710.57 = 2.88 pts = exactly 4R (consistent with r_multiple=4, since the terminal event is the 4R target itself). The previous correction in this field (3.0871, using the full 12:20 candle high) is superseded by this one. The original pre-correction value (+6.08 pts at 14:20) remains excluded as post-terminal-event movement, for the same reason as before."
+      },
+      "mae_before_exit": {
+        "points": -0.62,
+        "timestamp": "11:30",
+        "low": 709.95
+      },
+      "source_notes": "bdrr_qqq_validation.html Candidate 3; BDRR_ENGINE_CANONICAL_HANDOFF.md Part 10. Full candle array cross-checked for displacement window, terminal bar, and MFE/MAE.",
+      "unresolved_fields": [
+        "mfe_before_exit.points (2.88) is a derived recomputation capped at the terminal target price (see correction_note), not a value directly labeled 'MFE' in the original source; it is exactly 4R by construction since the terminal event is the 4R target touch itself"
+      ]
+    },
+    {
+      "candidate_id": "QQQ_2026-07-14",
+      "instrument": "QQQ",
+      "date": "2026-07-14",
+      "timeframe": "5m",
+      "timezone": "America/New_York",
+      "direction": "LONG",
+      "level_source": "ORB_HIGH",
+      "level_price": 720.29,
+      "orb_low": null,
+      "break": {
+        "timestamp": "11:05",
+        "close": null
+      },
+      "displacement": {
+        "bar_count": 6,
+        "window": null,
+        "window_ohlc": null,
+        "max_high": null,
+        "displacement_pts": 1.99,
+        "displacement_ticks": 199
+      },
+      "retest": {
+        "first_contact_timestamp": null,
+        "failed_retests": null,
+        "failed_retest_count": 15
+      },
+      "confirmation": {
+        "timestamp": "13:15",
+        "o": null,
+        "h": null,
+        "l": null,
+        "c": null,
+        "rej_wick": 0.61,
+        "body": 0.38,
+        "close_loc": 0.99
+      },
+      "detection_status": "VALID",
+      "failed_stage": null,
+      "failure_reason": null,
+      "entry": 720.825,
+      "stop": 720.14,
+      "risk": {
+        "points": 0.685,
+        "ticks": 69
+      },
+      "targets": {
+        "r2": {
+          "price": 722.195,
+          "reached": false
+        },
+        "r3": {
+          "price": 722.88,
+          "reached": false
+        },
+        "r4": {
+          "price": 723.565,
+          "reached": false
+        }
+      },
+      "first_terminal_event": {
+        "type": "STOP",
+        "timestamp": "14:40",
+        "low": 720.07,
+        "corrected": false
+      },
+      "realized_outcome": "-0.685 pts / -1R (stopped at 14:40)",
+      "mfe_before_exit": null,
+      "mae_before_exit": null,
+      "source_notes": "BDRR_ENGINE_CANONICAL_HANDOFF.md Part 10 ONLY. bdrr_qqq_validation.html explicitly states this candidate is 'not shown in the tabbed review' — no chart, no candle array, no rule-by-rule page exists for it anywhere in the repository. This candidate has materially lower corroboration than candidates 1–3.",
+      "unresolved_fields": [
+        "break.close: not stated anywhere in source",
+        "displacement.window / window_ohlc / max_high: not stated anywhere in source (only bar count and total ticks given)",
+        "retest.first_contact_timestamp / individual failed_retests: not stated anywhere in source (only total failed count given)",
+        "confirmation OHLC (o/h/l/c): not stated anywhere in source (only geometry ratios given)",
+        "mfe_before_exit / mae_before_exit: not stated anywhere in source",
+        "orb_low: not stated anywhere in source"
+      ]
+    }
+  ]
+}

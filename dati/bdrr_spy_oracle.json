@@ -1,0 +1,427 @@
+{
+  "schema_version": "bdrr_oracle_fixture/v1",
+  "instrument": "SPY",
+  "generated_from": [
+    "BDRR_ENGINE_CANONICAL_HANDOFF.md",
+    "brr_prototype.html",
+    "brr_validation_20260505.html"
+  ],
+  "generated_by": "manual transcription, no detection logic executed",
+  "preset": {
+    "timeframe": "5m",
+    "timezone": "America/New_York",
+    "session_open": "09:30",
+    "orb_start": "session_open",
+    "orb_duration_minutes": 5,
+    "level_source": "ORB_HIGH",
+    "direction": "LONG",
+    "tick_size": 0.01,
+    "min_displacement_ticks": null,
+    "min_displacement_ticks_status": "DISABLED_IN_INITIAL_PRESET — do not invent a numeric threshold",
+    "retest_before_displacement_gate": "MANDATORY — at least one completed post-break bar with low strictly above level before first retest contact",
+    "same_bar_stop_target_rule": "AMBIGUOUS — counted as neither win nor loss; stop-first ordering NOT applied when stop and target occur on the same OHLC candle",
+    "mfe_mae_boundary_rule": "MFE/MAE accrue only through the first terminal event bar (inclusive); no post-terminal-event price movement is attributed to the trade"
+  },
+  "candidates": [
+    {
+      "candidate_id": "SPY_2026-05-26",
+      "instrument": "SPY",
+      "date": "2026-05-26",
+      "timeframe": "5m",
+      "timezone": "America/New_York",
+      "direction": "LONG",
+      "level_source": "ORB_HIGH",
+      "level_price": 750.44,
+      "break": {
+        "timestamp": "09:40",
+        "close": 750.63
+      },
+      "displacement": {
+        "bar_count": 1,
+        "window": [
+          "09:45"
+        ],
+        "window_ohlc": [
+          {
+            "t": "09:45",
+            "o": 750.65,
+            "h": 751.12,
+            "l": 750.64,
+            "c": 750.98
+          }
+        ],
+        "max_high": 751.12,
+        "displacement_pts": 0.68,
+        "displacement_ticks": null
+      },
+      "retest": {
+        "first_contact_timestamp": "09:50",
+        "first_contact_low": 749.58,
+        "failed_retests": [
+          {
+            "timestamp": "09:50",
+            "o": 750.98,
+            "h": 751.04,
+            "l": 749.58,
+            "c": 750.14,
+            "rej_wick": 0.38,
+            "body": 0.58,
+            "close_loc": 0.38,
+            "fail_reason": "rej_wick 0.38 < 0.47; body 0.58 > 0.40; close_loc 0.38 < 0.80"
+          },
+          {
+            "timestamp": "09:55",
+            "o": 750.16,
+            "h": 750.78,
+            "l": 750.09,
+            "c": 750.78,
+            "rej_wick": 0.09,
+            "body": 0.91,
+            "close_loc": null,
+            "fail_reason": "rej_wick 0.09 < 0.47; body 0.91 > 0.40 (engulfing-style candle)"
+          }
+        ],
+        "failed_retest_count": 2
+      },
+      "confirmation": {
+        "timestamp": "11:05",
+        "o": 750.77,
+        "h": 750.97,
+        "l": 750.37,
+        "c": 750.89,
+        "rej_wick": 0.67,
+        "body": 0.2,
+        "close_loc": 0.87
+      },
+      "detection_status": "VALID",
+      "failed_stage": null,
+      "failure_reason": null,
+      "entry": 750.89,
+      "stop": 750.37,
+      "risk": {
+        "points": 0.52,
+        "ticks": null
+      },
+      "targets": {
+        "r2": {
+          "price": 751.94,
+          "reached": false
+        },
+        "r3": {
+          "price": 752.47,
+          "reached": false
+        },
+        "r4": {
+          "price": 752.99,
+          "reached": false
+        }
+      },
+      "first_terminal_event": {
+        "type": "STOP",
+        "timestamp": "11:15",
+        "low": 750.06,
+        "corrected": true,
+        "correction_note": "FROZEN CORRECTION (applied this task): source info-row originally read 'Stop hit 11:10'. Candle data shows 11:10 low=750.47 (does NOT breach stop 750.37) and 11:15 low=750.06 (breaches stop). Accompanying prose in brr_prototype.html already pointed to 11:15. 11:15 is now the authoritative first_terminal_event timestamp."
+      },
+      "realized_outcome": "STOPPED",
+      "mfe_before_exit": null,
+      "mae_before_exit": null,
+      "source_notes": "brr_prototype.html Candidate 1; BDRR_ENGINE_CANONICAL_HANDOFF.md Part 10. Targets never approached before stop (post-entry highs stayed below 751.05, well under r2=751.94), so reached=false is a direct reading of published candle highs, not an inference.",
+      "unresolved_fields": [
+        "displacement_ticks: not stated in source (only points given)",
+        "risk.ticks: not stated in source for this candidate (only points given)",
+        "mfe_before_exit: not stated anywhere in source",
+        "mae_before_exit: not stated anywhere in source",
+        "realized_outcome numeric R-multiple: not independently stated in source text for this candidate (only 'stop hit' qualitative outcome given); -1R follows arithmetically from risk definition but is not an independently confirmed source statement",
+        "target arithmetic drift: r3 (752.47) and r4 (752.99) are each ~0.02 pts off from entry(750.89) + N*risk(0.52) as displayed; r2 (751.94) is off by ~0.01 pts. All four values (entry, stop, risk, r2, r3, r4) are transcribed exactly as documented in source - the drift indicates targets were computed upstream from a more precise, unrounded risk value (approx. 0.525-0.527) before entry/stop/risk were rounded to the cent for display. Not corrected here since it was not one of the three corrections specified for this task; flagged for a future decision on whether targets should be recomputed from full-precision internal values rather than displayed rounded ones."
+      ]
+    },
+    {
+      "candidate_id": "SPY_2026-06-08",
+      "instrument": "SPY",
+      "date": "2026-06-08",
+      "timeframe": "5m",
+      "timezone": "America/New_York",
+      "direction": "LONG",
+      "level_source": "ORB_HIGH",
+      "level_price": 744.51,
+      "break": {
+        "timestamp": "10:55",
+        "close": 744.995
+      },
+      "displacement": {
+        "bar_count": 3,
+        "window": [
+          "11:00",
+          "11:05",
+          "11:10"
+        ],
+        "window_ohlc": null,
+        "max_high": 745.34,
+        "displacement_pts": 0.83,
+        "displacement_ticks": null
+      },
+      "retest": {
+        "first_contact_timestamp": "11:15",
+        "first_contact_low": 744.39,
+        "failed_retests": [
+          {
+            "timestamp": "11:15",
+            "o": 744.77,
+            "h": 745.16,
+            "l": 744.39,
+            "c": 744.84,
+            "rej_wick": null,
+            "body": null,
+            "close_loc": 0.59,
+            "fail_reason": "close_loc 0.59 < 0.80; closed above level but close location insufficient"
+          }
+        ],
+        "failed_retest_count": 1
+      },
+      "confirmation": {
+        "timestamp": "11:20",
+        "o": 744.84,
+        "h": 745.08,
+        "l": 744.14,
+        "c": 744.93,
+        "rej_wick": 0.74,
+        "body": 0.1,
+        "close_loc": 0.84
+      },
+      "detection_status": "VALID",
+      "failed_stage": null,
+      "failure_reason": null,
+      "entry": 744.93,
+      "stop": 744.14,
+      "risk": {
+        "points": 0.79,
+        "ticks": null
+      },
+      "targets": {
+        "r2": {
+          "price": 746.51,
+          "reached": false
+        },
+        "r3": {
+          "price": 747.3,
+          "reached": false
+        },
+        "r4": {
+          "price": 748.09,
+          "reached": false
+        }
+      },
+      "first_terminal_event": {
+        "type": "STOP",
+        "timestamp": "11:25",
+        "low": 743.11,
+        "corrected": false
+      },
+      "realized_outcome": "STOPPED",
+      "mfe_before_exit": null,
+      "mae_before_exit": null,
+      "source_notes": "brr_prototype.html Candidate 2; BDRR_ENGINE_CANONICAL_HANDOFF.md Part 10. No internal inconsistency found for this candidate's stop timestamp.",
+      "unresolved_fields": [
+        "displacement.window_ohlc: individual OHLC for the 3 displacement bars (11:00/11:05/11:10) not independently captured; only the aggregate max_high=745.34 is documented",
+        "displacement_ticks / risk.ticks: not stated in source (only points given)",
+        "mfe_before_exit / mae_before_exit: not stated anywhere in source",
+        "realized_outcome numeric R-multiple: not independently stated in source text (qualitative 'stop hit' only)"
+      ]
+    },
+    {
+      "candidate_id": "SPY_2026-07-06",
+      "instrument": "SPY",
+      "date": "2026-07-06",
+      "timeframe": "5m",
+      "timezone": "America/New_York",
+      "direction": "LONG",
+      "level_source": "ORB_HIGH",
+      "level_price": 749.49,
+      "break": {
+        "timestamp": "10:20",
+        "close": 749.65
+      },
+      "displacement": {
+        "bar_count": 2,
+        "window": [
+          "10:25",
+          "10:30"
+        ],
+        "window_ohlc": null,
+        "max_high": 750.17,
+        "displacement_pts": 0.68,
+        "displacement_ticks": null
+      },
+      "retest": {
+        "first_contact_timestamp": "10:35",
+        "first_contact_low": 749.44,
+        "failed_retests": [
+          {
+            "timestamp": "10:35",
+            "o": 749.7,
+            "h": 749.86,
+            "l": 749.44,
+            "c": 749.67,
+            "rej_wick": null,
+            "body": null,
+            "close_loc": 0.54,
+            "fail_reason": "close_loc 0.54 < 0.80; closed above level but close location insufficient"
+          }
+        ],
+        "failed_retest_count": 1
+      },
+      "confirmation": {
+        "timestamp": "10:40",
+        "o": 749.65,
+        "h": 749.76,
+        "l": 749.1,
+        "c": 749.67,
+        "rej_wick": 0.84,
+        "body": 0.03,
+        "close_loc": 0.87
+      },
+      "detection_status": "VALID",
+      "failed_stage": null,
+      "failure_reason": null,
+      "entry": 749.67,
+      "stop": 749.1,
+      "risk": {
+        "points": 0.57,
+        "ticks": null
+      },
+      "targets": {
+        "r2": {
+          "price": 750.81,
+          "reached": true,
+          "timestamp": "11:25"
+        },
+        "r3": {
+          "price": 751.38,
+          "reached": null
+        },
+        "r4": {
+          "price": 751.95,
+          "reached": null
+        }
+      },
+      "first_terminal_event": {
+        "type": "TARGET_R2_REACHED",
+        "timestamp": "11:25",
+        "note": "Source states only that 2R was reached at 11:25. Whether the trade was closed at 2R or continued toward 3R/4R is NOT SPECIFIED — the production target-selection model is itself an open decision (fixed R vs. trailing vs. partial exits). This is reported as the first confirmed checkpoint, not asserted as a true close-out terminal event."
+      },
+      "realized_outcome": "2R reached at 11:25; outcome beyond that point NOT SPECIFIED",
+      "mfe_before_exit": null,
+      "mae_before_exit": null,
+      "source_notes": "brr_prototype.html Candidate 3; BDRR_ENGINE_CANONICAL_HANDOFF.md Part 10 ('2R reached').",
+      "unresolved_fields": [
+        "displacement.window_ohlc: individual OHLC for the 2 displacement bars (10:25/10:30) not independently captured; only aggregate max_high=750.17 documented",
+        "displacement_ticks / risk.ticks: not stated in source",
+        "r3.reached / r4.reached: not stated in source",
+        "mfe_before_exit / mae_before_exit: not stated anywhere in source",
+        "true first_terminal_event: source only confirms a 2R checkpoint, not a final close"
+      ]
+    },
+    {
+      "candidate_id": "SPY_2026-05-05",
+      "instrument": "SPY",
+      "date": "2026-05-05",
+      "timeframe": "5m",
+      "timezone": "America/New_York",
+      "direction": "LONG",
+      "level_source": "ORB_HIGH",
+      "level_price": 722.3,
+      "orb_low": 721.495,
+      "break": {
+        "timestamp": "09:50",
+        "close": 722.37,
+        "directional_break_distance_pts": 0.07,
+        "directional_break_distance_ticks": 7
+      },
+      "displacement": {
+        "bar_count": 0,
+        "window": [],
+        "displacement_pts": 0.49,
+        "displacement_ticks": 49,
+        "note": "Measured off breakout bar high only; no displacement window bars existed before retest began."
+      },
+      "retest": {
+        "first_contact_timestamp": "09:55",
+        "first_contact_low": 722.29,
+        "failed_retests": [
+          {
+            "timestamp": "09:55",
+            "o": 722.36,
+            "h": 722.55,
+            "l": 722.29,
+            "c": 722.53,
+            "rej_wick": 0.269,
+            "body": 0.6542,
+            "close_loc": null,
+            "fail_reason": "rej_wick 0.2690 < 0.47; body 0.6542 > 0.40; body dominates (bullish continuation bar)"
+          }
+        ],
+        "failed_retest_count": 1
+      },
+      "confirmation": {
+        "timestamp": "10:00",
+        "o": 722.6,
+        "h": 722.785,
+        "l": 722.14,
+        "c": 722.75,
+        "rej_wick": 0.713,
+        "body": 0.233,
+        "close_loc": 0.946,
+        "opp_wick": 0.054,
+        "penetration_pts": 0.16,
+        "penetration_ticks": 16,
+        "close_beyond_level_pts": 0.45,
+        "close_beyond_level_ticks": 45
+      },
+      "detection_status": "INVALID",
+      "failed_stage": "RETEST_BEFORE_DISPLACEMENT",
+      "failure_reason": "first post-break bar contacted the level; no displacement phase existed before retest began (rule_id: DISP.RETEST_BEFORE_DISPLACEMENT, actual_value=0, operator=GTE, required_value=1, unit=bars)",
+      "executable": false,
+      "execution_note": "Non-executable. detection_status=INVALID. The entry/stop/risk/targets/outcome fields below are a HYPOTHETICAL trade plan computed for research purposes only, as documented in brr_validation_20260505.html. They do not represent an accepted BDRR setup and must never be treated as a tradable signal.",
+      "entry": 722.75,
+      "stop": 722.14,
+      "risk": {
+        "points": 0.61,
+        "ticks": 61
+      },
+      "targets": {
+        "r2": {
+          "price": 723.97,
+          "reached": true,
+          "timestamp": "13:30"
+        },
+        "r3": {
+          "price": 724.58,
+          "reached": true,
+          "timestamp": "14:10"
+        },
+        "r4": {
+          "price": 725.19,
+          "reached": false
+        }
+      },
+      "first_terminal_event": null,
+      "realized_outcome": "Hypothetical only (non-executable): 2R and 3R reached; 4R not reached; no stop-hit documented within the available window, so no true terminal event is recorded in source.",
+      "mfe_before_exit": {
+        "points": 2.29,
+        "timestamp": "15:25",
+        "high": 725.04
+      },
+      "mae_before_exit": {
+        "points": -0.96,
+        "timestamp": "10:15",
+        "low": 721.79
+      },
+      "source_notes": "brr_validation_20260505.html (full candidate detail); BDRR_ENGINE_CANONICAL_HANDOFF.md Part 10 (SPY blind validation candidate).",
+      "unresolved_fields": [
+        "first_terminal_event: no stop-hit is documented and 4R (final configured target) was never reached, so no closing/terminal event is defined in source for this hypothetical trade; MFE/MAE values below are reported as directly stated but their relationship to the frozen 'terminate at first terminal event' rule is UNRESOLVED since no terminal event exists in the documented window",
+        "min_displacement_ticks: was OPEN/unset at the time this candidate was reviewed (per brr_validation_20260505.html: 'min_displacement_ticks: OPEN — not yet set'); under the current preset it is explicitly DISABLED, not merely unset — this candidate's classification is unaffected either way since RETEST_BEFORE_DISPLACEMENT is independent of min_displacement_ticks"
+      ]
+    }
+  ]
+}
