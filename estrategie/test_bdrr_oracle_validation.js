@@ -13,11 +13,15 @@
  *   4. INVALID candidates are marked executable=false and carry a
  *      non-empty execution_note — they can never be treated as
  *      executable trades.
- *   5. The three frozen oracle corrections for this task are present:
+ *   5. The five frozen oracle corrections are present:
  *        a) SPY 2026-05-26 first_terminal_event.timestamp === "11:15"
  *        b) QQQ 2026-05-13 displacement.window === 10:55..11:20 (6 bars)
- *        c) QQQ 2026-05-13 mfe_before_exit computed through 12:20,
+ *        c) QQQ 2026-05-13 mfe_before_exit.points === 2.88 (CAPPED_AT_TERMINAL_TARGET),
  *           not the post-exit 14:20 / +6.08 value
+ *        d) QQQ 2026-05-06 displacement corrected to 1.26 pts / 126 ticks
+ *           (derived from oracle candle high 690.42 minus level 689.16)
+ *        e) QQQ 2026-07-14 trade_plan_oracle_status === "EXCLUDED" (confirmation
+ *           OHLC unavailable; entry 720.825 is not representable at 0.01 tick size)
  *
  * Run: node estrategie/test_bdrr_oracle_validation.js
  */
@@ -219,6 +223,44 @@ function validateCorrections(spy, qqq) {
     check(
       mfe && r4 != null && mfe.terminal_price === r4,
       `Correction (c) value check: expected mfe_before_exit.terminal_price (${mfe && mfe.terminal_price}) to equal targets.r4.price (${r4})`
+    );
+  }
+
+  // Correction (d): QQQ 2026-05-06 displacement corrected to 1.26 pts / 126 ticks
+  const qqq0506 = qqq.candidates.find(c => c.candidate_id === 'QQQ_2026-05-06');
+  check(!!qqq0506, 'QQQ_2026-05-06 candidate missing entirely');
+  if (qqq0506) {
+    const d = qqq0506.displacement;
+    check(
+      d && d.displacement_pts === 1.26,
+      `Correction (d) missing: QQQ_2026-05-06 displacement_pts must be 1.26 (was 1.33), got ${d && d.displacement_pts}`
+    );
+    check(
+      d && d.displacement_ticks === 126,
+      `Correction (d) missing: QQQ_2026-05-06 displacement_ticks must be 126 (was 133), got ${d && d.displacement_ticks}`
+    );
+    check(
+      d && d.corrected === true,
+      'Correction (d) missing: QQQ_2026-05-06 displacement.corrected must be true'
+    );
+  }
+
+  // Correction (e): QQQ 2026-07-14 trade_plan_oracle_status must be EXCLUDED
+  const qqq0714 = qqq.candidates.find(c => c.candidate_id === 'QQQ_2026-07-14');
+  check(!!qqq0714, 'QQQ_2026-07-14 candidate missing entirely');
+  if (qqq0714) {
+    check(
+      qqq0714.trade_plan_oracle_status === 'EXCLUDED',
+      `Correction (e) missing: QQQ_2026-07-14 trade_plan_oracle_status must be "EXCLUDED", got ${qqq0714.trade_plan_oracle_status}`
+    );
+    check(
+      typeof qqq0714.trade_plan_oracle_reason === 'string' && qqq0714.trade_plan_oracle_reason.length > 0,
+      'Correction (e) missing: QQQ_2026-07-14 must carry a non-empty trade_plan_oracle_reason'
+    );
+    // Detection status is unaffected
+    check(
+      qqq0714.detection_status === 'VALID',
+      `Correction (e): QQQ_2026-07-14 detection_status must still be VALID, got ${qqq0714.detection_status}`
     );
   }
 }

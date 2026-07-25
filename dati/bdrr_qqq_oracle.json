@@ -190,9 +190,10 @@
           }
         ],
         "max_high": 690.42,
-        "displacement_pts": 1.33,
-        "displacement_ticks": 133,
-        "inconsistency_flag": "Documented displacement_pts is +1.33 pts / 133 ticks at 09:45, but the published candle high for 09:45 is 690.42 (level 689.16), which yields +1.26 pts / 126 ticks, not +1.33. This 0.07 pt discrepancy is present in bdrr_qqq_validation.html itself and is NOT corrected here — only the three corrections explicitly specified for this task (SPY 2026-05-26 stop time, QQQ 2026-05-13 displacement range, QQQ 2026-05-13 MFE) were applied. Documented value (1.33/133) is transcribed as authoritative; the discrepancy is flagged, not resolved."
+        "displacement_pts": 1.26,
+        "displacement_ticks": 126,
+        "corrected": true,
+        "correction_note": "FROZEN CORRECTION: displacement_pts and displacement_ticks corrected from the historical 1.33/133 (sourced from bdrr_qqq_validation.html) to the arithmetic result derivable from the candle OHLC already present in this oracle: 690.42 (09:45 high) − 689.16 (level) = 1.26 pts = 126 ticks. The historical 1.33/133 values are preserved in the preceding correction_note only; 1.26/126 is now authoritative for machine-readable use."
       },
       "retest": {
         "first_contact_timestamp": "09:50",
@@ -248,8 +249,7 @@
       "mae_before_exit": null,
       "source_notes": "bdrr_qqq_validation.html Candidate 2; BDRR_ENGINE_CANONICAL_HANDOFF.md Part 10. Stop bar (10:00, low=688.28) and MFE bar (09:55, high=690.52) both verified against published OHLC.",
       "unresolved_fields": [
-        "mae_before_exit: not stated anywhere in source",
-        "displacement_pts/ticks: see inconsistency_flag above — documented value transcribed as-is, not independently reconciled with raw candle high"
+        "mae_before_exit: not stated anywhere in source"
       ]
     },
     {
@@ -445,6 +445,8 @@
         "close_loc": 0.99
       },
       "detection_status": "VALID",
+      "trade_plan_oracle_status": "EXCLUDED",
+      "trade_plan_oracle_reason": "UNVERIFIED — confirmation OHLC (o/h/l/c) is unavailable for this candidate; the historical entry price 720.825 is not representable at the configured 0.01 tick size (72082.5 ticks, non-integer). This candidate must not be used as an exact TradePlan/v1 parity oracle until reliable source data with integer-tick prices is available.",
       "failed_stage": null,
       "failure_reason": null,
       "entry": 720.825,

@@ -1308,7 +1308,7 @@ Commits:      3ab7df8 (initial), c33634f, 94ba64c (fixes)
             MFE before stop: +0.79 pts (12:10)
             Realized: −0.83 pts / −1R
 
-2026-05-06  level 689.16  bk 09:40  disp 1bar/133t  failed 0  entry 09:50
+2026-05-06  level 689.16  bk 09:40  disp 1bar/126t  failed 0  entry 09:50
             rej_wick 58.1%  body 31.5%  close_loc 89.7%
             entry 690.28  stop 688.46  risk 1.82/182t
             2R 693.92  3R 695.74  4R 697.56
@@ -1321,7 +1321,8 @@ Commits:      3ab7df8 (initial), c33634f, 94ba64c (fixes)
             entry 710.57  stop 709.85  risk 0.72/72t
             2R 712.01  3R 712.73  4R 713.45
             Outcome: 4R reached (12:20, H=713.66); no stop before any target
-            MFE before exit: +6.08 pts  MAE before exit: −0.62 pts
+            MFE: +2.88 pts (4R, terminal price 713.45, CAPPED_AT_TERMINAL_TARGET)
+            MAE before exit: −0.62 pts
 
 2026-07-14  level 720.29  bk 11:05  disp 6bars/199t  failed 15  entry 13:15
             rej_wick 61%  body 38%  close_loc 99%
@@ -1483,8 +1484,8 @@ estrategie/test_bdrr_stage5.js
 Latest reported results:
 - oracle validation: 263 checks, 0 failures
 - Stage 1/2: 35 checks, 0 failures
-- Stage 3: 39 checks, 0 failures
-- Stage 4: 41 checks, 0 failures
+- Stage 3: 22 checks, 0 failures
+- Stage 4: 21 checks, 0 failures
 - Stage 5: 127 checks, 0 failures
 
 ## 12.7 Not Yet Implemented
