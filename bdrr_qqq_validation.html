@@ -188,14 +188,14 @@ header h1{font-size:14px;font-weight:500;}header h1 span{color:var(--blue);}
       <div class="lv lv-e"><div class="lk">Entry</div><div class="lp">659.37</div><div class="ld">Close of conf candle 11:55</div></div>
       <div class="lv lv-s"><div class="lk">Stop</div><div class="lp">658.54</div><div class="ld">Low of conf candle · 0t</div></div>
       <div class="lv lv-k"><div class="lk">Risk 1R</div><div class="lp">0.83</div><div class="ld">83 ticks</div></div>
-      <div class="lv lv-r"><div class="lk">2R</div><div class="lp">661.03</div><div class="ld">✅ reached</div></div>
+      <div class="lv lv-k" style="border-color:rgba(255,77,77,0.25);background:rgba(255,77,77,0.06);"><div class="lk" style="color:var(--red);">2R</div><div class="lp" style="color:var(--red);">661.03</div><div class="ld" style="color:var(--red);">❌ not reached before stop</div></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
       <div style="background:var(--surface2);border-radius:8px;padding:10px 12px;">
-        <div class="info-row"><span class="ik">3R = 661.86</span><span class="iv red">❌ not reached</span></div>
-        <div class="info-row"><span class="ik">4R = 662.69</span><span class="iv red">❌ not reached</span></div>
-        <div class="info-row"><span class="ik">MFE</span><span class="iv green">+2.35 pts (15:15)</span></div>
-        <div class="info-row"><span class="ik">MAE</span><span class="iv red">−2.08 pts (12:30)</span></div>
+        <div class="info-row"><span class="ik">Stop hit</span><span class="iv red">12:20 · L=658.53 ≤ 658.54</span></div>
+        <div class="info-row"><span class="ik">3R / 4R</span><span class="iv red">❌ stop hit before any target</span></div>
+        <div class="info-row"><span class="ik">MFE before stop</span><span class="iv amber">+0.79 pts (12:10, H=660.16)</span></div>
+        <div class="info-row"><span class="ik">MAE</span><span class="iv red">−2.66 pts (stop at 658.54, net −0.83)</span></div>
       </div>
       <div style="background:var(--surface2);border-radius:8px;padding:10px 12px;">
         <div class="info-row"><span class="ik">displacement_pts</span><span class="iv">+0.43 / 43 ticks (09:55)</span></div>
@@ -231,7 +231,7 @@ header h1{font-size:14px;font-weight:500;}header h1 span{color:var(--blue);}
       <div class="rule"><div class="ri fail">✗</div><div><strong>11:50 — FAILED: REJ_WICK=0.218&lt;0.47, BODY=0.727&gt;0.40, CLOSE_LOC=0.218&lt;0.80</strong><br><span class="sub">Large spike down then immediate close near level — not a rejection shape.</span></div></div>
       <div class="rule"><div class="ri pass">✓</div><div><strong>Stage 5 — Confirmation 11:55</strong> <span class="chip cc">CORE</span><br><span class="sub">O=659.23 H=659.48 L=658.54 C=659.37. Wick 73.4% ✓ body 14.9% ✓ close_loc 88.3% ✓. Penetration 30t below level, close 53t above level.</span></div></div>
     </div>
-    <div class="warn-box">⚠️ Outcome: 2R reached. 3R not reached (MAE −2.08 pts at 12:30 tested the stop at 658.54 closely). This candidate demonstrates that 6 failed retests before a valid entry is a real and detectable pattern — the engine correctly waited for the qualifying shape.</div>
+    <div class="warn-box">❌ <strong>Outcome: STOPPED OUT.</strong> Stop at 658.54 was hit at 12:20 (L=658.53). No target was reached before the stop. Price later reached 2R at 15:10, but this occurred after the trade was already closed. MFE before stop = +0.79 pts. This candidate demonstrates that 6 failed retests before a valid entry is a real and detectable pattern — the engine correctly waited for the qualifying shape, but the trade lost.</div>
   </div>
 </div>
 </div>
@@ -276,14 +276,14 @@ header h1{font-size:14px;font-weight:500;}header h1 span{color:var(--blue);}
       <div class="lv lv-e"><div class="lk">Entry</div><div class="lp">690.28</div><div class="ld">Close of conf candle 09:50</div></div>
       <div class="lv lv-s"><div class="lk">Stop</div><div class="lp">688.46</div><div class="ld">Low of conf candle · 0t</div></div>
       <div class="lv lv-k"><div class="lk">Risk 1R</div><div class="lp">1.82</div><div class="ld">182 ticks</div></div>
-      <div class="lv lv-r"><div class="lk">2R</div><div class="lp">693.92</div><div class="ld">✅ reached</div></div>
+      <div class="lv lv-k" style="border-color:rgba(255,77,77,0.25);background:rgba(255,77,77,0.06);"><div class="lk" style="color:var(--red);">2R</div><div class="lp" style="color:var(--red);">693.92</div><div class="ld" style="color:var(--red);">❌ not reached before stop</div></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
       <div style="background:var(--surface2);border-radius:8px;padding:10px 12px;">
-        <div class="info-row"><span class="ik">3R = 695.74</span><span class="iv green">✅ reached</span></div>
-        <div class="info-row"><span class="ik">4R = 697.56</span><span class="iv red">❌ not reached</span></div>
-        <div class="info-row"><span class="ik">MFE</span><span class="iv green">+5.65 pts (15:55)</span></div>
-        <div class="info-row"><span class="ik">MAE</span><span class="iv red">−2.66 pts (10:05)</span></div>
+        <div class="info-row"><span class="ik">Stop hit</span><span class="iv red">10:00 · L=688.28 ≤ 688.46</span></div>
+        <div class="info-row"><span class="ik">3R / 4R</span><span class="iv red">❌ stop hit before any target</span></div>
+        <div class="info-row"><span class="ik">MFE before stop</span><span class="iv amber">+0.24 pts (09:55, H=690.52)</span></div>
+        <div class="info-row"><span class="ik">MAE</span><span class="iv red">−1.82 pts (stop at 688.46, net −1.82)</span></div>
       </div>
       <div style="background:var(--surface2);border-radius:8px;padding:10px 12px;">
         <div class="info-row"><span class="ik">displacement_pts</span><span class="iv">+1.33 / 133 ticks (09:45)</span></div>
@@ -313,7 +313,7 @@ header h1{font-size:14px;font-weight:500;}header h1 span{color:var(--blue);}
       <div class="rule"><div class="ri pass">✓</div><div><strong>Stage 4 — Retest begins 09:50</strong> <span class="chip cc">CORE</span><br><span class="sub">09:50 L=688.46 ≤ 689.16. First retest contact, 70 ticks below level.</span></div></div>
       <div class="rule"><div class="ri pass">✓</div><div><strong>Stage 5 — Confirmation 09:50 (no failed attempts)</strong> <span class="chip cc">CORE</span><br><span class="sub">O=689.64 H=690.49 L=688.46 C=690.28. First touching candle immediately qualifies. Wick 58.1% ✓ body 31.5% ✓ close_loc 89.7% ✓. Penetration 70t, close 112t above level — strong reclaim.</span></div></div>
     </div>
-    <div class="good-box">✅ 2R and 3R reached. MFE +5.65 pts. Strongest geometric reclaim of the three candidates (close_beyond = +112 ticks). Demonstrates that 0 failed retests is valid — the first touching candle can immediately qualify.</div>
+    <div class="warn-box">❌ <strong>Outcome: STOPPED OUT.</strong> Stop at 688.46 was hit at 10:00 (L=688.28), the very next bar after entry. No target was reached before the stop. Price later reached 2R at 14:30, but this occurred after the trade was already closed. MFE before stop = +0.24 pts (09:55 bar). Strongest geometric reclaim in the dataset (close_beyond +112 ticks) but the stop was taken immediately. A wider stop or different entry model may be evaluated in future presets — the detection is correct, the outcome is a loss.</div>
   </div>
 </div>
 </div>
