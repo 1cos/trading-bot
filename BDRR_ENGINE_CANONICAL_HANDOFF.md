@@ -1492,13 +1492,7 @@ Latest reported results:
 
 **NOT STARTED** — Full pipeline orchestrator (single call chaining Stage 1 through Stage 5 across a multi-day dataset).
 
-**NOT STARTED** — Trade plan construction.
-
-**NOT STARTED** — Entry calculation module.
-
-**NOT STARTED** — Stop calculation module.
-
-**NOT STARTED** — Target calculation module.
+**IMPLEMENTED** — `TradePlan/v1` — `estrategie/bdrr_trade_plan.js`, `estrategie/test_bdrr_trade_plan.js` (167 checks, 0 failures). Exports `buildTradePlan(detectionResult, config)`. Supports LONG direction, `CONFIRMATION_CLOSE` and `BREAK_OF_SIGNAL_BAR` entry models, integer-tick arithmetic throughout. SHORT returns a structured `UNSUPPORTED_DIRECTION` failure. `SetupCandidate/v1` composition not yet implemented.
 
 **NOT STARTED** — Chronological outcome evaluation.
 
