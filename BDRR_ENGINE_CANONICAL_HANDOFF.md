@@ -1191,7 +1191,9 @@ Each would be evaluated independently if enabled. None is a sub-parameter of `mi
 
 **OPEN** — SHORT direction validation: the prototype was built and verified for LONG only. SHORT detection logic has not been tested against real data.
 
-**OPEN** — Instruments beyond SPY: dataset availability, tick sizes, and session parameters for QQQ, NVDA, TSLA, AMZN, META, MSFT, GOOGL, MU, MES, MNQ.
+**FROZEN** — QQQ 5-minute cross-instrument validation completed. Same frozen rules, no threshold changes. 60 sessions scanned, 4 valid BDRR setups found (2026-04-29, 2026-05-06, 2026-05-13, 2026-07-14). RETEST_BEFORE_DISPLACEMENT structural gate excluded 29 sessions (48%). All geometry thresholds applied identically. QQQ is an ETF, not a futures instrument — futures validation (MES, MNQ) remains pending. Tick size for QQQ: $0.01.
+
+**OPEN** — Instruments beyond QQQ: MES, MNQ futures tick sizes and session parameters; NVDA, TSLA, AMZN, META, MSFT, GOOGL, MU equities. Futures cross-instrument validation remains pending.
 
 **OPEN** — DetectionAuditStore: storage format, query interface, and retention policy.
 
@@ -1246,6 +1248,101 @@ Candidates found:   exactly 3
             2R 750.81  3R 751.38  4R 751.95  (2R reached)
 ```
 
+
+**FROZEN** — SPY blind validation candidate (2026-05-05) — rejected by structural rule:
+```
+Date:         2026-05-05
+Level:        722.30 (ORB High)
+Break:        09:50 · C=722.37 · directional_break_distance = +7 ticks
+Displacement: 0 bars · displacement_pts = 49 ticks (breakout bar high only)
+Retest:       09:55 (first post-break bar) · L=722.29 ≤ 722.30
+Classification: IMMEDIATE_BREAK_RETEST (RETEST_BEFORE_DISPLACEMENT)
+Result:       INVALID — no displacement phase existed before retest began
+Review page:  brr_validation_20260505.html
+Commits:      ce3da52 (initial), 6b11ac3, c0c038b, 046fdcb (visual fixes)
+```
+
+**FROZEN** — RETEST_BEFORE_DISPLACEMENT structural rule validated by full rescan:
+```
+Dataset:      SPY 5-minute, 60 sessions (all dates except 3 documented)
+Rule applied: at least 1 completed post-break bar with LOW > level
+              must exist before first retest contact
+Results:
+  IMMEDIATE_BREAK_RETEST:           35 sessions (58%)
+  NO_QUALIFYING_REJECTION_CANDLE:   12 sessions
+  BREAK_NOT_FOUND:                   8 sessions
+  RETEST_NOT_FOUND:                  2 sessions
+  Valid BDRR (excluding documented):  0 sessions
+Conclusion:   The 60-day SPY dataset contains exactly 3 BDRR setups.
+              The structural rule excludes the majority of candidate
+              sequences as market-structure failures, not geometry failures.
+Commit:       7c4d298
+```
+
+**FROZEN** — QQQ 5-minute cross-instrument validation:
+```
+Dataset:      QQQ_5m.csv, 60 sessions, 2026-04-24 to 2026-07-21
+Instrument:   QQQ ETF (Nasdaq-100 proxy, not futures)
+Rules:        Identical to SPY validation — no threshold changes
+Results:
+  Sessions scanned:                  60
+  Valid BDRR setups:                  4
+  RETEST_BEFORE_DISPLACEMENT:        29 (48%)
+  NO_QUALIFYING_REJECTION_CANDLE:    12
+  BREAK_NOT_FOUND:                    9
+  RETEST_NOT_FOUND:                   6
+Conclusion:   Break→Displacement→Retest→Rejection structure is not
+              SPY-specific. RETEST_BEFORE_DISPLACEMENT gate applies
+              meaningfully on a second instrument with unchanged rules.
+Review page:  bdrr_qqq_validation.html
+Commits:      3ab7df8 (initial), c33634f, 94ba64c (fixes)
+```
+
+**FROZEN** — Four QQQ valid candidates with chronological outcomes:
+```
+2026-04-29  level 658.84  bk 09:50  disp 1bar/43t  failed 6  entry 11:55
+            rej_wick 73.4%  body 14.9%  close_loc 88.3%
+            entry 659.37  stop 658.54  risk 0.83/83t
+            2R 661.03  3R 661.86  4R 662.69
+            Outcome: STOPPED at 12:20 (L=658.53 ≤ 658.54) before any target
+            MFE before stop: +0.79 pts (12:10)
+            Realized: −0.83 pts / −1R
+
+2026-05-06  level 689.16  bk 09:40  disp 1bar/133t  failed 0  entry 09:50
+            rej_wick 58.1%  body 31.5%  close_loc 89.7%
+            entry 690.28  stop 688.46  risk 1.82/182t
+            2R 693.92  3R 695.74  4R 697.56
+            Outcome: STOPPED at 10:00 (L=688.28 ≤ 688.46) before any target
+            MFE before stop: +0.24 pts (09:55)
+            Realized: −1.82 pts / −1R
+
+2026-05-13  level 709.95  bk 10:50  disp 6bars/158t  failed 0  entry 11:25
+            rej_wick 81.6%  body 18.4%  close_loc 81.6%
+            entry 710.57  stop 709.85  risk 0.72/72t
+            2R 712.01  3R 712.73  4R 713.45
+            Outcome: 4R reached (12:20, H=713.66); no stop before any target
+            MFE before exit: +6.08 pts  MAE before exit: −0.62 pts
+
+2026-07-14  level 720.29  bk 11:05  disp 6bars/199t  failed 15  entry 13:15
+            rej_wick 61%  body 38%  close_loc 99%
+            entry 720.825  stop 720.14  risk 0.685/69t
+            2R 722.195  3R 722.88  4R 723.565
+            Outcome: STOPPED at 14:40 (L=720.07 ≤ 720.14) before any target
+            Realized: −0.685 pts / −1R
+```
+
+**FROZEN** — Chronological outcome evaluation rule:
+```
+For a LONG trade, chronological priority:
+  1. If bar.low <= stop before any target is reached: STOPPED OUT.
+     No subsequent target may be reported as achieved.
+  2. If bar.high >= target before stop is reached: TARGET HIT.
+  3. If bar.low <= stop AND bar.high >= target in the same 5-minute bar
+     and intrabar order is unavailable: AMBIGUOUS (not a win).
+MFE and MAE accumulate only until the first terminal event (stop or final target).
+Post-exit price movement is not attributed to the trade.
+```
+
 ---
 
 ## Authorized but Not Started
@@ -1274,9 +1371,13 @@ Candidates found:   exactly 3
 
 # Part 11 — Last Milestone and Next Deliverable
 
-**FROZEN** — Last completed milestone: The four inter-layer data contracts (`DetectionResult/v1`, `SetupCandidate/v1`, `ScoredSetup/v1`, `DecisionOutcome/v1`), the auxiliary type library, the 44 invariants, the ownership matrix, the four confluence mode specifications, and the minimum-distance displacement gate definition are architecturally frozen and approved.
+**FROZEN** — Last completed milestone: Full blind validation of the BDRR detection logic on two instruments (SPY and QQQ, 60 sessions each). The RETEST_BEFORE_DISPLACEMENT structural rule is frozen and confirmed meaningful on both instruments. Chronological outcome evaluation rules are frozen. The four-contract architecture, 44 invariants, and frozen preset are unchanged. All validation review pages are committed to the repository.
 
-**FROZEN** — Next agreed deliverable: Production Detection Engine, implemented to populate `DetectionResult/v1` and `SetupCandidate/v1` exactly as specified, verified against the three prototype candidates as the first acceptance test suite. The implementation must pass all INV-D and INV-C invariants before the Quality Scorer is begun.
+**FROZEN** — Validated SPY setup count: 3 (all documented with geometry, entry, stop, targets, and outcomes).
+
+**FROZEN** — Validated QQQ setup count: 4 (all documented; outcomes corrected to chronological stop-first evaluation).
+
+**FROZEN** — Next agreed deliverable: Production Detection Engine, implemented to populate `DetectionResult/v1` and `SetupCandidate/v1` exactly as specified, verified against the three SPY prototype candidates and the four QQQ candidates as the acceptance test suite (7 total). The implementation must pass all INV-D and INV-C invariants. The RETEST_BEFORE_DISPLACEMENT structural rule must be enforced before any geometry check is reached.
 
 ---
 
@@ -1284,7 +1385,7 @@ Candidates found:   exactly 3
 
 # Architectural Freeze Statement
 
-**Detection determines whether the setup exists.** The Detection Engine runs a deterministic structural algorithm against raw market data. It produces a `DetectionResult` for every candidate examined and a `SetupCandidate` for every VALID result. Distance fields that are declared non-negative use formulas that guarantee non-negativity. Retracement is measured from the deepest directional position, not the shallowest. The Stage-3 minimum-distance gate is a binary rule using `displacement_pts.ticks`. Its output is immutable the moment it is written.
+**Detection determines whether the setup exists.** The Detection Engine runs a deterministic structural algorithm against raw market data. It produces a `DetectionResult` for every candidate examined and a `SetupCandidate` for every VALID result. Distance fields that are declared non-negative use formulas that guarantee non-negativity. Retracement is measured from the deepest directional position, not the shallowest. The Stage-3 minimum-distance gate is a binary rule using `displacement_pts.ticks`. The Stage-3 structural rule (`RETEST_BEFORE_DISPLACEMENT`) is a second binary gate: at least one completed post-break bar must have its LOW strictly above the level before any retest contact. Sequences that fail this rule are classified as `IMMEDIATE_BREAK_RETEST` and are INVALID regardless of geometry. Both Stage-3 rules are frozen. The engine's output is immutable the moment it is written.
 
 **Quality measures the setup's intrinsic worth.** The Quality Scorer reads the `SetupCandidate` and computes `core_quality_score` and `core_quality_grade` from core structural modules only, using only those modules that achieved `evaluation_status = SCORED`. These values are a permanent record of the setup's quality at the moment it was scored. They are written once and never changed by any downstream process. The Quality Scorer has no knowledge of the active Decision Policy mode. It does not decide what to do when contextual data is unavailable — it records the status and reports it.
 
