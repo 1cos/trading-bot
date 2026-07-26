@@ -5,6 +5,7 @@ BDRR_ENGINE_CANONICAL_HANDOFF.md §3.2–§3.3.
 """
 
 from trading_lab.contracts.bar import Bar
+from trading_lab.contracts.detection_result import DetectionResult
 from trading_lab.contracts.distances import (
     AbsoluteTickDistance,
     DirectionalTickDistance,
@@ -31,6 +32,7 @@ from trading_lab.contracts.session_metadata import SessionMetadata
 __all__ = [
     "AbsoluteTickDistance",
     "Bar",
+    "DetectionResult",
     "DetectionStatus",
     "Direction",
     "DirectionalTickDistance",
