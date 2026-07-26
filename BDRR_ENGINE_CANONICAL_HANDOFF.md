@@ -1344,6 +1344,54 @@ MFE and MAE accumulate only until the first terminal event (stop or final target
 Post-exit price movement is not attributed to the trade.
 ```
 
+**FROZEN** — Same-bar ambiguity scope (Decision, 2026-07-25):
+
+Same-bar ambiguity applies **only** when the stop and the **selected terminal exit target** occur on the same bar. The selected terminal target is determined by `config.exit_target_r` (allowed values: 2, 3, 4).
+
+```
+exit_target_r = 2: stop + 2R on same bar → AMBIGUOUS
+exit_target_r = 3: stop + 3R on same bar → AMBIGUOUS
+exit_target_r = 4: stop + 4R on same bar → AMBIGUOUS
+```
+
+An intermediate milestone (below the selected terminal target) does not create ambiguity. When a bar contains both the stop and an intermediate milestone but not the selected terminal target, the result is STOPPED. Intrabar order is unavailable, so the intermediate milestone is not credited as chronologically achieved on that bar.
+
+```
+Example — exit_target_r = 4, bar contains stop + 2R, does not contain 4R:
+  outcome:                 STOPPED
+  realized_r:              -1
+  highest_target_achieved: null  (2R NOT credited on the ambiguous-range stop bar)
+```
+
+The bar range reaching an intermediate milestone is informational only and may be recorded in a separate non-chronological field (e.g. `bar_range_reached_r2`), but must not set `highest_target_achieved` unless that milestone was reached on a completed, unambiguous earlier bar.
+
+**FROZEN** — Source price quantization rule (Decision, 2026-07-25):
+
+The raw source dataset is the authoritative input for all executable backtests.
+
+Canonical tick conversion formula (frozen):
+```
+ticks = round(raw_price / tick_size)
+```
+
+All executable price comparisons use the resulting integer ticks. Human-transcribed, display-rounded values from oracle fixtures or prior hand-computed documents are reference records and must not override the raw source dataset for execution purposes.
+
+Precedence:
+```
+raw source dataset  >  oracle fixture  >  hand-computed display values
+```
+
+Concrete case — SPY 2026-05-26 confirmation bar low:
+```
+CSV raw text:           750.364990234375
+tick_size:              0.01
+750.364990234375 / 0.01 = 75036.4990234375
+round(75036.4990234375)   = 75036
+canonical stop ticks:   75036  ($750.36)
+```
+
+The oracle fixture value $750.37 (75037 ticks) is a display-rounded human transcription. It is preserved in oracle fixtures as a historical record but is not the executable canonical value.
+
 ---
 
 ## Authorized but Not Started

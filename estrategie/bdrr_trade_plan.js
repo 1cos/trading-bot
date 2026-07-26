@@ -13,6 +13,20 @@
  *   - No outcome evaluation.
  *   - No mutation of caller-owned objects.
  *
+ * Input contract change (canonical migration):
+ *   detectionResult must be a canonical DetectionResult/v1 object produced by
+ *   buildDetectionResult() in bdrr_detection_result.js.  The old raw
+ *   findRejection() output shape (status: 'OK', confirmation_candle: {...})
+ *   is no longer accepted.
+ *
+ *   Required canonical fields consumed:
+ *     schema_version      must equal 'DetectionResult/v1'
+ *     status              must equal 'VALID'
+ *     confirmation_bar    canonical Bar — { open, high, low, close: PriceTicks }
+ *
+ *   PriceTicks shape: { ticks: integer, tick_size: number }
+ *   Tick values are read directly — no float-to-tick conversion is performed.
+ *
  * Frozen output contract: TradePlan/v1
  *   All price/distance values are integer tick counts stored alongside their
  *   tick_size. No raw floating-point prices are stored in the contract.
@@ -28,23 +42,6 @@
  */
 
 'use strict';
-
-// ── Tick arithmetic (private, mirrors bdrr_engine.js — not imported from it
-//   to keep this module independent) ─────────────────────────────────────────
-
-function priceToTicks(price, tickSize) {
-  // Converts a floating-point price to the nearest integer tick count.
-  // Identical algorithm to bdrr_engine.js priceToTicks.
-  return Math.round(price / tickSize);
-}
-
-function ticksToPoints(ticks, tickSize) {
-  // Converts an integer tick count back to a rounded decimal price string.
-  const s = String(tickSize);
-  const dot = s.indexOf('.');
-  const decimals = dot === -1 ? 0 : s.length - dot - 1;
-  return Number((ticks * tickSize).toFixed(Math.max(decimals, 2)));
-}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -71,14 +68,20 @@ function validateDetectionResult(dr) {
   if (!dr || typeof dr !== 'object') {
     return fail('INVALID_DETECTION_RESULT', 'detectionResult must be a non-null object');
   }
-  if (dr.status !== 'OK') {
+  if (dr.schema_version !== 'DetectionResult/v1') {
     return fail(
       'INVALID_DETECTION_RESULT',
-      `detectionResult.status must be "OK" (VALID detection); got "${dr.status}"` +
+      `detectionResult.schema_version must be "DetectionResult/v1"; got "${dr.schema_version}"`
+    );
+  }
+  if (dr.status !== 'VALID') {
+    return fail(
+      'INVALID_DETECTION_RESULT',
+      `detectionResult.status must be "VALID"; got "${dr.status}"` +
         (dr.failed_stage ? ` (failed_stage: ${dr.failed_stage})` : '')
     );
   }
-  return null; // no error
+  return null;
 }
 
 function validateConfig(config) {
@@ -86,7 +89,6 @@ function validateConfig(config) {
     return fail('INVALID_DETECTION_RESULT', 'config must be a non-null object');
   }
 
-  // Direction
   if (config.direction !== 'LONG') {
     return fail(
       'UNSUPPORTED_DIRECTION',
@@ -94,7 +96,6 @@ function validateConfig(config) {
     );
   }
 
-  // Entry model
   if (
     config.entry_model !== 'CONFIRMATION_CLOSE' &&
     config.entry_model !== 'BREAK_OF_SIGNAL_BAR'
@@ -106,12 +107,10 @@ function validateConfig(config) {
     );
   }
 
-  // Tick size
   if (!isPositiveFiniteNumber(config.tick_size)) {
     return fail('TICK_SIZE_MISMATCH', 'config.tick_size must be a finite positive number');
   }
 
-  // Buffers
   if (!isNonNegativeInteger(config.entry_buffer_ticks)) {
     return fail(
       'INVALID_BUFFER',
@@ -129,31 +128,41 @@ function validateConfig(config) {
 }
 
 function validateConfirmationBar(dr, tickSize) {
-  const bar = dr.confirmation_candle;
+  const bar = dr.confirmation_bar;
   if (!bar || typeof bar !== 'object') {
-    return fail('MISSING_CONFIRMATION_BAR', 'detectionResult.confirmation_candle is missing or not an object');
+    return fail(
+      'MISSING_CONFIRMATION_BAR',
+      'detectionResult.confirmation_bar is missing or not an object'
+    );
   }
 
-  // Every required OHLC field must be a finite number (raw float from the engine)
+  // Each OHLC field must be a PriceTicks object: { ticks: integer, tick_size: number }
   for (const field of ['open', 'high', 'low', 'close']) {
-    if (typeof bar[field] !== 'number' || !isFinite(bar[field])) {
+    const pt = bar[field];
+    if (!pt || typeof pt !== 'object') {
       return fail(
         'INVALID_TICK_VALUE',
-        `confirmation_candle.${field} must be a finite number; got ${bar[field]}`
+        `confirmation_bar.${field} must be a PriceTicks object; got ${JSON.stringify(pt)}`
       );
     }
-  }
-
-  // After converting to ticks, each must be an integer (Math.round always
-  // returns an integer for finite inputs, so this is a double-check on the
-  // tick_size consistency — if tick_size is wrong, tick counts may be wildly off).
-  for (const field of ['open', 'high', 'low', 'close']) {
-    const ticks = priceToTicks(bar[field], tickSize);
-    if (!Number.isInteger(ticks)) {
+    if (!Number.isInteger(pt.ticks)) {
       return fail(
         'INVALID_TICK_VALUE',
-        `confirmation_candle.${field} (${bar[field]}) does not convert to an integer ` +
-          `number of ticks at tick_size ${tickSize}; got ${ticks}`
+        `confirmation_bar.${field}.ticks must be an integer; got ${pt.ticks}`
+      );
+    }
+    if (!isPositiveFiniteNumber(pt.tick_size)) {
+      return fail(
+        'INVALID_TICK_VALUE',
+        `confirmation_bar.${field}.tick_size must be a finite positive number; got ${pt.tick_size}`
+      );
+    }
+    // tick_size must match config
+    if (pt.tick_size !== tickSize) {
+      return fail(
+        'TICK_SIZE_MISMATCH',
+        `confirmation_bar.${field}.tick_size (${pt.tick_size}) does not match ` +
+          `config.tick_size (${tickSize})`
       );
     }
   }
@@ -166,11 +175,14 @@ function validateConfirmationBar(dr, tickSize) {
 /**
  * buildTradePlan(detectionResult, config)
  *
- * Constructs a frozen TradePlan/v1 object from a successful detection result.
+ * Constructs a frozen TradePlan/v1 object from a canonical DetectionResult/v1.
  *
- * @param {object} detectionResult  Result of findRejection() with status 'OK'.
- *   Must carry a confirmation_candle with finite open/high/low/close.
- * @param {object} config           Preset configuration object.
+ * @param {object} detectionResult  Canonical DetectionResult/v1 produced by
+ *   buildDetectionResult().  Must have:
+ *     schema_version === 'DetectionResult/v1'
+ *     status         === 'VALID'
+ *     confirmation_bar: { open, high, low, close: PriceTicks }
+ * @param {object} config  Preset configuration object.
  *   Required keys: direction, entry_model, entry_buffer_ticks,
  *                  stop_buffer_ticks, tick_size.
  *
@@ -196,12 +208,13 @@ function buildTradePlan(detectionResult, config) {
   const barErr = validateConfirmationBar(detectionResult, tickSize);
   if (barErr) return barErr;
 
-  // ── Step 2: convert confirmation bar OHLC to integer ticks ────────────────
+  // ── Step 2: read confirmation bar tick values directly ────────────────────
+  // PriceTicks.ticks are already integers — no float-to-tick conversion needed.
 
-  const bar = detectionResult.confirmation_candle;
-  const highTicks  = priceToTicks(bar.high,  tickSize);
-  const lowTicks   = priceToTicks(bar.low,   tickSize);
-  const closeTicks = priceToTicks(bar.close, tickSize);
+  const bar = detectionResult.confirmation_bar;
+  const highTicks  = bar.high.ticks;
+  const lowTicks   = bar.low.ticks;
+  const closeTicks = bar.close.ticks;
 
   // ── Step 3: compute entry price ───────────────────────────────────────────
 
@@ -226,7 +239,7 @@ function buildTradePlan(detectionResult, config) {
     return fail(
       'INVALID_RISK',
       `LONG entry (${entryTicks} ticks) must be strictly above stop (${stopTicks} ticks); ` +
-        'check confirmation_candle geometry or buffer configuration'
+        'check confirmation_bar geometry or buffer configuration'
     );
   }
 
@@ -235,7 +248,6 @@ function buildTradePlan(detectionResult, config) {
   const riskTicks = Math.abs(entryTicks - stopTicks); // always positive given step 5
 
   if (riskTicks === 0) {
-    // Redundant after step 5 but explicit for the INVALID_RISK contract.
     return fail('INVALID_RISK', 'calculated risk is zero ticks; entry and stop are identical');
   }
 
