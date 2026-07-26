@@ -1,7 +1,7 @@
 """Canonical BDRR contract types.
 
 Re-exports the value types defined in
-BDRR_ENGINE_CANONICAL_HANDOFF.md §3.2–§3.3.
+BDRR_ENGINE_CANONICAL_HANDOFF.md §3.2–§3.4.
 """
 
 from trading_lab.contracts.bar import Bar
@@ -28,6 +28,7 @@ from trading_lab.contracts.rule_failure import (
     RuleFailure,
 )
 from trading_lab.contracts.session_metadata import SessionMetadata
+from trading_lab.contracts.trade_plan import EntryModel, TradePlan
 
 __all__ = [
     "AbsoluteTickDistance",
@@ -36,6 +37,7 @@ __all__ = [
     "DetectionStatus",
     "Direction",
     "DirectionalTickDistance",
+    "EntryModel",
     "FailedStage",
     "LevelSource",
     "Operator",
@@ -45,5 +47,6 @@ __all__ = [
     "RuleFailure",
     "SessionMetadata",
     "Stage",
+    "TradePlan",
     "ValueType",
 ]
