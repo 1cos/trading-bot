@@ -28,6 +28,7 @@ from trading_lab.contracts.rule_failure import (
     RuleFailure,
 )
 from trading_lab.contracts.session_metadata import SessionMetadata
+from trading_lab.contracts.trade_outcome import TradeOutcome, TradeOutcomeStatus
 from trading_lab.contracts.trade_plan import EntryModel, TradePlan
 
 __all__ = [
@@ -47,6 +48,8 @@ __all__ = [
     "RuleFailure",
     "SessionMetadata",
     "Stage",
+    "TradeOutcome",
+    "TradeOutcomeStatus",
     "TradePlan",
     "ValueType",
 ]
