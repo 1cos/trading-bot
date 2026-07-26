@@ -1024,7 +1024,9 @@ min_penetration_ticks           int         minimum wick crossing of level in ti
     not decided
 
 min_close_beyond_level_ticks    int         minimum close reclaim distance in ticks
-    not decided
+    frozen value: 1
+    LONG: confirmation_bar.close.ticks - level_price.ticks >= 1
+    SHORT: level_price.ticks - confirmation_bar.close.ticks >= 1
 ```
 
 ## 8.7 Entry Model
@@ -1488,7 +1490,7 @@ The oracle fixture value $750.37 (75037 ticks) is a display-rounded human transc
 - maximum body ratio: 0.40
 - minimum favorable close location: 0.80
 - minimum penetration threshold: disabled (reported, not gated)
-- minimum close-beyond-level threshold: disabled (reported, not gated)
+- minimum close-beyond-level threshold: 1 tick (LONG: confirmation close must be at least 1 tick above the level; SHORT: at least 1 tick below)
 - opposite wick ratio is reported only, never gated
 - a zero-range candle cannot qualify
 - no candle after the confirmation candle is inspected (no look-ahead)

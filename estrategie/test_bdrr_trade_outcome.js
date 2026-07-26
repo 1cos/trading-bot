@@ -649,7 +649,7 @@ function makeBar(hiTicks, loTicks, utcMs) {
     orb_start: 'session_open', orb_duration_minutes: 5, level_source: 'ORB_HIGH',
     direction: 'LONG', tick_size: 0.01,
     min_displacement_ticks: null, min_penetration_ticks: null,
-    min_close_beyond_level_ticks: null
+    min_close_beyond_level_ticks: 1
   };
 
   const ctx    = buildSessionContext(candles, engineConfig);

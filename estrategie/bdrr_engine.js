@@ -758,12 +758,20 @@ function findRejection(candles, orb, breakResult, displacementResult, retestResu
       reason: 'min_penetration_ticks must be disabled (null/undefined) in this stage; penetration is reported but never gated'
     };
   }
+  // min_close_beyond_level_ticks: when non-null, the confirmation candle's close
+  // must be at least this many ticks beyond the level in the favorable direction.
+  // LONG: close.ticks - level.ticks >= min_close_beyond_level_ticks
+  // This is a configurable threshold (§8.6); null/undefined disables it.
   if (config.min_close_beyond_level_ticks !== null && config.min_close_beyond_level_ticks !== undefined) {
-    return {
-      status: 'FAILED',
-      failed_stage: 'UNSUPPORTED_CONFIGURATION',
-      reason: 'min_close_beyond_level_ticks must be disabled (null/undefined) in this stage; close-beyond-level is reported but never gated'
-    };
+    if (typeof config.min_close_beyond_level_ticks !== 'number' ||
+        !Number.isInteger(config.min_close_beyond_level_ticks) ||
+        config.min_close_beyond_level_ticks < 0) {
+      return {
+        status: 'FAILED',
+        failed_stage: 'UNSUPPORTED_CONFIGURATION',
+        reason: `min_close_beyond_level_ticks must be a non-negative integer or null; got ${config.min_close_beyond_level_ticks}`
+      };
+    }
   }
 
   if (!Array.isArray(candles)) {
@@ -837,6 +845,15 @@ function findRejection(candles, orb, breakResult, displacementResult, retestResu
     if (rejectionWickRatio < REJECTION_WICK_RATIO_MIN) failedRules.push('REJECTION_WICK_RATIO_TOO_LOW');
     if (bodyRatio > BODY_RATIO_MAX) failedRules.push('BODY_RATIO_TOO_HIGH');
     if (favorableCloseLocation < FAVORABLE_CLOSE_LOCATION_MIN) failedRules.push('FAVORABLE_CLOSE_LOCATION_TOO_LOW');
+
+    // Close-beyond-level gate (§8.6):
+    // LONG: close must be at least min_close_beyond_level_ticks above the level.
+    // When null/undefined this gate is disabled.
+    if (config.min_close_beyond_level_ticks != null) {
+      if (closeBeyondLevelTicks < config.min_close_beyond_level_ticks) {
+        failedRules.push('CLOSE_BEYOND_LEVEL_TOO_LOW');
+      }
+    }
 
     return {
       geometry: {

@@ -41,7 +41,7 @@ const CONFIG = {
   tick_size: 0.01,
   min_displacement_ticks: null,
   min_penetration_ticks: null,
-  min_close_beyond_level_ticks: null
+  min_close_beyond_level_ticks: 1
 };
 
 const TICK_SIZE = 0.01;
@@ -292,11 +292,12 @@ function failingCandleB(hh, mm) {
   check(rejection.geometry.penetration_through_level_ticks === 0, 'testLowExactlyEqualsLevelMayQualify: penetration must be 0 when low === level');
 })();
 
-// ── Test 12: penetration and close-beyond values are reported but not gated ─
-(function testPenetrationAndCloseBeyondNotGated() {
-  // Deep penetration (1000 ticks below level) AND a negative close-beyond
-  // (close still below the level), on an otherwise comfortably-qualifying
-  // candle: wick=0.50, body=0.35, closeLoc=0.85.
+// ── Test 12: close below level is now REJECTED by close-beyond-level gate ───
+// With min_close_beyond_level_ticks=1, a candle whose close is below the level
+// must fail Stage 5 even if all three geometry ratios pass.
+(function testCloseBelowLevelRejected() {
+  // Deep penetration (1000 ticks below level) AND close still below the level,
+  // on an otherwise comfortably-qualifying candle: wick=0.50, body=0.35, closeLoc=0.85.
   const lowTicks = LEVEL_TICKS - 1000;
   const rangeTicks = 900;
   const openTicks = lowTicks + 450;  // wick = 450/900 = 0.50
@@ -304,11 +305,83 @@ function failingCandleB(hh, mm) {
   const cnd = mkCandle(10, 0, { lowTicks, rangeTicks, openTicks, closeTicks },
     { wick: 0.50, body: 0.35, closeLoc: 0.85 });
   const { rejection } = run(baseCandles([cnd]));
-  check(rejection.status === 'OK', `testPenetrationAndCloseBeyondNotGated: expected OK, got ${JSON.stringify(rejection)}`);
-  check(rejection.geometry.penetration_through_level_ticks === 1000,
-    `testPenetrationAndCloseBeyondNotGated: expected 1000 ticks penetration, got ${rejection.geometry.penetration_through_level_ticks}`);
-  check(rejection.geometry.close_beyond_level_ticks === -235,
-    `testPenetrationAndCloseBeyondNotGated: expected close_beyond_level_ticks -235 (close still below level), got ${rejection.geometry.close_beyond_level_ticks}`);
+  // With min_close_beyond_level_ticks=1 this candle closes 235 ticks BELOW level → must FAIL
+  check(rejection.status === 'FAILED',
+    `testCloseBelowLevelRejected: expected FAILED, got ${rejection.status}`);
+  check(rejection.failed_stage === 'NO_QUALIFYING_REJECTION_CANDLE',
+    `testCloseBelowLevelRejected: expected NO_QUALIFYING_REJECTION_CANDLE, got ${rejection.failed_stage}`);
+  // The candle should appear in failed_retests with CLOSE_BEYOND_LEVEL_TOO_LOW
+  check(rejection.failed_retest_count === 1,
+    `testCloseBelowLevelRejected: expected 1 failed retest, got ${rejection.failed_retest_count}`);
+  check(rejection.failed_retests[0].failed_rules.includes('CLOSE_BEYOND_LEVEL_TOO_LOW'),
+    'testCloseBelowLevelRejected: failed_rules must include CLOSE_BEYOND_LEVEL_TOO_LOW');
+})();
+
+// ── Test 12b: close exactly at level is rejected (needs >= 1 tick above) ────
+(function testCloseExactlyAtLevelRejected() {
+  // Close exactly at level: close_beyond_level_ticks = 0 < 1 → must fail.
+  // wick=0.50, body=0.30, closeLoc=0.80 (all pass geometry)
+  const cnd = mkCandle(10, 5, { lowTicks: LEVEL_TICKS - 500, rangeTicks: 1000,
+    openTicks: LEVEL_TICKS - 200, closeTicks: LEVEL_TICKS },
+    { wick: 0.30, body: 0.20, closeLoc: 0.50 });
+  const { rejection } = run(baseCandles([cnd]));
+  // close_loc = 0.50 < 0.80 so it fails geometry ALSO, but let's build a better fixture:
+  // Need: low well below level, close exactly at level, wick>=0.47, body<=0.40, close_loc>=0.80
+  // lowTicks = LEVEL_TICKS - 100, rangeTicks = 500, close = LEVEL_TICKS
+  // close_loc = (LEVEL_TICKS - (LEVEL_TICKS-100)) / 500 = 100/500 = 0.20 — too low
+  // We need a candle where close = level AND close_loc >= 0.80
+  // close_loc = (close - low) / (high - low) >= 0.80
+  // If close = level, low = level - 100, range = 125 → close_loc = 100/125 = 0.80 ✓
+  // open = low + 50 → wick = min(open,close) - low = (level-50)-(level-100) = 50
+  // wick_ratio = 50/125 = 0.40 — too low (need >= 0.47)
+  // Try: low = level - 100, range = 200, open = low + 100 = level
+  // wick = min(level,level) - (level-100) = 100; wick_ratio = 100/200 = 0.50 ✓
+  // body = |level-level| / 200 = 0 ✓; close_loc = 100/200 = 0.50 — too low
+  // The math: if close = level and we need close_loc >= 0.80, we need
+  // (close - low)/(high - low) >= 0.80, so high <= close + (close-low)/4
+  // lowTicks = LEVEL_TICKS - 400, close = LEVEL_TICKS → close-low = 400
+  // high = LEVEL_TICKS + 100, range = 500, close_loc = 400/500 = 0.80 ✓
+  // open = LEVEL_TICKS - 150 → wick = min(LEVEL_TICKS-150, LEVEL_TICKS) - (LEVEL_TICKS-400) = 250
+  // wick_ratio = 250/500 = 0.50 ✓
+  // body = 150/500 = 0.30 ✓
+  const cnd2 = mkCandle(10, 10, {
+    lowTicks: LEVEL_TICKS - 400, rangeTicks: 500,
+    openTicks: LEVEL_TICKS - 150, closeTicks: LEVEL_TICKS
+  }, { wick: 0.50, body: 0.30, closeLoc: 0.80 });
+  const { rejection: rej2 } = run(baseCandles([cnd2]));
+  check(rej2.status === 'FAILED',
+    `testCloseExactlyAtLevelRejected: expected FAILED (close exactly at level), got ${rej2.status}`);
+})();
+
+// ── Test 12c: close 1 tick above level passes when all geometry rules pass ──
+(function testCloseOneTickAboveLevelPasses() {
+  // close_beyond_level_ticks = 1 >= 1 → passes close-beyond gate.
+  // lowTicks = LEVEL_TICKS - 400, close = LEVEL_TICKS + 1, range = 502
+  // close_loc = 401/502 = 0.7988 → just below 0.80! Need to adjust.
+  // lowTicks = LEVEL_TICKS - 500, close = LEVEL_TICKS + 1, high = LEVEL_TICKS + 125
+  // range = 625, close_loc = 501/625 = 0.8016 ✓
+  // open = LEVEL_TICKS - 200 → wick = (LEVEL_TICKS-200 - (LEVEL_TICKS-500))/625 = 300/625 = 0.48 ✓
+  // body = |1-(-200)|/625 = 201/625 = 0.3216 ✓
+  const cnd = mkCandle(10, 15, {
+    lowTicks: LEVEL_TICKS - 500, rangeTicks: 625,
+    openTicks: LEVEL_TICKS - 200, closeTicks: LEVEL_TICKS + 1
+  }, null);
+  // Self-check
+  const g = localGeometry({
+    time: et(10,15),
+    low: (LEVEL_TICKS-500)/100, high: (LEVEL_TICKS+125)/100,
+    open: (LEVEL_TICKS-200)/100, close: (LEVEL_TICKS+1)/100
+  });
+  check(g.wick >= 0.47, `test12c self-check: wick ${g.wick} >= 0.47`);
+  check(g.body <= 0.40, `test12c self-check: body ${g.body} <= 0.40`);
+  check(g.closeLoc >= 0.80, `test12c self-check: closeLoc ${g.closeLoc} >= 0.80`);
+  check(g.closeBeyondTicks === 1, `test12c self-check: closeBeyond ${g.closeBeyondTicks} === 1`);
+
+  const { rejection } = run(baseCandles([cnd]));
+  check(rejection.status === 'OK',
+    `testCloseOneTickAboveLevelPasses: expected OK (1 tick above level), got ${rejection.status}`);
+  check(rejection.geometry.close_beyond_level_ticks === 1,
+    `testCloseOneTickAboveLevelPasses: close_beyond_level_ticks must be 1, got ${rejection.geometry.close_beyond_level_ticks}`);
 })();
 
 // ── Test 13: no qualifying candle returns NO_QUALIFYING_REJECTION_CANDLE ───
