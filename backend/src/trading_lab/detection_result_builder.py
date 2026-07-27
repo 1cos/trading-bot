@@ -177,6 +177,8 @@ def _float_to_rational(value: object) -> Rational | None:
 def build_detection_result(
     stage_outputs: dict,
     metadata: dict,
+    *,
+    id_factory=None,
 ) -> dict:
     """Convert Stage 1–5 runtime outputs into a canonical DetectionResult.
 
@@ -192,6 +194,9 @@ def build_detection_result(
     metadata : dict
         Keys: ``tick_size``, ``preset_id``, ``engine_version``,
         ``session`` (dict with SessionMetadata fields).
+    id_factory : callable, optional
+        If provided, called as ``id_factory(identity_type, fields)``
+        to generate ``result_id``.  Default: random UUID v4.
 
     Returns
     -------
@@ -483,9 +488,25 @@ def build_detection_result(
     )
 
     # ── Step 10: assemble DetectionResult/v1 ─────────────────────────────
+    if id_factory is not None:
+        _result_id = id_factory("DetectionResult/v1", {
+            "symbol": ms.get("symbol", ""),
+            "session_date": ms.get("date", ""),
+            "preset_id": metadata["preset_id"],
+            "engine_version": metadata["engine_version"],
+            "direction": str(direction_val) if direction_val else "",
+            "level_price_ticks": level_price.ticks if level_price else 0,
+            "level_price_tick_size": level_price.tick_size if level_price else "",
+            "break_bar_utc_ms": break_bar.bar_utc_ms if break_bar else 0,
+            "confirmation_bar_utc_ms": (
+                confirmation_bar.bar_utc_ms if confirmation_bar else 0
+            ),
+        })
+    else:
+        _result_id = str(uuid.uuid4())
     detection_result = DetectionResult(
         schema_version="DetectionResult/v1",
-        result_id=str(uuid.uuid4()),
+        result_id=_result_id,
         produced_at=datetime.now(timezone.utc).isoformat()
             .replace("+00:00", "Z"),
         session=session,

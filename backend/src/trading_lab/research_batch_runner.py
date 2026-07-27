@@ -3,12 +3,18 @@
 Orchestrates:
     CSV text → csv_parser → session_split → Strategy Runner → ResearchDataset
 
+Injects deterministic UUID v5 identity generation so that repeated
+research runs over identical inputs produce byte-for-byte identical output.
+
 Public API:
     build_research_dataset_from_csv(...)  → tuple[dict, ...]
     research_csv_from_csv(...)            → str
 """
 
 from __future__ import annotations
+
+import json
+import uuid
 
 from trading_lab.csv_parser import parse_candles_from_csv
 from trading_lab.research_dataset import (
@@ -18,6 +24,27 @@ from trading_lab.research_dataset import (
 from trading_lab.session_split import split_into_sessions
 from trading_lab.strategy_runner import run_bdrr_strategy
 
+
+# ── Deterministic identity ───────────────────────────────────────────────────
+
+RESEARCH_ID_NAMESPACE = uuid.UUID("b2d3e4f5-6789-4abc-9def-0123456789ab")
+
+
+def _deterministic_id_factory(identity_type: str, fields: dict) -> str:
+    """Generate a deterministic UUID v5 from semantic identity fields.
+
+    Uses compact JSON with sorted keys as the canonical name string.
+    """
+    canonical = json.dumps(
+        {"type": identity_type, **fields},
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+    return str(uuid.uuid5(RESEARCH_ID_NAMESPACE, canonical))
+
+
+# ── Public API ───────────────────────────────────────────────────────────────
 
 def build_research_dataset_from_csv(
     *,
@@ -30,25 +57,8 @@ def build_research_dataset_from_csv(
 ) -> tuple[dict, ...]:
     """Run the full BDRR pipeline on historical CSV and return research rows.
 
-    Parameters
-    ----------
-    csv_text : str
-        Complete CSV content (repository 5-minute format).
-    symbol : str
-        Instrument symbol (e.g. ``"SPY"``).
-    preset : dict
-        Frozen Stage 1–5 preset configuration.
-    config : dict
-        Strategy Runner config: tick_size, engine_version, exit_target_r.
-    source_dataset_id : str
-        Caller-supplied dataset provenance identifier.
-    code_commit_hash : str
-        Caller-supplied code commit hash.
-
-    Returns
-    -------
-    tuple[dict, ...]
-        One flat research row per eligible valid setup.
+    Uses deterministic UUID v5 identity generation so that repeated
+    runs over the same inputs produce identical output.
     """
     if not isinstance(csv_text, str) or len(csv_text.strip()) == 0:
         raise ValueError("csv_text must be a non-empty string")
@@ -77,7 +87,10 @@ def build_research_dataset_from_csv(
         for g in groups
     ]
 
-    runner_results = run_bdrr_strategy(sessions, preset, config)
+    runner_results = run_bdrr_strategy(
+        sessions, preset, config,
+        id_factory=_deterministic_id_factory,
+    )
 
     return build_research_rows(
         runner_results,

@@ -134,7 +134,7 @@ def _build_failure_record(
 
 # ── Single-session pipeline ──────────────────────────────────────────────────
 
-def _process_one_session(session, preset, engine_config, tp_config, outcome_config, config):
+def _process_one_session(session, preset, engine_config, tp_config, outcome_config, config, id_factory=None):
     run_record_id = _uuidv4()
     tick_size = config["tick_size"]
 
@@ -220,6 +220,7 @@ def _process_one_session(session, preset, engine_config, tp_config, outcome_conf
         {"orb": orb, "break_result": brk, "disp_result": disp,
          "retest_result": retest, "rej_result": rej},
         dr_metadata,
+        id_factory=id_factory,
     )
     if dr_build.get("status") != "OK":
         return _build_failure_record(
@@ -281,7 +282,19 @@ def _process_one_session(session, preset, engine_config, tp_config, outcome_conf
     )
 
     # Assemble full result record
-    candidate_id = _uuidv4()
+    if id_factory is not None:
+        candidate_id = id_factory("SetupCandidate/v1", {
+            "result_id": _get(detection_result, "result_id"),
+            "preset_id": _get(preset, "preset_id", "default") or "default",
+            "entry_model": str(_get(trade_plan, "entry_model")),
+            "entry_price_ticks": _get_ticks(trade_plan, "entry_price"),
+            "entry_price_tick_size": _get(trade_plan, "tick_size"),
+            "stop_price_ticks": _get_ticks(trade_plan, "stop_price"),
+            "stop_price_tick_size": _get(trade_plan, "tick_size"),
+            "exit_target_r": config["exit_target_r"],
+        })
+    else:
+        candidate_id = _uuidv4()
     entry_ms = _get(trade_outcome, "entry_bar_utc_ms")
     eval_ms = _get(trade_outcome, "first_eval_bar_utc_ms")
     exit_ms = _get(trade_outcome, "exit_bar_utc_ms")
@@ -318,7 +331,7 @@ def _process_one_session(session, preset, engine_config, tp_config, outcome_conf
 
 # ── Primary export ───────────────────────────────────────────────────────────
 
-def run_bdrr_strategy(sessions, preset, config):
+def run_bdrr_strategy(sessions, preset, config, *, id_factory=None):
     """Run the BDRR strategy across multiple sessions.
 
     Mirrors JS ``runBdrrStrategy(sessions, preset, config)``.
@@ -375,6 +388,7 @@ def run_bdrr_strategy(sessions, preset, config):
     for session in sessions:
         record = _process_one_session(
             session, preset, engine_config, tp_config, outcome_config, config,
+            id_factory=id_factory,
         )
         results.append(record)
 
