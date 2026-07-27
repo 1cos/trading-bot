@@ -1,6 +1,6 @@
 """Canonical enum and literal vocabularies for the BDRR pipeline.
 
-Ported from the frozen contract in BDRR_ENGINE_CANONICAL_HANDOFF.md §3.2–§3.3
+Ported from the frozen contract in BDRR_ENGINE_CANONICAL_HANDOFF.md §3.2–§3.6
 and the JavaScript reference implementation in
 estrategie/bdrr_detection_result.js.
 
@@ -93,3 +93,43 @@ class Operator(StrEnum):
     LTE = "LTE"
     EQ = "EQ"
     NEQ = "NEQ"
+
+
+@unique
+class EvaluationStatus(StrEnum):
+    """ModuleResult evaluation_status field (§3.2).
+
+    Also used in ConfluenceResult but restricted to SCORED,
+    DATA_UNAVAILABLE, and ERROR there.
+    """
+
+    NOT_RUN = "NOT_RUN"
+    SCORED = "SCORED"
+    DATA_UNAVAILABLE = "DATA_UNAVAILABLE"
+    ERROR = "ERROR"
+
+
+@unique
+class QualityGrade(StrEnum):
+    """ScoredSetup/v1 core_quality_grade field (§3.6).
+
+    Permanent once assigned. SKIP never appears here.
+    Null when core_quality_score is null.
+    D threshold is frozen at 0.00.
+    """
+
+    A_PLUS = "A_PLUS"
+    A = "A"
+    B = "B"
+    C = "C"
+    D = "D"
+
+
+@unique
+class ConfluenceStatus(StrEnum):
+    """ConfluenceResult confluence_status field (§3.6)."""
+
+    CONFIRMING = "CONFIRMING"
+    NEUTRAL = "NEUTRAL"
+    CONFLICTING = "CONFLICTING"
+    DATA_UNAVAILABLE = "DATA_UNAVAILABLE"
