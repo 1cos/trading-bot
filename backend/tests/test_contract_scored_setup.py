@@ -217,3 +217,53 @@ class TestToDict:
         d = ss.to_dict()
         assert d["core_quality_score"] is None
         assert d["core_quality_grade"] is None
+
+
+class TestINVS10DisjointKeys:
+    def test_disjoint_keys_accepted(self):
+        kw = _valid_kwargs()
+        # default fixture already has disjoint keys
+        ss = ScoredSetup(**kw)
+        assert set(ss.core_module_scores.keys()) & set(
+            ss.contextual_module_results.keys()
+        ) == set()
+
+    def test_one_overlapping_key_rejected(self):
+        kw = _valid_kwargs()
+        # Add the same key to both
+        shared_module = _core_module()
+        kw["contextual_module_results"]["displacement_quality"] = shared_module
+        kw["contextual_weights_snapshot"]["displacement_quality"] = "1.0"
+        with pytest.raises(ValueError, match="INV-S-10"):
+            ScoredSetup(**kw)
+
+    def test_multiple_overlapping_keys_rejected(self):
+        kw = _valid_kwargs()
+        m2 = _core_module()
+        # Add core keys into contextual
+        kw["core_module_scores"]["mod_b"] = m2
+        kw["core_weights_snapshot"]["mod_b"] = "1.0"
+        kw["contextual_module_results"]["displacement_quality"] = m2
+        kw["contextual_weights_snapshot"]["displacement_quality"] = "1.0"
+        kw["contextual_module_results"]["mod_b"] = m2
+        kw["contextual_weights_snapshot"]["mod_b"] = "1.0"
+        with pytest.raises(ValueError, match="INV-S-10"):
+            ScoredSetup(**kw)
+
+    def test_snapshot_parity_still_independent(self):
+        kw = _valid_kwargs()
+        kw["core_weights_snapshot"] = {}
+        with pytest.raises(ValueError, match="keys must match"):
+            ScoredSetup(**kw)
+
+    def test_serialization_unchanged_for_valid(self):
+        ss = ScoredSetup(**_valid_kwargs())
+        d = ss.to_dict()
+        assert set(d.keys()) == {
+            "schema_version", "scored_id", "scored_at", "scorer_version",
+            "setup", "core_quality_score", "core_quality_grade",
+            "core_grade_thresholds", "core_module_scores",
+            "core_weights_snapshot", "contextual_module_results",
+            "contextual_weights_snapshot", "confluence_result",
+            "module_features",
+        }

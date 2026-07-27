@@ -97,10 +97,18 @@ class ConfluenceResult:
                 )
             _require_decimal_str(self.score, "score")
         else:
+            # INV-S-08: evaluation_status ≠ SCORED →
+            #   score=null, confluence_status=DATA_UNAVAILABLE
             if self.score is not None:
                 raise ValueError(
                     "score must be null when evaluation_status "
                     "is not SCORED"
+                )
+            if self.confluence_status != ConfluenceStatus.DATA_UNAVAILABLE:
+                raise ValueError(
+                    "confluence_status must be DATA_UNAVAILABLE when "
+                    "evaluation_status is not SCORED (INV-S-08), "
+                    f"got {self.confluence_status!r}"
                 )
 
         # data_source

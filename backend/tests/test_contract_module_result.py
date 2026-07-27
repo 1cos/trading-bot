@@ -200,3 +200,87 @@ class TestToDict:
         mr = ModuleResult(**_scored_kwargs())
         d = mr.to_dict()
         assert isinstance(d["input_fields"], list)
+
+
+class TestScoreRange:
+    def test_score_zero(self):
+        kw = _scored_kwargs()
+        kw["score"] = "0"
+        kw["weighted_score"] = "0"
+        ModuleResult(**kw)
+
+    def test_score_zero_point_zero(self):
+        kw = _scored_kwargs()
+        kw["score"] = "0.0"
+        kw["weighted_score"] = "0.0"
+        ModuleResult(**kw)
+
+    def test_score_one(self):
+        kw = _scored_kwargs()
+        kw["score"] = "1"
+        kw["weighted_score"] = "1.0"
+        ModuleResult(**kw)
+
+    def test_score_one_point_zero(self):
+        kw = _scored_kwargs()
+        kw["score"] = "1.0"
+        kw["weighted_score"] = "1.00"
+        ModuleResult(**kw)
+
+    def test_score_between_boundaries(self):
+        kw = _scored_kwargs()
+        kw["score"] = "0.50"
+        kw["weight"] = "2.0"
+        kw["weighted_score"] = "1.00"
+        ModuleResult(**kw)
+
+    def test_negative_score_rejected(self):
+        kw = _scored_kwargs()
+        kw["score"] = "-0.01"
+        kw["weighted_score"] = "-0.01"
+        with pytest.raises(ValueError, match="score must be in"):
+            ModuleResult(**kw)
+
+    def test_score_above_one_rejected(self):
+        kw = _scored_kwargs()
+        kw["score"] = "1.01"
+        kw["weighted_score"] = "1.01"
+        with pytest.raises(ValueError, match="score must be in"):
+            ModuleResult(**kw)
+
+
+class TestWeightedScoreConsistency:
+    def test_exact_multiplication(self):
+        kw = _scored_kwargs()
+        kw["score"] = "0.5"
+        kw["weight"] = "2"
+        kw["weighted_score"] = "1.0"
+        ModuleResult(**kw)
+
+    def test_different_decimal_formatting(self):
+        kw = _scored_kwargs()
+        kw["score"] = "0.50"
+        kw["weight"] = "2.0"
+        kw["weighted_score"] = "1.000"
+        ModuleResult(**kw)
+
+    def test_incorrect_weighted_score_rejected(self):
+        kw = _scored_kwargs()
+        kw["score"] = "0.5"
+        kw["weight"] = "2"
+        kw["weighted_score"] = "0.99"
+        with pytest.raises(ValueError, match="weighted_score must equal"):
+            ModuleResult(**kw)
+
+    def test_zero_score_zero_weighted(self):
+        kw = _scored_kwargs()
+        kw["score"] = "0"
+        kw["weight"] = "1.5"
+        kw["weighted_score"] = "0"
+        ModuleResult(**kw)
+
+    def test_malformed_weighted_score_rejected(self):
+        kw = _scored_kwargs()
+        kw["weighted_score"] = "abc"
+        with pytest.raises(ValueError, match="not a valid Decimal"):
+            ModuleResult(**kw)

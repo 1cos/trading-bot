@@ -200,6 +200,18 @@ class ScoredSetup:
             set(self.contextual_module_results.keys()),
         )
 
+        # INV-S-10: core and contextual key sets must be disjoint
+        overlap = (
+            set(self.core_module_scores.keys())
+            & set(self.contextual_module_results.keys())
+        )
+        if overlap:
+            raise ValueError(
+                "core_module_scores and contextual_module_results "
+                "must have disjoint key sets (INV-S-10), "
+                f"overlapping keys: {sorted(overlap)}"
+            )
+
         # confluence_result
         if self.confluence_result is not None:
             if not isinstance(self.confluence_result, ConfluenceResult):

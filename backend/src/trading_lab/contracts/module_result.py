@@ -116,12 +116,28 @@ class ModuleResult:
                     "score must be non-null when evaluation_status is SCORED"
                 )
             _require_decimal_str(self.score, "score")
+            # INV-S-02: score ∈ [0.0, 1.0]
+            from decimal import Decimal
+            score_d = Decimal(self.score)
+            if score_d < 0 or score_d > 1:
+                raise ValueError(
+                    f"score must be in [0.0, 1.0], got {self.score!r}"
+                )
             if self.weighted_score is None:
                 raise ValueError(
                     "weighted_score must be non-null when "
                     "evaluation_status is SCORED"
                 )
             _require_decimal_str(self.weighted_score, "weighted_score")
+            # INV-S-02: weighted_score = score × weight
+            weight_d = Decimal(self.weight)
+            ws_d = Decimal(self.weighted_score)
+            if ws_d != score_d * weight_d:
+                raise ValueError(
+                    f"weighted_score must equal score × weight "
+                    f"({self.score} × {self.weight} = "
+                    f"{score_d * weight_d}), got {self.weighted_score!r}"
+                )
         else:
             # Non-SCORED: score and weighted_score must be null
             if self.score is not None:
