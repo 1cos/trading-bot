@@ -113,40 +113,145 @@ def _compute_ratio(numerator_ticks: int, denominator_ticks: int) -> str:
     return result
 
 
-# ── Row extraction ───────────────────────────────────────────────────────────
+# ── Record consistency validation ────────────────────────────────────────────
 
-def _is_eligible(record: dict) -> bool:
-    """Check if a runner record represents a complete valid setup."""
-    return (
-        record.get("detection_result") is not None
-        and record.get("trade_plan") is not None
-        and record.get("trade_outcome") is not None
-        and record.get("candidate_id") is not None
-    )
+def _has_valid_detection(record: dict) -> bool:
+    """Check if detection_result is present and VALID."""
+    dr = record.get("detection_result")
+    if dr is None:
+        return False
+    return str(getattr(dr, "status", None)) == "VALID"
 
 
-def _validate_eligible(record: dict, index: int) -> None:
-    """Validate a record that claims to be eligible but may be contradictory."""
-    dr = record["detection_result"]
-    tp = record["trade_plan"]
-    to = record["trade_outcome"]
+def _classify_and_validate(record: dict, index: int) -> str:
+    """Classify a runner record and enforce consistency.
 
-    if str(getattr(dr, "status", None)) != "VALID":
+    Returns one of: "ELIGIBLE", "LEGITIMATE_SKIP".
+    Raises ResearchDatasetValidationError for contradictory records.
+    """
+    dr = record.get("detection_result")
+    tp = record.get("trade_plan")
+    to = record.get("trade_outcome")
+    cid = record.get("candidate_id")
+    outcome = str(record.get("outcome", ""))
+
+    has_dr = dr is not None
+    has_tp = tp is not None
+    has_to = to is not None
+    has_cid = cid is not None
+    dr_valid = _has_valid_detection(record)
+
+    # ── Full setup: all four present ─────────────────────────────────────
+    if has_dr and has_tp and has_to and has_cid:
+        if not dr_valid:
+            raise ResearchDatasetValidationError(
+                f"record[{index}]: detection_result.status is not VALID "
+                f"but candidate_id, trade_plan, and trade_outcome are present"
+            )
+        if dr.minimum_rejection_side_clearance is None:
+            raise ResearchDatasetValidationError(
+                f"record[{index}]: minimum_rejection_side_clearance is null "
+                f"for a VALID detection"
+            )
+        if dr.displacement_pts is None:
+            raise ResearchDatasetValidationError(
+                f"record[{index}]: displacement_pts is null "
+                f"for a VALID detection"
+            )
+        return "ELIGIBLE"
+
+    # ── Legitimate NO_VALID_SETUP: detection present but INVALID,
+    #    no trade artifacts ────────────────────────────────────────────────
+    if outcome == "NO_VALID_SETUP":
+        if has_tp:
+            raise ResearchDatasetValidationError(
+                f"record[{index}]: NO_VALID_SETUP must not contain "
+                f"a trade_plan"
+            )
+        if has_to:
+            raise ResearchDatasetValidationError(
+                f"record[{index}]: NO_VALID_SETUP must not contain "
+                f"a trade_outcome"
+            )
+        if has_cid:
+            raise ResearchDatasetValidationError(
+                f"record[{index}]: NO_VALID_SETUP must not contain "
+                f"a candidate_id"
+            )
+        return "LEGITIMATE_SKIP"
+
+    # ── Legitimate PIPELINE_FAILURE: no setup artifacts ──────────────────
+    if outcome == "PIPELINE_FAILURE":
+        if has_dr and dr_valid:
+            raise ResearchDatasetValidationError(
+                f"record[{index}]: PIPELINE_FAILURE must not contain "
+                f"a VALID detection_result"
+            )
+        if has_tp:
+            raise ResearchDatasetValidationError(
+                f"record[{index}]: PIPELINE_FAILURE must not contain "
+                f"a trade_plan"
+            )
+        if has_to:
+            raise ResearchDatasetValidationError(
+                f"record[{index}]: PIPELINE_FAILURE must not contain "
+                f"a trade_outcome"
+            )
+        if has_cid:
+            raise ResearchDatasetValidationError(
+                f"record[{index}]: PIPELINE_FAILURE must not contain "
+                f"a candidate_id"
+            )
+        return "LEGITIMATE_SKIP"
+
+    # ── Contradictory incomplete setups ──────────────────────────────────
+
+    # candidate_id present but missing one or more setup objects
+    if has_cid:
+        missing = []
+        if not has_dr:
+            missing.append("detection_result")
+        if not has_tp:
+            missing.append("trade_plan")
+        if not has_to:
+            missing.append("trade_outcome")
+        if missing:
+            raise ResearchDatasetValidationError(
+                f"record[{index}]: candidate_id is present but "
+                f"missing: {', '.join(missing)}"
+            )
+
+    # valid detection present but missing downstream artifacts
+    if dr_valid:
+        missing = []
+        if not has_tp:
+            missing.append("trade_plan")
+        if not has_to:
+            missing.append("trade_outcome")
+        if not has_cid:
+            missing.append("candidate_id")
+        if missing:
+            raise ResearchDatasetValidationError(
+                f"record[{index}]: detection_result is VALID but "
+                f"missing: {', '.join(missing)}"
+            )
+
+    # trade_plan present without valid detection
+    if has_tp and not dr_valid:
         raise ResearchDatasetValidationError(
-            f"record[{index}]: detection_result.status is not VALID "
-            f"but candidate_id is non-null"
+            f"record[{index}]: trade_plan is present but "
+            f"detection_result is missing or not VALID"
         )
 
-    if dr.minimum_rejection_side_clearance is None:
+    # trade_outcome present without valid detection or trade_plan
+    if has_to and (not dr_valid or not has_tp):
         raise ResearchDatasetValidationError(
-            f"record[{index}]: minimum_rejection_side_clearance is null "
-            f"for a VALID detection"
+            f"record[{index}]: trade_outcome is present but "
+            f"detection_result or trade_plan is missing"
         )
 
-    if dr.displacement_pts is None:
-        raise ResearchDatasetValidationError(
-            f"record[{index}]: displacement_pts is null for a VALID detection"
-        )
+    # Any other non-setup record — legitimate skip
+    return "LEGITIMATE_SKIP"
 
 
 def _extract_row(
@@ -269,10 +374,11 @@ def build_research_rows(
 
     rows = []
     for i, record in enumerate(runner_results):
-        if not _is_eligible(record):
-            continue
-        _validate_eligible(record, i)
-        rows.append(_extract_row(record, source_dataset_id, code_commit_hash))
+        classification = _classify_and_validate(record, i)
+        if classification == "ELIGIBLE":
+            rows.append(
+                _extract_row(record, source_dataset_id, code_commit_hash)
+            )
 
     return tuple(rows)
 

@@ -324,28 +324,22 @@ class TestEligibilityFiltering:
         assert rows[0]["session_date"] == "2026-07-02"
         assert rows[1]["session_date"] == "2026-07-04"
 
-    def test_contradictory_record_rejected(self):
+    def test_contradictory_record_candidate_missing_detection(self):
         results = _run([_stopped("2026-07-02")])
-        # Tamper: set candidate_id but null out trade_outcome
-        bad = {**results[0], "trade_outcome": None}
-        # candidate_id is non-null but trade_outcome is None → not eligible
-        rows = build_research_rows(
-            [bad], source_dataset_id=SOURCE_ID, code_commit_hash=COMMIT,
-        )
-        # record is ineligible (trade_outcome is None), so excluded
-        assert len(rows) == 0
+        # Tamper: keep candidate_id but null out trade_outcome and detection
+        bad = {**results[0], "trade_outcome": None, "detection_result": None}
+        with pytest.raises(ResearchDatasetValidationError, match="candidate_id is present"):
+            build_research_rows(
+                [bad], source_dataset_id=SOURCE_ID, code_commit_hash=COMMIT,
+            )
 
-    def test_contradictory_valid_status_invalid_detection(self):
+    def test_contradictory_candidate_missing_trade_plan(self):
         results = _run([_stopped("2026-07-02")])
-        # Tamper: make a record with candidate_id and all objects but
-        # detection status INVALID. Since the frozen DetectionResult
-        # dataclass is immutable, we test via a different approach:
-        # set detection_result to None but keep candidate_id
-        bad = {**results[0], "detection_result": None}
-        rows = build_research_rows(
-            [bad], source_dataset_id=SOURCE_ID, code_commit_hash=COMMIT,
-        )
-        assert len(rows) == 0
+        bad = {**results[0], "trade_plan": None}
+        with pytest.raises(ResearchDatasetValidationError, match="candidate_id is present"):
+            build_research_rows(
+                [bad], source_dataset_id=SOURCE_ID, code_commit_hash=COMMIT,
+            )
 
 
 # ── 19. Contradictory eligible record ────────────────────────────────────────
@@ -565,3 +559,132 @@ class TestOutcomeTypes:
         assert len(rows) == 1
         assert rows[0]["outcome"] == "STOPPED"
         assert rows[0]["realized_r"] == -1
+
+
+# ── Record consistency enforcement ───────────────────────────────────────────
+
+class TestRecordConsistency:
+    """Verify contradictory or incomplete records raise, not silently skip."""
+
+    def _valid_record(self):
+        return _run([_stopped("2026-07-02")])[0]
+
+    def _no_setup_record(self):
+        return _run([_no_break("2026-07-01")])[0]
+
+    def _pipeline_failure_record(self):
+        bad = {
+            "symbol": "TEST", "date": "2026-07-01",
+            "market_timezone": "America/New_York",
+            "session_open_utc_ms": 0, "session_close_utc_ms": 0,
+            "timeframe": "5m", "candles": [],
+        }
+        return _run([bad])[0]
+
+    # Legitimate skips still work
+    def test_legitimate_no_valid_setup(self):
+        rows = build_research_rows(
+            [self._no_setup_record()],
+            source_dataset_id=SOURCE_ID, code_commit_hash=COMMIT,
+        )
+        assert len(rows) == 0
+
+    def test_legitimate_pipeline_failure(self):
+        rows = build_research_rows(
+            [self._pipeline_failure_record()],
+            source_dataset_id=SOURCE_ID, code_commit_hash=COMMIT,
+        )
+        assert len(rows) == 0
+
+    def test_complete_valid_still_emits(self):
+        rows = build_research_rows(
+            [self._valid_record()],
+            source_dataset_id=SOURCE_ID, code_commit_hash=COMMIT,
+        )
+        assert len(rows) == 1
+
+    # valid detection + missing trade_plan
+    def test_valid_detection_missing_trade_plan(self):
+        r = self._valid_record()
+        bad = {**r, "trade_plan": None, "candidate_id": None}
+        with pytest.raises(ResearchDatasetValidationError, match="VALID.*missing.*trade_plan"):
+            build_research_rows(
+                [bad], source_dataset_id=SOURCE_ID, code_commit_hash=COMMIT,
+            )
+
+    # valid detection + missing trade_outcome
+    def test_valid_detection_missing_trade_outcome(self):
+        r = self._valid_record()
+        bad = {**r, "trade_outcome": None, "candidate_id": None}
+        with pytest.raises(ResearchDatasetValidationError, match="VALID.*missing.*trade_outcome"):
+            build_research_rows(
+                [bad], source_dataset_id=SOURCE_ID, code_commit_hash=COMMIT,
+            )
+
+    # valid detection + missing candidate_id
+    def test_valid_detection_missing_candidate_id(self):
+        r = self._valid_record()
+        bad = {**r, "candidate_id": None}
+        with pytest.raises(ResearchDatasetValidationError, match="VALID.*missing.*candidate_id"):
+            build_research_rows(
+                [bad], source_dataset_id=SOURCE_ID, code_commit_hash=COMMIT,
+            )
+
+    # candidate_id + missing detection
+    def test_candidate_id_missing_detection(self):
+        r = self._valid_record()
+        bad = {**r, "detection_result": None}
+        with pytest.raises(ResearchDatasetValidationError, match="candidate_id is present.*missing.*detection_result"):
+            build_research_rows(
+                [bad], source_dataset_id=SOURCE_ID, code_commit_hash=COMMIT,
+            )
+
+    # trade_plan without valid detection
+    def test_trade_plan_without_detection(self):
+        r = self._valid_record()
+        # Use a non-standard outcome to avoid NO_VALID_SETUP/PIPELINE_FAILURE paths
+        bad = {**r, "detection_result": None, "candidate_id": None,
+               "trade_outcome": None, "outcome": "STOPPED"}
+        with pytest.raises(ResearchDatasetValidationError, match="trade_plan.*not VALID"):
+            build_research_rows(
+                [bad], source_dataset_id=SOURCE_ID, code_commit_hash=COMMIT,
+            )
+
+    # trade_outcome without trade_plan
+    def test_trade_outcome_without_trade_plan(self):
+        r = self._valid_record()
+        bad = {**r, "trade_plan": None, "candidate_id": None,
+               "detection_result": None, "outcome": "STOPPED"}
+        with pytest.raises(ResearchDatasetValidationError, match="trade_outcome.*missing"):
+            build_research_rows(
+                [bad], source_dataset_id=SOURCE_ID, code_commit_hash=COMMIT,
+            )
+
+    # NO_VALID_SETUP with candidate_id
+    def test_no_valid_setup_with_candidate_id(self):
+        r = self._no_setup_record()
+        bad = {**r, "candidate_id": "fake-id"}
+        with pytest.raises(ResearchDatasetValidationError, match="NO_VALID_SETUP.*candidate_id"):
+            build_research_rows(
+                [bad], source_dataset_id=SOURCE_ID, code_commit_hash=COMMIT,
+            )
+
+    # NO_VALID_SETUP with trade_plan
+    def test_no_valid_setup_with_trade_plan(self):
+        r = self._no_setup_record()
+        vr = self._valid_record()
+        bad = {**r, "trade_plan": vr["trade_plan"]}
+        with pytest.raises(ResearchDatasetValidationError, match="NO_VALID_SETUP.*trade_plan"):
+            build_research_rows(
+                [bad], source_dataset_id=SOURCE_ID, code_commit_hash=COMMIT,
+            )
+
+    # PIPELINE_FAILURE with valid detection_result
+    def test_pipeline_failure_with_valid_detection(self):
+        pf = self._pipeline_failure_record()
+        vr = self._valid_record()
+        bad = {**pf, "detection_result": vr["detection_result"]}
+        with pytest.raises(ResearchDatasetValidationError, match="PIPELINE_FAILURE.*VALID"):
+            build_research_rows(
+                [bad], source_dataset_id=SOURCE_ID, code_commit_hash=COMMIT,
+            )
