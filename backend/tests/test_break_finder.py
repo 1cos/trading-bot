@@ -317,13 +317,9 @@ class TestFailedORB:
 
 
 class TestUnsupportedDirection:
-    def test_short(self):
-        cfg = {**CONFIG, "direction": "SHORT"}
+    def test_unknown(self):
+        cfg = {**CONFIG, "direction": "SIDEWAYS"}
         candles = [candle(MS_0930)]
-        sc = build_session_context(candles, cfg)
-        orb = build_orb(sc["candles"], sc, cfg)
-        # ORB fails because level_source=ORB_HIGH only supports LONG,
-        # but even if we pass a fake OK orb, findBreak rejects SHORT
         fake_orb = {
             "status": "OK", "date": "2026-07-01",
             "orb_candle_index": 0, "orb_candle": candles[0],
@@ -332,7 +328,7 @@ class TestUnsupportedDirection:
         brk = find_break(candles, fake_orb, cfg)
         assert brk["status"] == "FAILED"
         assert brk["failed_stage"] == "UNSUPPORTED_CONFIGURATION"
-        assert "SHORT" in brk["reason"]
+        assert "SIDEWAYS" in brk["reason"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

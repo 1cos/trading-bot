@@ -99,23 +99,25 @@ def find_displacement(
         }
 
     # ── Unsupported configuration ────────────────────────────────────────
-    if config["direction"] != "LONG":
+    direction = config["direction"]
+    if direction not in ("LONG", "SHORT"):
         return {
             "status": "FAILED",
             "failed_stage": "UNSUPPORTED_CONFIGURATION",
             "reason": (
-                f'direction "{config["direction"]}" is not implemented in '
-                f'this stage; only "LONG" is supported'
+                f'direction "{direction}" is not implemented in '
+                f'this stage; only "LONG" and "SHORT" are supported'
             ),
         }
 
-    if config["level_source"] != "ORB_HIGH":
+    _supported_sources = ("ORB_HIGH", "ORB_LOW")
+    if config["level_source"] not in _supported_sources:
         return {
             "status": "FAILED",
             "failed_stage": "UNSUPPORTED_CONFIGURATION",
             "reason": (
                 f'level_source "{config["level_source"]}" is not implemented '
-                f'in this stage; only "ORB_HIGH" is supported'
+                f'in this stage; only "ORB_HIGH" and "ORB_LOW" are supported'
             ),
         }
 
@@ -158,21 +160,34 @@ def find_displacement(
     level_ticks = orb["level_price_ticks"]
     tick_size = config["tick_size"]
     start_index = brk_idx + 1  # breakout candle never counted
+    is_short = direction == "SHORT"
 
-    # Find first retest contact: low <= level_price
+    # Find first retest contact
+    # LONG: low <= level_price  (price returns toward level from above)
+    # SHORT: high >= level_price (price returns toward level from below)
     first_contact_index = None
     for i in range(start_index, len(candles)):
-        if candles[i]["low"] <= level_price:
-            first_contact_index = i
-            break
+        if is_short:
+            if candles[i]["high"] >= level_price:
+                first_contact_index = i
+                break
+        else:
+            if candles[i]["low"] <= level_price:
+                first_contact_index = i
+                break
 
     # ── RETEST_NOT_FOUND ─────────────────────────────────────────────────
     if first_contact_index is None:
+        contact_desc = (
+            f"no candle with high >= level_price ({level_price})"
+            if is_short
+            else f"no candle with low <= level_price ({level_price})"
+        )
         return {
             "status": "FAILED",
             "failed_stage": "RETEST_NOT_FOUND",
             "reason": (
-                f"no candle with low <= level_price ({level_price}) found "
+                f"{contact_desc} found "
                 f"after the break candle at index {brk_idx}; "
                 f"displacement window cannot be closed within the provided candles"
             ),
@@ -183,6 +198,24 @@ def find_displacement(
         }
 
     displacement_bar_count = first_contact_index - start_index
+
+    # ── Validate displacement bars ───────────────────────────────────────
+    # LONG: displacement bar has low > level_price (stays above level)
+    # SHORT: displacement bar has high < level_price (stays below level)
+    # If first post-break bar already contacts level → no displacement
+    if displacement_bar_count > 0:
+        for j in range(start_index, first_contact_index):
+            if is_short:
+                if candles[j]["high"] >= level_price:
+                    # This bar contacts level — truncate displacement here
+                    first_contact_index = j
+                    displacement_bar_count = j - start_index
+                    break
+            else:
+                if candles[j]["low"] <= level_price:
+                    first_contact_index = j
+                    displacement_bar_count = j - start_index
+                    break
 
     # ── RETEST_BEFORE_DISPLACEMENT ───────────────────────────────────────
     if displacement_bar_count == 0:
@@ -204,32 +237,65 @@ def find_displacement(
     displacement_window = candles[start_index:first_contact_index]
     displacement_end_index = first_contact_index - 1
 
-    max_favorable_high = -float("inf")
-    max_distance_ticks = -2**63  # -Infinity equivalent for int
+    if is_short:
+        # SHORT: favorable movement is downward
+        min_favorable_low = float("inf")
+        max_distance_ticks = -2**63
 
-    for bar in displacement_window:
-        if bar["high"] > max_favorable_high:
-            max_favorable_high = bar["high"]
-        bar_high_ticks = price_to_ticks(bar["high"], tick_size)
-        dist = bar_high_ticks - level_ticks
-        if dist > max_distance_ticks:
-            max_distance_ticks = dist
+        for bar in displacement_window:
+            if bar["low"] < min_favorable_low:
+                min_favorable_low = bar["low"]
+            bar_low_ticks = price_to_ticks(bar["low"], tick_size)
+            dist = level_ticks - bar_low_ticks
+            if dist > max_distance_ticks:
+                max_distance_ticks = dist
 
-    return {
-        "status": "OK",
-        "date": orb["date"],
-        "level_price": level_price,
-        "break_candle_index": brk_idx,
-        "displacement_start_index": start_index,
-        "displacement_end_index": displacement_end_index,
-        "displacement_bar_count": displacement_bar_count,
-        "displacement_window": displacement_window,
-        "max_favorable_high": max_favorable_high,
-        "displacement_distance": {
-            "points": ticks_to_points(max_distance_ticks, tick_size),
-            "ticks": max_distance_ticks,
-        },
-        "first_retest_contact_index": first_contact_index,
-        "first_retest_contact_candle": candles[first_contact_index],
-        "first_retest_contact_timestamp": candles[first_contact_index]["time_ms"],
-    }
+        return {
+            "status": "OK",
+            "date": orb["date"],
+            "level_price": level_price,
+            "break_candle_index": brk_idx,
+            "displacement_start_index": start_index,
+            "displacement_end_index": displacement_end_index,
+            "displacement_bar_count": displacement_bar_count,
+            "displacement_window": displacement_window,
+            "max_favorable_low": min_favorable_low,
+            "displacement_distance": {
+                "points": ticks_to_points(max_distance_ticks, tick_size),
+                "ticks": max_distance_ticks,
+            },
+            "first_retest_contact_index": first_contact_index,
+            "first_retest_contact_candle": candles[first_contact_index],
+            "first_retest_contact_timestamp": candles[first_contact_index]["time_ms"],
+        }
+    else:
+        # LONG: favorable movement is upward
+        max_favorable_high = -float("inf")
+        max_distance_ticks = -2**63
+
+        for bar in displacement_window:
+            if bar["high"] > max_favorable_high:
+                max_favorable_high = bar["high"]
+            bar_high_ticks = price_to_ticks(bar["high"], tick_size)
+            dist = bar_high_ticks - level_ticks
+            if dist > max_distance_ticks:
+                max_distance_ticks = dist
+
+        return {
+            "status": "OK",
+            "date": orb["date"],
+            "level_price": level_price,
+            "break_candle_index": brk_idx,
+            "displacement_start_index": start_index,
+            "displacement_end_index": displacement_end_index,
+            "displacement_bar_count": displacement_bar_count,
+            "displacement_window": displacement_window,
+            "max_favorable_high": max_favorable_high,
+            "displacement_distance": {
+                "points": ticks_to_points(max_distance_ticks, tick_size),
+                "ticks": max_distance_ticks,
+            },
+            "first_retest_contact_index": first_contact_index,
+            "first_retest_contact_candle": candles[first_contact_index],
+            "first_retest_contact_timestamp": candles[first_contact_index]["time_ms"],
+        }

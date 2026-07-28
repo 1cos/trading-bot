@@ -217,7 +217,7 @@ class TestUnsupportedConfig:
         assert "multi-candle" in orb["reason"]
 
     def test_level_source_not_orb_high(self):
-        cfg = {**CONFIG, "level_source": "ORB_LOW"}
+        cfg = {**CONFIG, "level_source": "PDH"}
         sc = build_session_context([candle(MS_0930)], cfg)
         orb = build_orb(sc["candles"], sc, cfg)
         assert orb["status"] == "FAILED"

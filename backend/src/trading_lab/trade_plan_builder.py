@@ -188,11 +188,11 @@ def _validate_config(config: object) -> dict | None:
 
     direction = _get(config, "direction")
     direction_str = str(direction) if direction is not None else str(direction)
-    if direction_str != "LONG":
+    if direction_str not in ("LONG", "SHORT"):
         return _fail(
             "UNSUPPORTED_DIRECTION",
             f'direction "{direction_str}" is not supported;'
-            f' only "LONG" is implemented',
+            f' only "LONG" and "SHORT" are implemented',
         )
 
     entry_model = _get(config, "entry_model")
@@ -372,27 +372,48 @@ def build_trade_plan(
 
     entry_model_str = str(_get(config, "entry_model"))
     entry_buffer = _get(config, "entry_buffer_ticks")
+    direction_str = str(_get(config, "direction"))
+    is_short = direction_str == "SHORT"
 
-    if entry_model_str == "CONFIRMATION_CLOSE":
-        entry_ticks = close_ticks + entry_buffer
+    if is_short:
+        if entry_model_str == "CONFIRMATION_CLOSE":
+            entry_ticks = close_ticks - entry_buffer
+        else:
+            # BREAK_OF_SIGNAL_BAR: below the low for SHORT
+            entry_ticks = low_ticks - entry_buffer
     else:
-        # BREAK_OF_SIGNAL_BAR
-        entry_ticks = high_ticks + entry_buffer
+        if entry_model_str == "CONFIRMATION_CLOSE":
+            entry_ticks = close_ticks + entry_buffer
+        else:
+            # BREAK_OF_SIGNAL_BAR
+            entry_ticks = high_ticks + entry_buffer
 
     # ── Step 4: compute stop price ───────────────────────────────────────
 
     stop_buffer = _get(config, "stop_buffer_ticks")
-    stop_ticks = low_ticks - stop_buffer
+    if is_short:
+        stop_ticks = high_ticks + stop_buffer
+    else:
+        stop_ticks = low_ticks - stop_buffer
 
     # ── Step 5: validate geometric relationship ──────────────────────────
 
-    if entry_ticks <= stop_ticks:
-        return _fail(
-            "INVALID_RISK",
-            f"LONG entry ({entry_ticks} ticks) must be strictly above"
-            f" stop ({stop_ticks} ticks); check confirmation_bar"
-            f" geometry or buffer configuration",
-        )
+    if is_short:
+        if entry_ticks >= stop_ticks:
+            return _fail(
+                "INVALID_RISK",
+                f"SHORT entry ({entry_ticks} ticks) must be strictly below"
+                f" stop ({stop_ticks} ticks); check confirmation_bar"
+                f" geometry or buffer configuration",
+            )
+    else:
+        if entry_ticks <= stop_ticks:
+            return _fail(
+                "INVALID_RISK",
+                f"LONG entry ({entry_ticks} ticks) must be strictly above"
+                f" stop ({stop_ticks} ticks); check confirmation_bar"
+                f" geometry or buffer configuration",
+            )
 
     # ── Step 6: compute risk ─────────────────────────────────────────────
 
@@ -406,9 +427,14 @@ def build_trade_plan(
 
     # ── Step 7: compute targets ──────────────────────────────────────────
 
-    r2_ticks = entry_ticks + 2 * risk_ticks
-    r3_ticks = entry_ticks + 3 * risk_ticks
-    r4_ticks = entry_ticks + 4 * risk_ticks
+    if is_short:
+        r2_ticks = entry_ticks - 2 * risk_ticks
+        r3_ticks = entry_ticks - 3 * risk_ticks
+        r4_ticks = entry_ticks - 4 * risk_ticks
+    else:
+        r2_ticks = entry_ticks + 2 * risk_ticks
+        r3_ticks = entry_ticks + 3 * risk_ticks
+        r4_ticks = entry_ticks + 4 * risk_ticks
 
     # ── Step 8: assemble TradePlan/v1 ────────────────────────────────────
 

@@ -754,11 +754,11 @@ class TestExactReasonStrings:
     def test_unsupported_direction(self):
         r = evaluate_trade_outcome(
             _dr(), _tp(), [],
-            TradeOutcomeConfig(direction="SHORT", exit_target_r=2),
+            TradeOutcomeConfig(direction="UP", exit_target_r=2),
         )
         assert r["reason"] == (
-            'direction "SHORT" is not supported;'
-            ' only "LONG" is implemented'
+            'direction "UP" is not supported;'
+            ' only "LONG" and "SHORT" are implemented'
         )
 
     def test_invalid_exit_r_string(self):
@@ -902,7 +902,7 @@ class TestAllSevenFailureCodes:
     def test_unsupported_direction(self):
         r = evaluate_trade_outcome(
             _dr(), _tp(), [],
-            TradeOutcomeConfig(direction="SHORT", exit_target_r=2),
+            TradeOutcomeConfig(direction="UP", exit_target_r=2),
         )
         assert r["failure_code"] == "UNSUPPORTED_DIRECTION"
 

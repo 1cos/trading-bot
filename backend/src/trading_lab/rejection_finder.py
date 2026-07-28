@@ -110,23 +110,25 @@ def find_rejection(
         return _upstream_fail("retest window", retest_result, "RETEST_NOT_FOUND")
 
     # ── Unsupported configuration ────────────────────────────────────────
-    if config["direction"] != "LONG":
+    direction = config["direction"]
+    if direction not in ("LONG", "SHORT"):
         return {
             "status": "FAILED",
             "failed_stage": "UNSUPPORTED_CONFIGURATION",
             "reason": (
-                f'direction "{config["direction"]}" is not implemented in '
-                f'this stage; only "LONG" is supported'
+                f'direction "{direction}" is not implemented in '
+                f'this stage; only "LONG" and "SHORT" are supported'
             ),
         }
 
-    if config["level_source"] != "ORB_HIGH":
+    _supported_sources = ("ORB_HIGH", "ORB_LOW")
+    if config["level_source"] not in _supported_sources:
         return {
             "status": "FAILED",
             "failed_stage": "UNSUPPORTED_CONFIGURATION",
             "reason": (
                 f'level_source "{config["level_source"]}" is not implemented '
-                f'in this stage; only "ORB_HIGH" is supported'
+                f'in this stage; only "ORB_HIGH" and "ORB_LOW" are supported'
             ),
         }
 
@@ -201,6 +203,7 @@ def find_rejection(
     level_price = orb["level_price"]
     level_ticks = orb["level_price_ticks"]
     tick_size = config["tick_size"]
+    is_short = direction == "SHORT"
 
     def evaluate_geometry(cnd: dict) -> dict:
         high_ticks = price_to_ticks(cnd["high"], tick_size)
@@ -209,8 +212,16 @@ def find_rejection(
         close_ticks = price_to_ticks(cnd["close"], tick_size)
 
         range_ticks = high_ticks - low_ticks
-        penetration_ticks = max(0, level_ticks - low_ticks)
-        close_beyond_level_ticks = close_ticks - level_ticks
+
+        if is_short:
+            # SHORT: penetration is how far above level, close_beyond is
+            # how far below level the close is (positive = favorable)
+            penetration_ticks = max(0, high_ticks - level_ticks)
+            close_beyond_level_ticks = level_ticks - close_ticks
+        else:
+            # LONG: penetration is how far below level
+            penetration_ticks = max(0, level_ticks - low_ticks)
+            close_beyond_level_ticks = close_ticks - level_ticks
 
         if range_ticks == 0:
             return {
@@ -237,12 +248,24 @@ def find_rejection(
             }
 
         body_ticks = abs(close_ticks - open_ticks)
-        rejection_wick_ticks = min(open_ticks, close_ticks) - low_ticks
-        opposite_wick_ticks = high_ticks - max(open_ticks, close_ticks)
+
+        if is_short:
+            # SHORT rejection wick: upper wick that reaches into level
+            # rejection_wick = high - max(open, close)
+            rejection_wick_ticks = high_ticks - max(open_ticks, close_ticks)
+            # opposite wick = lower wick
+            opposite_wick_ticks = min(open_ticks, close_ticks) - low_ticks
+            # favorable close location: close near the low (bearish)
+            # = (high - close) / range
+            favorable_close_location = (high_ticks - close_ticks) / range_ticks
+        else:
+            # LONG rejection wick: lower wick that reaches into level
+            rejection_wick_ticks = min(open_ticks, close_ticks) - low_ticks
+            opposite_wick_ticks = high_ticks - max(open_ticks, close_ticks)
+            favorable_close_location = (close_ticks - low_ticks) / range_ticks
 
         rejection_wick_ratio = rejection_wick_ticks / range_ticks
         body_ratio = body_ticks / range_ticks
-        favorable_close_location = (close_ticks - low_ticks) / range_ticks
         opposite_wick_ratio = opposite_wick_ticks / range_ticks
 
         failed_rules: list[str] = []
@@ -288,8 +311,14 @@ def find_rejection(
 
     for i in range(window_start, window_end + 1):
         cnd = candles[i]
-        if cnd["low"] > level_price:
-            continue  # not a retest attempt
+        # LONG: only candles with low <= level are retest attempts
+        # SHORT: only candles with high >= level are retest attempts
+        if is_short:
+            if cnd["high"] < level_price:
+                continue  # not a retest attempt
+        else:
+            if cnd["low"] > level_price:
+                continue  # not a retest attempt
 
         result = evaluate_geometry(cnd)
 

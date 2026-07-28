@@ -290,16 +290,16 @@ class TestFailedUpstream:
 
 
 class TestUnsupportedConfig:
-    def test_short_direction(self):
-        cfg = {**CONFIG, "direction": "SHORT"}
+    def test_unknown_direction(self):
+        cfg = {**CONFIG, "direction": "SIDEWAYS"}
         fake_orb = {"status": "OK", "orb_candle_index": 0, "orb_candle": c(MS_0930),
                      "level_price": 101.0, "level_price_ticks": 10100, "date": "2026-07-01"}
         fake_brk = {"status": "OK", "break_candle_index": 1, "break_candle": c(MS_0935)}
         disp = find_displacement([c(MS_0930), c(MS_0935)], fake_orb, fake_brk, cfg)
         assert disp["failed_stage"] == "UNSUPPORTED_CONFIGURATION"
 
-    def test_orb_low_level(self):
-        cfg = {**CONFIG, "level_source": "ORB_LOW"}
+    def test_unsupported_level_source(self):
+        cfg = {**CONFIG, "level_source": "PDH"}
         fake_orb = {"status": "OK", "orb_candle_index": 0, "orb_candle": c(MS_0930),
                      "level_price": 99.0, "level_price_ticks": 9900, "date": "2026-07-01"}
         fake_brk = {"status": "OK", "break_candle_index": 1, "break_candle": c(MS_0935)}

@@ -158,13 +158,13 @@ def build_orb(
             ),
         }
 
-    if config["level_source"] != "ORB_HIGH":
+    if config["level_source"] not in ("ORB_HIGH", "ORB_LOW"):
         return {
             "status": "FAILED",
             "failed_stage": "UNSUPPORTED_CONFIGURATION",
             "reason": (
                 f'level_source "{config["level_source"]}" is not implemented '
-                f'in this stage; only "ORB_HIGH" is supported'
+                f'in this stage; only "ORB_HIGH" and "ORB_LOW" are supported'
             ),
         }
 
@@ -206,7 +206,8 @@ def build_orb(
     orb_candle = source[orb_index]
     orb_high = orb_candle["high"]
     orb_low = orb_candle["low"]
-    level_price = orb_high  # level_source === 'ORB_HIGH'
+    level_source = config["level_source"]
+    level_price = orb_low if level_source == "ORB_LOW" else orb_high
 
     return {
         "status": "OK",
@@ -215,8 +216,8 @@ def build_orb(
         "orb_candle": orb_candle,
         "orb_high": orb_high,
         "orb_low": orb_low,
-        "orb_low_active": False,
-        "level_source": "ORB_HIGH",
+        "orb_low_active": level_source == "ORB_LOW",
+        "level_source": level_source,
         "level_price": level_price,
         "level_price_ticks": price_to_ticks(level_price, config["tick_size"]),
         "direction": config["direction"],

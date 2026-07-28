@@ -122,13 +122,14 @@ def find_break(
         }
 
     # ── Unsupported direction ────────────────────────────────────────────
-    if config["direction"] != "LONG":
+    direction = config["direction"]
+    if direction not in ("LONG", "SHORT"):
         return {
             "status": "FAILED",
             "failed_stage": "UNSUPPORTED_CONFIGURATION",
             "reason": (
-                f'direction "{config["direction"]}" is not implemented in '
-                f'this stage; only "LONG" is supported'
+                f'direction "{direction}" is not implemented in '
+                f'this stage; only "LONG" and "SHORT" are supported'
             ),
         }
 
@@ -153,24 +154,42 @@ def find_break(
     level_price = orb["level_price"]
     level_ticks = orb["level_price_ticks"]
     tick_size = config["tick_size"]
+    is_short = direction == "SHORT"
 
     for i in range(orb_idx + 1, len(candles)):
         c = candles[i]
-        # LONG: strict > on raw float close
-        if c["close"] > level_price:
-            close_ticks = price_to_ticks(c["close"], tick_size)
-            distance_ticks = close_ticks - level_ticks
-            return {
-                "status": "OK",
-                "date": orb["date"],
-                "break_candle_index": i,
-                "break_candle": c,
-                "break_timestamp": c["time_ms"],
-                "directional_break_distance": {
-                    "points": ticks_to_points(distance_ticks, tick_size),
-                    "ticks": distance_ticks,
-                },
-            }
+        if is_short:
+            # SHORT: strict < on raw float close
+            if c["close"] < level_price:
+                close_ticks = price_to_ticks(c["close"], tick_size)
+                distance_ticks = level_ticks - close_ticks
+                return {
+                    "status": "OK",
+                    "date": orb["date"],
+                    "break_candle_index": i,
+                    "break_candle": c,
+                    "break_timestamp": c["time_ms"],
+                    "directional_break_distance": {
+                        "points": ticks_to_points(distance_ticks, tick_size),
+                        "ticks": distance_ticks,
+                    },
+                }
+        else:
+            # LONG: strict > on raw float close
+            if c["close"] > level_price:
+                close_ticks = price_to_ticks(c["close"], tick_size)
+                distance_ticks = close_ticks - level_ticks
+                return {
+                    "status": "OK",
+                    "date": orb["date"],
+                    "break_candle_index": i,
+                    "break_candle": c,
+                    "break_timestamp": c["time_ms"],
+                    "directional_break_distance": {
+                        "points": ticks_to_points(distance_ticks, tick_size),
+                        "ticks": distance_ticks,
+                    },
+                }
 
     return {
         "status": "FAILED",

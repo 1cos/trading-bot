@@ -213,11 +213,11 @@ def _validate_config(config: object) -> dict | None:
         return _fail("INVALID_CONFIG", "config must be a non-null object")
     direction = _get(config, "direction")
     direction_str = str(direction) if direction is not None else str(direction)
-    if direction_str != "LONG":
+    if direction_str not in ("LONG", "SHORT"):
         return _fail(
             "UNSUPPORTED_DIRECTION",
             f'direction "{direction_str}" is not supported;'
-            f" only \"LONG\" is implemented",
+            f' only "LONG" and "SHORT" are implemented',
         )
     exit_r = _get(config, "exit_target_r")
     # JS uses Set.has which requires exact value match (no coercion)
@@ -353,6 +353,8 @@ def evaluate_trade_outcome(
     # ── Step 3: entry timestamp ──────────────────────────────────────────
 
     is_cc = entry_model_str == "CONFIRMATION_CLOSE"
+    direction_str = str(_get(config, "direction"))
+    is_short = direction_str == "SHORT"
 
     entry_triggered = is_cc
     if is_cc:
@@ -368,6 +370,11 @@ def evaluate_trade_outcome(
     bosb_entry_bar_index = None
 
     # ── Step 4: scan bars ────────────────────────────────────────────────
+    # Direction-aware comparisons:
+    # LONG:  target hit = hi >= target,  stop hit = lo <= stop,
+    #        BOSB entry = hi >= entry
+    # SHORT: target hit = lo <= target,  stop hit = hi >= stop,
+    #        BOSB entry = lo <= entry
 
     highest_target_idx = -1
     outcome_type = None
@@ -376,6 +383,21 @@ def evaluate_trade_outcome(
     exit_price_ticks = None
     exit_target_label = None
     exit_target_r = None
+
+    def _target_hit(bar_hi, bar_lo, target_ticks):
+        if is_short:
+            return bar_lo <= target_ticks
+        return bar_hi >= target_ticks
+
+    def _stop_hit(bar_hi, bar_lo, stop_t):
+        if is_short:
+            return bar_hi >= stop_t
+        return bar_lo <= stop_t
+
+    def _entry_trigger(bar_hi, bar_lo, entry_t):
+        if is_short:
+            return bar_lo <= entry_t
+        return bar_hi >= entry_t
 
     for i, bar in enumerate(post_confirmation_bars):
         hi_ticks = _get(_get(bar, "high"), "ticks")
@@ -387,30 +409,32 @@ def evaluate_trade_outcome(
 
         # ── BOSB Phase A: wait for entry trigger ────────────────────
         if not entry_triggered:
-            if hi_ticks >= entry_ticks:
+            if _entry_trigger(hi_ticks, lo_ticks, entry_ticks):
                 entry_triggered = True
                 entry_bar_utc_ms = _get(bar, "bar_utc_ms")
                 bosb_entry_bar_index = i
                 first_eval_bar_index = i
                 first_eval_bar_utc_ms = _get(bar, "bar_utc_ms")
 
-                stop_hit = lo_ticks <= stop_ticks
-                term_hit = hi_ticks >= targets[terminal_idx]["ticks"]
+                stop_hit_flag = _stop_hit(hi_ticks, lo_ticks, stop_ticks)
+                term_hit = _target_hit(
+                    hi_ticks, lo_ticks, targets[terminal_idx]["ticks"])
 
-                if stop_hit and term_hit:
+                if stop_hit_flag and term_hit:
                     outcome_type = "AMBIGUOUS"
                     exit_bar_index = i
                     exit_bar_utc_ms = _get(bar, "bar_utc_ms")
                     exit_price_ticks = None
                     break
-                if stop_hit:
+                if stop_hit_flag:
                     outcome_type = "STOPPED"
                     exit_bar_index = i
                     exit_bar_utc_ms = _get(bar, "bar_utc_ms")
                     exit_price_ticks = stop_ticks
                     break
                 for t in range(len(targets)):
-                    if hi_ticks >= targets[t]["ticks"]:
+                    if _target_hit(
+                            hi_ticks, lo_ticks, targets[t]["ticks"]):
                         highest_target_idx = t
                     else:
                         break
@@ -427,26 +451,28 @@ def evaluate_trade_outcome(
         # ── Phase B: entry active ───────────────────────────────────
 
         next_idx = highest_target_idx + 1
-        stop_hit = lo_ticks <= stop_ticks
-        terminal_hit = hi_ticks >= targets[terminal_idx]["ticks"]
+        stop_hit_flag = _stop_hit(hi_ticks, lo_ticks, stop_ticks)
+        terminal_hit = _target_hit(
+            hi_ticks, lo_ticks, targets[terminal_idx]["ticks"])
 
-        if stop_hit and terminal_hit:
+        if stop_hit_flag and terminal_hit:
             outcome_type = "AMBIGUOUS"
             exit_bar_index = i
             exit_bar_utc_ms = _get(bar, "bar_utc_ms")
             exit_price_ticks = None
             break
 
-        if stop_hit:
+        if stop_hit_flag:
             outcome_type = "STOPPED"
             exit_bar_index = i
             exit_bar_utc_ms = _get(bar, "bar_utc_ms")
             exit_price_ticks = stop_ticks
             break
 
-        if next_idx < len(targets) and hi_ticks >= targets[next_idx]["ticks"]:
+        if next_idx < len(targets) and _target_hit(
+                hi_ticks, lo_ticks, targets[next_idx]["ticks"]):
             for t in range(next_idx, len(targets)):
-                if hi_ticks >= targets[t]["ticks"]:
+                if _target_hit(hi_ticks, lo_ticks, targets[t]["ticks"]):
                     highest_target_idx = t
                 else:
                     break
@@ -490,7 +516,7 @@ def evaluate_trade_outcome(
 
     outcome = TradeOutcome(
         schema_version="TradeOutcome/v1",
-        direction=Direction.LONG,
+        direction=Direction.SHORT if is_short else Direction.LONG,
         entry_model=em,
         entry_price_ticks=entry_ticks,
         stop_price_ticks=stop_ticks,

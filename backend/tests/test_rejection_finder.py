@@ -494,8 +494,8 @@ class TestFailedUpstreamPropagation:
 
 
 class TestUnsupportedConfig:
-    def test_short_direction(self):
-        cfg = {**CONFIG, "direction": "SHORT"}
+    def test_unknown_direction(self):
+        cfg = {**CONFIG, "direction": "SIDEWAYS"}
         candles = base_candles([qualifying_candle(MS_0945)])
         sc = build_session_context(candles, CONFIG)
         orb = build_orb(sc["candles"], sc, CONFIG)
@@ -506,8 +506,8 @@ class TestUnsupportedConfig:
         assert rej["status"] == "FAILED"
         assert rej["failed_stage"] == "UNSUPPORTED_CONFIGURATION"
 
-    def test_orb_low_level_source(self):
-        cfg = {**CONFIG, "level_source": "ORB_LOW"}
+    def test_unsupported_level_source(self):
+        cfg = {**CONFIG, "level_source": "PDH"}
         candles = base_candles([qualifying_candle(MS_0945)])
         sc = build_session_context(candles, CONFIG)
         orb = build_orb(sc["candles"], sc, CONFIG)

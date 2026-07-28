@@ -519,24 +519,23 @@ class TestUnknownEntryModel:
         assert r["failure_code"] == "UNSUPPORTED_ENTRY_MODEL"
 
 
-# ── 17. Unsupported SHORT direction is rejected ──────────────────────────────
+# ── 17. SHORT direction is now supported; unknown directions rejected ────────
 
 
-class TestShortDirectionRejected:
-    def test_short_fails(self):
+class TestShortDirectionSupported:
+    def test_short_succeeds(self):
         r = build_trade_plan(
             _dr(direction="SHORT"), _cfg(direction="SHORT")
         )
-        assert r["status"] == "FAILED"
-        assert r["failure_code"] == "UNSUPPORTED_DIRECTION"
+        assert r["status"] == "OK"
 
     def test_short_does_not_raise(self):
-        """Must return structured failure, not throw."""
+        """Must return structured result, not throw."""
         r = build_trade_plan(
             _dr(direction="SHORT"), _cfg(direction="SHORT")
         )
         assert isinstance(r, dict)
-        assert r["status"] == "FAILED"
+        assert r["status"] == "OK"
 
     def test_unknown_direction(self):
         r = build_trade_plan(_dr(), _cfg(direction="UP"))
@@ -765,7 +764,7 @@ class TestValidationPrecedence:
         """Config direction validated before confirmation_bar."""
         r = build_trade_plan(
             _dr(confirmation_bar=None),
-            _cfg(direction="SHORT"),
+            _cfg(direction="UP"),
         )
         assert r["failure_code"] == "UNSUPPORTED_DIRECTION"
 
@@ -802,7 +801,7 @@ class TestExactFailureCodes:
         assert r["failure_code"] == "INVALID_DETECTION_RESULT"
 
     def test_unsupported_direction(self):
-        r = build_trade_plan(_dr(), _cfg(direction="SHORT"))
+        r = build_trade_plan(_dr(), _cfg(direction="UP"))
         assert r["failure_code"] == "UNSUPPORTED_DIRECTION"
 
     def test_unsupported_entry_model(self):
@@ -879,10 +878,10 @@ class TestExactReasonStrings:
         assert r["reason"] == "config must be a non-null object"
 
     def test_unsupported_direction_reason(self):
-        r = build_trade_plan(_dr(), _cfg(direction="SHORT"))
+        r = build_trade_plan(_dr(), _cfg(direction="UP"))
         assert r["reason"] == (
-            'direction "SHORT" is not supported;'
-            ' only "LONG" is implemented'
+            'direction "UP" is not supported;'
+            ' only "LONG" and "SHORT" are implemented'
         )
 
     def test_unsupported_entry_model_reason(self):

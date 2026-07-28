@@ -317,9 +317,14 @@ def build_detection_result(
                 denominator=level_price.ticks)
 
         if level_price is not None and len(displacement_window_bars) > 0:
+            # LONG: rejection side is the low (bar.low - level)
+            # SHORT: rejection side is the high (level - bar.high)
+            _is_short_dir = direction_val == Direction.SHORT
             clearances = [
                 DirectionalTickDistance(
-                    ticks=bar.low.ticks - level_price.ticks,
+                    ticks=(level_price.ticks - bar.high.ticks
+                           if _is_short_dir
+                           else bar.low.ticks - level_price.ticks),
                     tick_size=ts_str)
                 for bar in displacement_window_bars
             ]
@@ -379,35 +384,70 @@ def build_detection_result(
             ]
 
         if level_price is not None and len(canon_contacts) > 0:
-            abs_dists = [
-                abs(price_to_ticks(rc["candle"]["low"], tick_size)
-                    - level_price.ticks)
-                for rc in canon_contacts
-            ]
-            retest_closest = AbsoluteTickDistance(
-                ticks=min(abs_dists), tick_size=ts_str)
+            _is_short_dir = direction_val == Direction.SHORT
+            if _is_short_dir:
+                # SHORT: retest contacts approach from below; use high
+                abs_dists = [
+                    abs(price_to_ticks(rc["candle"]["high"], tick_size)
+                        - level_price.ticks)
+                    for rc in canon_contacts
+                ]
+                retest_closest = AbsoluteTickDistance(
+                    ticks=min(abs_dists), tick_size=ts_str)
 
-            min_low_ticks = min(
-                price_to_ticks(rc["candle"]["low"], tick_size)
-                for rc in canon_contacts
-            )
-            pen_ticks = max(0, level_price.ticks - min_low_ticks)
-            retest_pen = AbsoluteTickDistance(
-                ticks=pen_ticks, tick_size=ts_str)
-
-            if (displacement_pts is not None
-                    and displacement_pts.ticks != 0):
-                closest_dp = min(
-                    price_to_ticks(rc["candle"]["low"], tick_size)
-                    - level_price.ticks
+                max_high_ticks = max(
+                    price_to_ticks(rc["candle"]["high"], tick_size)
                     for rc in canon_contacts
                 )
-                retraced = max(0, min(
-                    displacement_pts.ticks,
-                    displacement_pts.ticks - closest_dp))
-                retest_retrace = Rational(
-                    numerator=retraced,
-                    denominator=displacement_pts.ticks)
+                pen_ticks = max(0, max_high_ticks - level_price.ticks)
+                retest_pen = AbsoluteTickDistance(
+                    ticks=pen_ticks, tick_size=ts_str)
+
+                if (displacement_pts is not None
+                        and displacement_pts.ticks != 0):
+                    closest_dp = min(
+                        level_price.ticks
+                        - price_to_ticks(
+                            rc["candle"]["high"], tick_size)
+                        for rc in canon_contacts
+                    )
+                    retraced = max(0, min(
+                        displacement_pts.ticks,
+                        displacement_pts.ticks - closest_dp))
+                    retest_retrace = Rational(
+                        numerator=retraced,
+                        denominator=displacement_pts.ticks)
+            else:
+                # LONG: retest contacts approach from above; use low
+                abs_dists = [
+                    abs(price_to_ticks(rc["candle"]["low"], tick_size)
+                        - level_price.ticks)
+                    for rc in canon_contacts
+                ]
+                retest_closest = AbsoluteTickDistance(
+                    ticks=min(abs_dists), tick_size=ts_str)
+
+                min_low_ticks = min(
+                    price_to_ticks(rc["candle"]["low"], tick_size)
+                    for rc in canon_contacts
+                )
+                pen_ticks = max(0, level_price.ticks - min_low_ticks)
+                retest_pen = AbsoluteTickDistance(
+                    ticks=pen_ticks, tick_size=ts_str)
+
+                if (displacement_pts is not None
+                        and displacement_pts.ticks != 0):
+                    closest_dp = min(
+                        price_to_ticks(rc["candle"]["low"], tick_size)
+                        - level_price.ticks
+                        for rc in canon_contacts
+                    )
+                    retraced = max(0, min(
+                        displacement_pts.ticks,
+                        displacement_pts.ticks - closest_dp))
+                    retest_retrace = Rational(
+                        numerator=retraced,
+                        denominator=displacement_pts.ticks)
 
     # failed_retests from rejResult (both OK and FAILED paths)
     fr_list = rej.get("failed_retests")

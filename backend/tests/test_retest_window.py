@@ -301,15 +301,15 @@ class TestFailedUpstream:
 
 
 class TestUnsupportedConfig:
-    def test_short_direction(self):
-        cfg = {**CONFIG, "direction": "SHORT"}
+    def test_unknown_direction(self):
+        cfg = {**CONFIG, "direction": "SIDEWAYS"}
         fake = {"status": "OK", "orb_candle_index": 0, "orb_candle": c(MS_0930),
                 "level_price": 101.0, "level_price_ticks": 10100, "date": "X"}
         rw = find_retest_window([c(MS_0930)], fake, fake, fake, cfg)
         assert rw["failed_stage"] == "UNSUPPORTED_CONFIGURATION"
 
-    def test_orb_low(self):
-        cfg = {**CONFIG, "level_source": "ORB_LOW"}
+    def test_unsupported_level_source(self):
+        cfg = {**CONFIG, "level_source": "PDH"}
         fake = {"status": "OK", "orb_candle_index": 0, "orb_candle": c(MS_0930),
                 "level_price": 101.0, "level_price_ticks": 10100, "date": "X"}
         rw = find_retest_window([c(MS_0930)], fake, fake, fake, cfg)

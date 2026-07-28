@@ -102,23 +102,25 @@ def find_retest_window(
         return _upstream_fail("displacement", displacement_result, "RETEST_NOT_FOUND")
 
     # ── Unsupported configuration ────────────────────────────────────────
-    if config["direction"] != "LONG":
+    direction = config["direction"]
+    if direction not in ("LONG", "SHORT"):
         return {
             "status": "FAILED",
             "failed_stage": "UNSUPPORTED_CONFIGURATION",
             "reason": (
-                f'direction "{config["direction"]}" is not implemented in '
-                f'this stage; only "LONG" is supported'
+                f'direction "{direction}" is not implemented in '
+                f'this stage; only "LONG" and "SHORT" are supported'
             ),
         }
 
-    if config["level_source"] != "ORB_HIGH":
+    _supported_sources = ("ORB_HIGH", "ORB_LOW")
+    if config["level_source"] not in _supported_sources:
         return {
             "status": "FAILED",
             "failed_stage": "UNSUPPORTED_CONFIGURATION",
             "reason": (
                 f'level_source "{config["level_source"]}" is not implemented '
-                f'in this stage; only "ORB_HIGH" is supported'
+                f'in this stage; only "ORB_HIGH" and "ORB_LOW" are supported'
             ),
         }
 
@@ -162,30 +164,53 @@ def find_retest_window(
     retest_start_index = contact_idx
     window_end_index = len(candles) - 1
     displacement_ticks = displacement_result["displacement_distance"]["ticks"]
+    is_short = direction == "SHORT"
 
     retest_window = candles[retest_start_index: window_end_index + 1]
     retest_contacts: list[dict] = []
 
     for i in range(retest_start_index, window_end_index + 1):
         c = candles[i]
-        if c["low"] <= level_price:
-            low_ticks = price_to_ticks(c["low"], tick_size)
-            cdp_ticks = low_ticks - level_ticks
-            pen_ticks = max(0, level_ticks - low_ticks)
-            pen_points = ticks_to_points(pen_ticks, tick_size)
-            retrace_pct = (
-                None if displacement_ticks == 0
-                else pen_ticks / displacement_ticks
-            )
-            retest_contacts.append({
-                "candle_index": i,
-                "candle": c,
-                "timestamp": c["time_ms"],
-                "closest_directional_position_ticks": cdp_ticks,
-                "penetration_through_level_ticks": pen_ticks,
-                "penetration_through_level_points": pen_points,
-                "displacement_retracement_pct": retrace_pct,
-            })
+        if is_short:
+            # SHORT: contact when high >= level_price (approaching from below)
+            if c["high"] >= level_price:
+                high_ticks = price_to_ticks(c["high"], tick_size)
+                cdp_ticks = level_ticks - high_ticks
+                pen_ticks = max(0, high_ticks - level_ticks)
+                pen_points = ticks_to_points(pen_ticks, tick_size)
+                retrace_pct = (
+                    None if displacement_ticks == 0
+                    else pen_ticks / displacement_ticks
+                )
+                retest_contacts.append({
+                    "candle_index": i,
+                    "candle": c,
+                    "timestamp": c["time_ms"],
+                    "closest_directional_position_ticks": cdp_ticks,
+                    "penetration_through_level_ticks": pen_ticks,
+                    "penetration_through_level_points": pen_points,
+                    "displacement_retracement_pct": retrace_pct,
+                })
+        else:
+            # LONG: contact when low <= level_price (approaching from above)
+            if c["low"] <= level_price:
+                low_ticks = price_to_ticks(c["low"], tick_size)
+                cdp_ticks = low_ticks - level_ticks
+                pen_ticks = max(0, level_ticks - low_ticks)
+                pen_points = ticks_to_points(pen_ticks, tick_size)
+                retrace_pct = (
+                    None if displacement_ticks == 0
+                    else pen_ticks / displacement_ticks
+                )
+                retest_contacts.append({
+                    "candle_index": i,
+                    "candle": c,
+                    "timestamp": c["time_ms"],
+                    "closest_directional_position_ticks": cdp_ticks,
+                    "penetration_through_level_ticks": pen_ticks,
+                    "penetration_through_level_points": pen_points,
+                    "displacement_retracement_pct": retrace_pct,
+                })
 
     return {
         "status": "OK",
