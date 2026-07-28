@@ -20,18 +20,27 @@ body{font-family:"SF Mono","Cascadia Code","Consolas",monospace;
 .tag-invalid{background:#3d1d00;color:#d29922}
 .tag-outcome{background:#1c1d21;color:#8b949e;border:1px solid #30363d}
 .meta{font-size:12px;color:#8b949e;margin-bottom:8px}
+.chart-container{width:100%;height:480px;border-radius:4px;
+  border:1px solid #21262d;overflow:hidden}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:11px;
   color:#8b949e;margin-top:8px;padding-top:8px;
   border-top:1px solid #21262d}
 .legend-item{display:flex;align-items:center;gap:4px}
-.legend-swatch{width:12px;height:3px;border-radius:1px}
-.chart-container{width:100%;height:480px;border-radius:4px;
-  border:1px solid #21262d;overflow:hidden}
-.ann-table{margin-top:12px;font-size:12px;border-collapse:collapse;
-  width:100%;max-width:720px}
-.ann-table th,.ann-table td{text-align:left;padding:3px 10px;
-  border-bottom:1px solid #21262d}
-.ann-table th{color:#8b949e;font-weight:400}
+.legend-swatch{width:14px;height:3px;border-radius:1px}
+.summary{margin-top:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
+  gap:12px}
+.summary-section{background:#161b22;border:1px solid #21262d;
+  border-radius:4px;padding:10px 14px}
+.summary-section h3{font-size:12px;color:#58a6ff;font-weight:500;
+  margin-bottom:6px;letter-spacing:0.06em;text-transform:uppercase}
+.row{display:flex;justify-content:space-between;padding:2px 0;
+  font-size:12px;border-bottom:1px solid #21262d}
+.row:last-child{border-bottom:none}
+.row-label{color:#8b949e}
+.row-value{color:#c9d1d9;font-weight:500}
+.row-value.selected{color:#58a6ff}
+.row-value.win{color:#3fb950}
+.row-value.loss{color:#f85149}
 </style>
 </head>
 <body>
@@ -43,34 +52,53 @@ body{font-family:"SF Mono","Cascadia Code","Consolas",monospace;
   
 </div>
 <div class="meta">
-  Level: ORB_HIGH @ 1.01 &nbsp;|&nbsp;
   Event: b27a18c4-62c…
 </div>
 <div id="chart" class="chart-container"></div>
-<div class="legend" id="legend"></div>
-<table class="ann-table">
-  <tr><th>Break candle</th><td>1</td></tr>
-  <tr><th>Displacement</th><td>2</td></tr>
-  <tr><th>Displacement end</th><td>2</td></tr>
-  <tr><th>Retest</th><td>3</td></tr>
-  <tr><th>Retest end</th><td>4</td></tr>
-  <tr><th>Confirmation</th><td>4</td></tr>
-  <tr><th>Entry</th><td>10140 ticks (1.014)</td></tr>
-  <tr><th>Stop</th><td>10090 ticks (1.009)</td></tr>
-  <tr><th>2R target</th><td>10240 ticks (1.024)</td></tr>
-  <tr><th>3R target</th><td>10290 ticks (1.029)</td></tr>
-  <tr><th>4R target</th><td>10340 ticks (1.034)</td></tr>
-  <tr><th>Exit candle</th><td>5</td></tr>
-  <tr><th>Exit price</th><td>10240 ticks (1.024)</td></tr>
-  <tr><th>Outcome</th><td>TARGET_HIT</td></tr>
-</table>
+<div class="legend">
+  <span class="legend-item"><span class="legend-swatch" style="background:#e3b341"></span>ORB High</span>
+  <span class="legend-item"><span class="legend-swatch" style="background:#a371f7"></span>ORB Low</span>
+  <span class="legend-item"><span class="legend-swatch" style="background:#58a6ff"></span>Entry</span>
+  <span class="legend-item"><span class="legend-swatch" style="background:#f85149"></span>Stop</span>
+  <span class="legend-item"><span class="legend-swatch" style="background:#3fb950"></span>Targets</span>
+  <span class="legend-item"><span class="legend-swatch" style="background:#f0883e"></span>Exit</span>
+</div>
+<div class="summary">
+<div class="summary-section">
+  <h3>Opening Range</h3>
+    <div class="row"><span class="row-label">ORB High</span><span class="row-value selected">1.01 (10100 ticks)</span></div>
+    <div class="row"><span class="row-label">ORB Low</span><span class="row-value">0.99 (9900 ticks)</span></div>
+    <div class="row"><span class="row-label">Selected level</span><span class="row-value">ORB_HIGH</span></div>
+    <div class="row"><span class="row-label">Level price</span><span class="row-value">1.01 (10100 ticks)</span></div>
+</div>
+<div class="summary-section">
+  <h3>Detection Stages</h3>
+    <div class="row"><span class="row-label">Break candle</span><span class="row-value">1</span></div>
+    <div class="row"><span class="row-label">Displacement</span><span class="row-value">2 → 2</span></div>
+    <div class="row"><span class="row-label">Retest</span><span class="row-value">3 → 4</span></div>
+    <div class="row"><span class="row-label">Confirmation</span><span class="row-value">4</span></div>
+</div>
+<div class="summary-section">
+  <h3>Trade Plan</h3>
+    <div class="row"><span class="row-label">Entry</span><span class="row-value">1.014 (10140 ticks)</span></div>
+    <div class="row"><span class="row-label">Stop</span><span class="row-value">1.009 (10090 ticks)</span></div>
+    <div class="row"><span class="row-label">2R target</span><span class="row-value">1.024 (10240 ticks)</span></div>
+    <div class="row"><span class="row-label">3R target</span><span class="row-value">1.029 (10290 ticks)</span></div>
+    <div class="row"><span class="row-label">4R target</span><span class="row-value">1.034 (10340 ticks)</span></div>
+</div>
+<div class="summary-section">
+  <h3>Outcome</h3>
+    <div class="row"><span class="row-label">Outcome</span><span class="row-value win">TARGET_HIT</span></div>
+    <div class="row"><span class="row-label">Exit candle</span><span class="row-value">5</span></div>
+    <div class="row"><span class="row-label">Exit price</span><span class="row-value">1.024 (10240 ticks)</span></div>
+</div>
+</div>
 <script>
 (function(){
 "use strict";
-var EVENT={"annotations":{"break_candle_index":1,"break_candle_time_ms":1782912900000,"confirmation_candle_index":4,"confirmation_candle_time_ms":1782913800000,"displacement_end_index":2,"displacement_start_index":2,"entry_price_ticks":10140,"exit_candle_index":5,"exit_candle_time_ms":1782914100000,"exit_price_ticks":10240,"failed_rules":[],"failed_stage":null,"outcome":"TARGET_HIT","r2_price_ticks":10240,"r3_price_ticks":10290,"r4_price_ticks":10340,"retest_end_index":4,"retest_start_index":3,"stop_price_ticks":10090},"candles":[{"close":100.5,"high":101.0,"index":0,"low":99.0,"open":100.0,"time_ms":1782912600000,"volume":100},{"close":101.5,"high":102.0,"index":1,"low":100.2,"open":100.5,"time_ms":1782912900000,"volume":100},{"close":102.0,"high":102.5,"index":2,"low":101.2,"open":101.6,"time_ms":1782913200000,"volume":100},{"close":101.2,"high":102.2,"index":3,"low":100.8,"open":101.8,"time_ms":1782913500000,"volume":100},{"close":101.4,"high":101.5,"index":4,"low":100.9,"open":101.3,"time_ms":1782913800000,"volume":100},{"close":102.8,"high":103.0,"index":5,"low":101.3,"open":101.4,"time_ms":1782914100000,"volume":100}],"detection_status":"VALID","direction":"LONG","event_id":"b27a18c4-62c5-5334-9405-aeeb401bcfe1","failed_rules":[],"failed_stage":null,"level_price_ticks":10100,"level_source":"ORB_HIGH","session_date":"2026-07-01","symbol":"SPY"};
+var EVENT={"annotations":{"break_candle_index":1,"break_candle_time_ms":1782912900000,"confirmation_candle_index":4,"confirmation_candle_time_ms":1782913800000,"displacement_end_index":2,"displacement_start_index":2,"entry_price_ticks":10140,"exit_candle_index":5,"exit_candle_time_ms":1782914100000,"exit_price_ticks":10240,"failed_rules":[],"failed_stage":null,"outcome":"TARGET_HIT","r2_price_ticks":10240,"r3_price_ticks":10290,"r4_price_ticks":10340,"retest_end_index":4,"retest_start_index":3,"stop_price_ticks":10090},"candles":[{"close":100.5,"high":101.0,"index":0,"low":99.0,"open":100.0,"time_ms":1782912600000,"volume":100},{"close":101.5,"high":102.0,"index":1,"low":100.2,"open":100.5,"time_ms":1782912900000,"volume":100},{"close":102.0,"high":102.5,"index":2,"low":101.2,"open":101.6,"time_ms":1782913200000,"volume":100},{"close":101.2,"high":102.2,"index":3,"low":100.8,"open":101.8,"time_ms":1782913500000,"volume":100},{"close":101.4,"high":101.5,"index":4,"low":100.9,"open":101.3,"time_ms":1782913800000,"volume":100},{"close":102.8,"high":103.0,"index":5,"low":101.3,"open":101.4,"time_ms":1782914100000,"volume":100}],"detection_status":"VALID","direction":"LONG","event_id":"b27a18c4-62c5-5334-9405-aeeb401bcfe1","failed_rules":[],"failed_stage":null,"level_price_ticks":10100,"level_source":"ORB_HIGH","orb_high_ticks":10100,"orb_low_ticks":9900,"session_date":"2026-07-01","symbol":"SPY"};
 var TICK_SIZE=0.0001;
-
-function tp(ticks){return ticks==null?null:Math.round(ticks*TICK_SIZE*1e6)/1e6;}
+function tp(t){return t==null?null:Math.round(t*TICK_SIZE*1e6)/1e6;}
 
 var candles=EVENT.candles.map(function(c){
   return {time:Math.floor(c.time_ms/1000),open:c.open,high:c.high,
@@ -97,108 +125,94 @@ var series=chart.addCandlestickSeries({
 series.setData(candles);
 
 var ann=EVENT.annotations||{};
-var lines=[];
-var markers=[];
+var ls=EVENT.level_source||"";
 
-// Level price
-if(EVENT.level_price_ticks!=null){
-  lines.push({price:tp(EVENT.level_price_ticks),color:"#8b949e",
-    style:2,width:1,title:"Level"});
+// ── ORB High and Low lines ──
+var orbHighLabel=ls==="ORB_HIGH"?"ORB High ← selected":"ORB High";
+var orbLowLabel=ls==="ORB_LOW"?"ORB Low ← selected":"ORB Low";
+var orbHighStyle=ls==="ORB_HIGH"?0:2;
+var orbLowStyle=ls==="ORB_LOW"?0:2;
+var orbHighWidth=ls==="ORB_HIGH"?2:1;
+var orbLowWidth=ls==="ORB_LOW"?2:1;
+
+if(EVENT.orb_high_ticks!=null){
+  series.createPriceLine({price:tp(EVENT.orb_high_ticks),color:"#e3b341",
+    lineWidth:orbHighWidth,lineStyle:orbHighStyle,axisLabelVisible:true,
+    title:orbHighLabel});
+}
+if(EVENT.orb_low_ticks!=null){
+  series.createPriceLine({price:tp(EVENT.orb_low_ticks),color:"#a371f7",
+    lineWidth:orbLowWidth,lineStyle:orbLowStyle,axisLabelVisible:true,
+    title:orbLowLabel});
 }
 
-// Entry
+// ── Trade lines ──
 if(ann.entry_price_ticks!=null){
-  lines.push({price:tp(ann.entry_price_ticks),color:"#58a6ff",
-    style:0,width:1,title:"Entry"});
+  series.createPriceLine({price:tp(ann.entry_price_ticks),color:"#58a6ff",
+    lineWidth:1,lineStyle:0,axisLabelVisible:true,title:"Entry"});
 }
-
-// Stop
 if(ann.stop_price_ticks!=null){
-  lines.push({price:tp(ann.stop_price_ticks),color:"#f85149",
-    style:0,width:1,title:"Stop"});
+  series.createPriceLine({price:tp(ann.stop_price_ticks),color:"#f85149",
+    lineWidth:1,lineStyle:0,axisLabelVisible:true,title:"Stop"});
 }
-
-// Targets
 if(ann.r2_price_ticks!=null){
-  lines.push({price:tp(ann.r2_price_ticks),color:"#3fb950",
-    style:2,width:1,title:"2R"});
+  series.createPriceLine({price:tp(ann.r2_price_ticks),color:"#3fb950",
+    lineWidth:1,lineStyle:2,axisLabelVisible:true,title:"2R"});
 }
 if(ann.r3_price_ticks!=null){
-  lines.push({price:tp(ann.r3_price_ticks),color:"#3fb950",
-    style:3,width:1,title:"3R"});
+  series.createPriceLine({price:tp(ann.r3_price_ticks),color:"#3fb950",
+    lineWidth:1,lineStyle:3,axisLabelVisible:true,title:"3R"});
 }
 if(ann.r4_price_ticks!=null){
-  lines.push({price:tp(ann.r4_price_ticks),color:"#3fb950",
-    style:3,width:1,title:"4R"});
+  series.createPriceLine({price:tp(ann.r4_price_ticks),color:"#3fb950",
+    lineWidth:1,lineStyle:3,axisLabelVisible:true,title:"4R"});
 }
-
-// Exit price
 if(ann.exit_price_ticks!=null){
-  lines.push({price:tp(ann.exit_price_ticks),color:"#d29922",
-    style:0,width:2,title:"Exit"});
+  series.createPriceLine({price:tp(ann.exit_price_ticks),color:"#f0883e",
+    lineWidth:2,lineStyle:0,axisLabelVisible:true,title:"Exit"});
 }
 
-lines.forEach(function(l){
-  series.createPriceLine({
-    price:l.price,color:l.color,lineWidth:l.width,
-    lineStyle:l.style,axisLabelVisible:true,
-    title:l.title
-  });
-});
-
-// Candle markers
+// ── Candle markers ──
 function ts(idx){
   if(idx==null||idx<0||idx>=candles.length) return null;
   return candles[idx].time;
 }
-
 var mList=[
-  {idx:ann.break_candle_index,label:"B",tip:"Break",
+  {idx:ann.break_candle_index,label:"Break",tip:"Break candle",
     color:"#58a6ff",pos:"aboveBar"},
-  {idx:ann.displacement_start_index,label:"Ds",tip:"Disp Start",
+  {idx:ann.displacement_start_index,label:"Disp→",tip:"Displacement start",
     color:"#a371f7",pos:"aboveBar"},
-  {idx:ann.displacement_end_index,label:"De",tip:"Disp End",
+  {idx:ann.displacement_end_index,label:"←Disp",tip:"Displacement end",
     color:"#a371f7",pos:"aboveBar"},
-  {idx:ann.retest_start_index,label:"Rs",tip:"Retest Start",
+  {idx:ann.retest_start_index,label:"Ret→",tip:"Retest start",
     color:"#d29922",pos:"belowBar"},
-  {idx:ann.retest_end_index,label:"Re",tip:"Retest End",
+  {idx:ann.retest_end_index,label:"←Ret",tip:"Retest end",
     color:"#d29922",pos:"belowBar"},
-  {idx:ann.confirmation_candle_index,label:"C",tip:"Confirmation",
+  {idx:ann.confirmation_candle_index,label:"Confirm",tip:"Confirmation candle",
     color:"#3fb950",pos:"belowBar"},
-  {idx:ann.exit_candle_index,label:"X",tip:"Exit",
+  {idx:ann.exit_candle_index,label:"Exit",tip:"Exit candle",
     color:"#f0883e",pos:"aboveBar"},
 ];
 
-var validMarkers=mList.filter(function(m){
-  return m.idx!=null&&ts(m.idx)!=null;
-}).map(function(m){
-  return {time:ts(m.idx),position:m.pos,color:m.color,
+// Deduplicate markers on the same candle
+var seen={};
+var validMarkers=[];
+mList.forEach(function(m){
+  if(m.idx==null||ts(m.idx)==null) return;
+  var t=ts(m.idx);
+  if(seen[t]){
+    seen[t].text+=(" | "+m.label);
+    return;
+  }
+  var mk={time:t,position:m.pos,color:m.color,
            shape:"circle",text:m.label,size:1};
+  seen[t]=mk;
+  validMarkers.push(mk);
 });
-
 validMarkers.sort(function(a,b){return a.time-b.time;});
 if(validMarkers.length>0) series.setMarkers(validMarkers);
 
 chart.timeScale().fitContent();
-
-// Legend
-var legendEl=document.getElementById("legend");
-var legendItems=[
-  {color:"#8b949e",label:"Level"},
-  {color:"#58a6ff",label:"Entry / Break"},
-  {color:"#f85149",label:"Stop"},
-  {color:"#3fb950",label:"Target / Confirm"},
-  {color:"#a371f7",label:"Displacement"},
-  {color:"#d29922",label:"Retest / Exit"},
-];
-legendItems.forEach(function(it){
-  var d=document.createElement("span");
-  d.className="legend-item";
-  d.innerHTML='<span class="legend-swatch" style="background:'+it.color+
-    '"></span>'+it.label;
-  legendEl.appendChild(d);
-});
-
 window.addEventListener("resize",function(){
   chart.applyOptions({width:document.getElementById("chart").clientWidth});
 });

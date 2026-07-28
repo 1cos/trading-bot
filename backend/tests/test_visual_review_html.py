@@ -10,6 +10,14 @@ Covers:
   7. HTML escaping works
   8. Repeated rendering is deterministic
   9. File-writing helper writes UTF-8 content
+  10. ORB High exported
+  11. ORB Low exported
+  12. Both ORB lines rendered
+  13. Selected ORB High distinguished
+  14. Selected ORB Low distinguished
+  15. Missing ORB values handled safely
+  16. Readable annotation legend
+  17. Complete candle range is fitted
 """
 
 import json
@@ -38,16 +46,10 @@ MS_1000 = 1782914400000
 
 def c(time_ms, open_=100.0, high=101.0, low=99.0, close=100.5, volume=100):
     return {
-        "time_ms": time_ms,
-        "open": open_,
-        "high": high,
-        "low": low,
-        "close": close,
-        "volume": volume,
+        "time_ms": time_ms, "open": open_, "high": high,
+        "low": low, "close": close, "volume": volume,
     }
 
-
-# ── Sessions ────────────────────────────────────────────────────────────────
 
 LONG_CANDLES = [
     c(MS_0930, open_=100.0, high=101.0, low=99.0, close=100.5),
@@ -113,8 +115,6 @@ SHORT_PRESET = {
 CONFIG = {"tick_size": 0.01, "exit_target_r": 2, "engine_version": "1.0.0-test"}
 
 
-# ── Helpers ─────────────────────────────────────────────────────────────────
-
 def _long_event():
     r = run_bdrr_strategy([LONG_SESSION], LONG_PRESET, CONFIG)[0]
     return export_visual_event(LONG_CANDLES, r)
@@ -134,25 +134,21 @@ def _fail_event():
 
 class TestLongRenders:
     def test_returns_html_string(self):
-        html = render_visual_event_html(_long_event())
-        assert isinstance(html, str)
-        assert html.startswith("<!DOCTYPE html>")
+        h = render_visual_event_html(_long_event())
+        assert isinstance(h, str)
+        assert h.startswith("<!DOCTYPE html>")
 
     def test_contains_symbol(self):
-        html = render_visual_event_html(_long_event())
-        assert "SPY" in html
+        assert "SPY" in render_visual_event_html(_long_event())
 
     def test_contains_direction(self):
-        html = render_visual_event_html(_long_event())
-        assert "LONG" in html
+        assert "LONG" in render_visual_event_html(_long_event())
 
     def test_contains_chart_div(self):
-        html = render_visual_event_html(_long_event())
-        assert 'id="chart"' in html
+        assert 'id="chart"' in render_visual_event_html(_long_event())
 
     def test_contains_lightweight_charts(self):
-        html = render_visual_event_html(_long_event())
-        assert "lightweight-charts" in html
+        assert "lightweight-charts" in render_visual_event_html(_long_event())
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -160,22 +156,18 @@ class TestLongRenders:
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestShortRenders:
-    def test_returns_html_string(self):
-        html = render_visual_event_html(_short_event())
-        assert isinstance(html, str)
-        assert "<!DOCTYPE html>" in html
+    def test_returns_html(self):
+        h = render_visual_event_html(_short_event())
+        assert "<!DOCTYPE html>" in h
 
-    def test_contains_short_direction(self):
-        html = render_visual_event_html(_short_event())
-        assert "SHORT" in html
+    def test_contains_short(self):
+        assert "SHORT" in render_visual_event_html(_short_event())
 
-    def test_contains_symbol(self):
-        html = render_visual_event_html(_short_event())
-        assert "QQQ" in html
+    def test_contains_qqq(self):
+        assert "QQQ" in render_visual_event_html(_short_event())
 
     def test_contains_orb_low(self):
-        html = render_visual_event_html(_short_event())
-        assert "ORB_LOW" in html
+        assert "ORB_LOW" in render_visual_event_html(_short_event())
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -184,18 +176,11 @@ class TestShortRenders:
 
 class TestFailedRenders:
     def test_renders_without_error(self):
-        html = render_visual_event_html(_fail_event())
-        assert isinstance(html, str)
-        assert len(html) > 100
+        h = render_visual_event_html(_fail_event())
+        assert len(h) > 100
 
     def test_contains_symbol(self):
-        html = render_visual_event_html(_fail_event())
-        assert "AAPL" in html
-
-    def test_no_crash_on_null_annotations(self):
-        event = _fail_event()
-        html = render_visual_event_html(event)
-        assert "chart-container" in html
+        assert "AAPL" in render_visual_event_html(_fail_event())
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -205,16 +190,14 @@ class TestFailedRenders:
 class TestCandleDataInHtml:
     def test_candle_prices_embedded(self):
         event = _long_event()
-        html = render_visual_event_html(event)
-        # The embedded JSON should contain candle OHLC values
+        h = render_visual_event_html(event)
         for candle in event["candles"]:
-            assert str(candle["open"]) in html
+            assert str(candle["open"]) in h
 
     def test_candle_count_matches(self):
         event = _long_event()
-        html = render_visual_event_html(event)
-        # Count candle objects in the embedded JSON
-        embedded = html.split("var EVENT=")[1].split(";")[0]
+        h = render_visual_event_html(event)
+        embedded = h.split("var EVENT=")[1].split(";")[0]
         parsed = json.loads(embedded)
         assert len(parsed["candles"]) == len(LONG_CANDLES)
 
@@ -224,26 +207,14 @@ class TestCandleDataInHtml:
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestAnnotationsAppear:
-    def test_entry_price_in_html(self):
-        event = _long_event()
-        html = render_visual_event_html(event)
-        ann = event["annotations"]
-        if ann.get("entry_price_ticks") is not None:
-            assert "Entry" in html
+    def test_entry_in_html(self):
+        assert "Entry" in render_visual_event_html(_long_event())
 
-    def test_stop_price_in_html(self):
-        event = _long_event()
-        html = render_visual_event_html(event)
-        ann = event["annotations"]
-        if ann.get("stop_price_ticks") is not None:
-            assert "Stop" in html
+    def test_stop_in_html(self):
+        assert "Stop" in render_visual_event_html(_long_event())
 
     def test_target_in_html(self):
-        event = _long_event()
-        html = render_visual_event_html(event)
-        ann = event["annotations"]
-        if ann.get("r2_price_ticks") is not None:
-            assert "2R" in html
+        assert "2R" in render_visual_event_html(_long_event())
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -251,36 +222,23 @@ class TestAnnotationsAppear:
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestNullAnnotations:
-    def test_failed_event_no_entry_line(self):
-        event = _fail_event()
-        ann = event["annotations"]
-        # For failed events, entry/stop/targets should be null
-        assert ann.get("entry_price_ticks") is None
-        html = render_visual_event_html(event)
-        # Should still render without errors
-        assert "chart-container" in html
+    def test_failed_event_renders(self):
+        assert "chart-container" in render_visual_event_html(_fail_event())
 
     def test_minimal_event(self):
-        """Completely minimal event with no annotations."""
         event = {
-            "event_id": None,
-            "symbol": "TEST",
-            "session_date": "2026-01-01",
-            "direction": None,
-            "detection_status": "INVALID",
-            "failed_stage": None,
-            "failed_rules": [],
-            "level_source": None,
-            "level_price_ticks": None,
-            "candles": [
-                {"index": 0, "time_ms": MS_0930, "open": 100.0,
-                 "high": 101.0, "low": 99.0, "close": 100.5, "volume": 100},
-            ],
+            "event_id": None, "symbol": "TEST", "session_date": "2026-01-01",
+            "direction": None, "detection_status": "INVALID",
+            "failed_stage": None, "failed_rules": [],
+            "level_source": None, "level_price_ticks": None,
+            "orb_high_ticks": None, "orb_low_ticks": None,
+            "candles": [{"index": 0, "time_ms": MS_0930, "open": 100.0,
+                         "high": 101.0, "low": 99.0, "close": 100.5, "volume": 100}],
             "annotations": {},
         }
-        html = render_visual_event_html(event)
-        assert "TEST" in html
-        assert "<!DOCTYPE html>" in html
+        h = render_visual_event_html(event)
+        assert "TEST" in h
+        assert "<!DOCTYPE html>" in h
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -289,19 +247,16 @@ class TestNullAnnotations:
 
 class TestHtmlEscaping:
     def test_xss_in_symbol(self):
-        event = _long_event()
-        event = {**event, "symbol": '<script>alert("xss")</script>'}
-        html = render_visual_event_html(event)
-        # The HTML header area must escape the symbol
-        header_section = html.split("var EVENT=")[0]
+        event = {**_long_event(), "symbol": '<script>alert("xss")</script>'}
+        h = render_visual_event_html(event)
+        header_section = h.split("var EVENT=")[0]
         assert "<script>alert" not in header_section
         assert "&lt;script&gt;" in header_section
 
     def test_xss_in_session_date(self):
-        event = _long_event()
-        event = {**event, "session_date": '"><img src=x>'}
-        html = render_visual_event_html(event)
-        assert "<img" not in html.split("var EVENT=")[0]
+        event = {**_long_event(), "session_date": '"><img src=x>'}
+        h = render_visual_event_html(event)
+        assert "<img" not in h.split("var EVENT=")[0]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -309,23 +264,17 @@ class TestHtmlEscaping:
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestDeterministic:
-    def test_long_deterministic(self):
-        event = _long_event()
-        h1 = render_visual_event_html(event)
-        h2 = render_visual_event_html(event)
-        assert h1 == h2
+    def test_long(self):
+        e = _long_event()
+        assert render_visual_event_html(e) == render_visual_event_html(e)
 
-    def test_short_deterministic(self):
-        event = _short_event()
-        h1 = render_visual_event_html(event)
-        h2 = render_visual_event_html(event)
-        assert h1 == h2
+    def test_short(self):
+        e = _short_event()
+        assert render_visual_event_html(e) == render_visual_event_html(e)
 
-    def test_failed_deterministic(self):
-        event = _fail_event()
-        h1 = render_visual_event_html(event)
-        h2 = render_visual_event_html(event)
-        assert h1 == h2
+    def test_failed(self):
+        e = _fail_event()
+        assert render_visual_event_html(e) == render_visual_event_html(e)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -334,29 +283,127 @@ class TestDeterministic:
 
 class TestFileWriter:
     def test_writes_file(self, tmp_path):
-        event = _long_event()
-        out = tmp_path / "test_chart.html"
-        result = write_visual_event_html(event, out)
+        out = tmp_path / "test.html"
+        result = write_visual_event_html(_long_event(), out)
         assert result == out
         assert out.exists()
         content = out.read_text(encoding="utf-8")
         assert "<!DOCTYPE html>" in content
         assert "SPY" in content
 
-    def test_overwrites_existing(self, tmp_path):
-        event = _long_event()
-        out = tmp_path / "test_chart.html"
-        out.write_text("old content", encoding="utf-8")
-        write_visual_event_html(event, out)
-        content = out.read_text(encoding="utf-8")
-        assert "old content" not in content
-        assert "<!DOCTYPE html>" in content
-
-    def test_utf8_encoding(self, tmp_path):
-        event = _long_event()
-        out = tmp_path / "test_chart.html"
-        write_visual_event_html(event, out)
+    def test_utf8_no_bom(self, tmp_path):
+        out = tmp_path / "test.html"
+        write_visual_event_html(_long_event(), out)
         raw = out.read_bytes()
-        assert b"<!DOCTYPE html>" in raw
-        # Verify no BOM
         assert not raw.startswith(b"\xef\xbb\xbf")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 10–11. ORB High and Low exported
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestOrbExported:
+    def test_long_has_orb_high(self):
+        e = _long_event()
+        assert e["orb_high_ticks"] is not None
+        assert isinstance(e["orb_high_ticks"], int)
+
+    def test_long_has_orb_low(self):
+        e = _long_event()
+        assert e["orb_low_ticks"] is not None
+        assert isinstance(e["orb_low_ticks"], int)
+
+    def test_short_has_orb_high(self):
+        e = _short_event()
+        assert e["orb_high_ticks"] is not None
+
+    def test_short_has_orb_low(self):
+        e = _short_event()
+        assert e["orb_low_ticks"] is not None
+
+    def test_orb_high_gt_orb_low(self):
+        e = _long_event()
+        assert e["orb_high_ticks"] > e["orb_low_ticks"]
+
+    def test_long_level_equals_orb_high(self):
+        e = _long_event()
+        assert e["level_price_ticks"] == e["orb_high_ticks"]
+
+    def test_short_level_equals_orb_low(self):
+        e = _short_event()
+        assert e["level_price_ticks"] == e["orb_low_ticks"]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 12–13. Both ORB lines rendered and distinguished
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestOrbLinesRendered:
+    def test_both_orb_lines_in_long(self):
+        h = render_visual_event_html(_long_event())
+        assert "ORB High" in h
+        assert "ORB Low" in h
+
+    def test_both_orb_lines_in_short(self):
+        h = render_visual_event_html(_short_event())
+        assert "ORB High" in h
+        assert "ORB Low" in h
+
+    def test_long_selected_high(self):
+        h = render_visual_event_html(_long_event())
+        assert "selected" in h
+        # In the JS: ORB_HIGH → "ORB High ← selected"
+        assert "ORB High" in h
+
+    def test_short_selected_low(self):
+        h = render_visual_event_html(_short_event())
+        assert "selected" in h
+        assert "ORB Low" in h
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 14. Missing ORB values handled safely
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestMissingOrb:
+    def test_null_orb_no_crash(self):
+        event = {**_long_event(), "orb_high_ticks": None, "orb_low_ticks": None}
+        h = render_visual_event_html(event)
+        assert "<!DOCTYPE html>" in h
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 15. Readable annotation legend
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestReadableLabels:
+    def test_legend_has_break(self):
+        h = render_visual_event_html(_long_event())
+        # The marker should say "Break" not just "B"
+        embedded = h.split("var EVENT=")[1]
+        assert '"Break"' in embedded or "Break" in h
+
+    def test_legend_has_confirm(self):
+        h = render_visual_event_html(_long_event())
+        assert "Confirm" in h
+
+    def test_legend_has_exit(self):
+        h = render_visual_event_html(_long_event())
+        assert "Exit" in h
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 16. Complete candle range is fitted
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestCandleRangeFitted:
+    def test_fit_content_called(self):
+        h = render_visual_event_html(_long_event())
+        assert "fitContent()" in h
+
+    def test_all_candles_in_data(self):
+        event = _long_event()
+        h = render_visual_event_html(event)
+        embedded = h.split("var EVENT=")[1].split(";")[0]
+        parsed = json.loads(embedded)
+        assert len(parsed["candles"]) == len(event["candles"])

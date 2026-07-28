@@ -215,6 +215,19 @@ def export_visual_event(
         lp = _get(dr, "level_price")
         level_price_ticks = _get_ticks(dr, "level_price")
 
+    # ORB High and Low from the level_bar (the ORB candle)
+    orb_high_ticks = None
+    orb_low_ticks = None
+    if dr is not None:
+        level_bar = _get(dr, "level_bar")
+        if level_bar is not None:
+            hb = _get(level_bar, "high")
+            if hb is not None:
+                orb_high_ticks = _get(hb, "ticks")
+            lb = _get(level_bar, "low")
+            if lb is not None:
+                orb_low_ticks = _get(lb, "ticks")
+
     candles = [
         _serialize_candle(c, i) for i, c in enumerate(session_candles)
     ]
@@ -234,6 +247,8 @@ def export_visual_event(
         "failed_rules": annotations["failed_rules"],
         "level_source": level_source,
         "level_price_ticks": level_price_ticks,
+        "orb_high_ticks": orb_high_ticks,
+        "orb_low_ticks": orb_low_ticks,
         "candles": candles,
         "annotations": annotations,
     }
