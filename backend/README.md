@@ -1,5 +1,18 @@
 # Trading Lab — Python Backend
 
+## Quick Start — Backtest Lab
+
+```bash
+cd backend
+pip install -e ".[dev]"
+pip install flask flask-cors
+bash start_lab.sh
+# Open http://localhost:5001
+```
+
+The Backtest Lab is the primary interface. It runs the real Python BDRR
+detector against real market data. No strategy logic runs in JavaScript.
+
 ## Status
 
 The Python BDRR engine is the production implementation. All detection stages

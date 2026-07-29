@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BDRR Backtest Lab</title>
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f8f9fa;--surface:#fff;--border:#d0d7de;--text:#1a1a1a;
+  --muted:#656d76;--accent:#1565c0;--green:#116329;--red:#a40e26;
+  --orange:#e65100;--purple:#7b1fa2;
+  --mono:"SF Mono","Cascadia Code","Consolas",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+}
+body{font-family:var(--mono);background:var(--bg);color:var(--text);font-size:12px}
+
+/* ── Layout ── */
+.app{display:flex;height:100vh}
+.sidebar{width:300px;min-width:260px;background:var(--surface);border-right:1px solid var(--border);
+  overflow-y:auto;display:flex;flex-direction:column}
+.main{flex:1;overflow-y:auto;display:flex;flex-direction:column}
+
+/* ── Sidebar ── */
+.sidebar-header{padding:12px 14px;border-bottom:1px solid var(--border);
+  font-size:14px;font-weight:700;letter-spacing:0.02em;color:var(--accent)}
+.param-group{border-bottom:1px solid var(--border);padding:8px 14px}
+.param-group-title{font-size:10px;font-weight:700;color:var(--accent);
+  letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px}
+.param-row{display:flex;justify-content:space-between;align-items:center;
+  padding:3px 0;gap:8px}
+.param-label{color:var(--muted);font-size:11px;flex:1}
+.param-input{width:100px;padding:3px 6px;border:1px solid var(--border);
+  border-radius:3px;font-family:var(--mono);font-size:11px;text-align:right}
+.param-select{width:100px;padding:3px 4px;border:1px solid var(--border);
+  border-radius:3px;font-family:var(--mono);font-size:11px}
+.param-info{font-size:9px;color:var(--muted);margin-top:2px}
+
+/* ── Run button ── */
+.run-section{padding:12px 14px;border-top:1px solid var(--border);margin-top:auto;
+  background:#f6f8fa}
+.btn-run{width:100%;padding:10px;border:none;border-radius:4px;
+  background:var(--accent);color:#fff;font-family:var(--mono);
+  font-size:13px;font-weight:700;cursor:pointer;letter-spacing:0.04em}
+.btn-run:hover{background:#0d47a1}
+.btn-run:disabled{background:#999;cursor:default}
+.run-status{font-size:10px;color:var(--muted);margin-top:6px;text-align:center;min-height:14px}
+
+/* ── Main views ── */
+.view{display:none;flex:1;flex-direction:column}
+.view.active{display:flex}
+
+/* ── Topbar ── */
+.topbar{display:flex;align-items:center;justify-content:space-between;
+  padding:8px 16px;background:var(--surface);border-bottom:1px solid var(--border)}
+.topbar-tabs{display:flex;gap:4px}
+.tab{padding:4px 12px;border-radius:3px;cursor:pointer;font-size:11px;
+  font-weight:600;color:var(--muted);background:transparent}
+.tab:hover{background:#f0f0f0}
+.tab.active{background:var(--accent);color:#fff}
+
+/* ── Metrics grid ── */
+.metrics-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));
+  gap:8px;padding:12px 16px}
+.metric-card{background:var(--surface);border:1px solid var(--border);
+  border-radius:4px;padding:8px 12px}
+.metric-label{font-size:9px;color:var(--muted);text-transform:uppercase;
+  letter-spacing:0.06em}
+.metric-value{font-size:18px;font-weight:700;margin-top:2px}
+.metric-value.win{color:var(--green)}
+.metric-value.loss{color:var(--red)}
+
+/* ── Equity chart ── */
+.equity-section{padding:12px 16px}
+.equity-chart{height:200px;border:1px solid var(--border);border-radius:4px;overflow:hidden}
+
+/* ── Trade table ── */
+.trade-table-wrap{flex:1;padding:0 16px 16px;overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{position:sticky;top:0;background:var(--surface);border-bottom:2px solid var(--border);
+  padding:6px 8px;text-align:left;font-size:10px;color:var(--muted);
+  text-transform:uppercase;letter-spacing:0.04em;cursor:pointer;white-space:nowrap}
+th:hover{color:var(--text)}
+td{padding:5px 8px;border-bottom:1px solid #f0f0f0;white-space:nowrap}
+tr:hover td{background:#f6f8fa}
+tr.clickable{cursor:pointer}
+.outcome-win{color:var(--green);font-weight:700}
+.outcome-loss{color:var(--red);font-weight:700}
+
+/* ── Trade filters ── */
+.filters{display:flex;gap:8px;padding:8px 16px;flex-wrap:wrap;align-items:center}
+.filter-label{font-size:10px;color:var(--muted);text-transform:uppercase}
+.filter-select{padding:3px 6px;border:1px solid var(--border);border-radius:3px;
+  font-family:var(--mono);font-size:11px}
+
+/* ── Chart view ── */
+.chart-topbar{display:flex;align-items:center;gap:8px;padding:8px 16px;
+  background:var(--surface);border-bottom:1px solid var(--border)}
+.chart-topbar h2{font-size:14px;font-weight:700;flex:1}
+.btn-sm{padding:4px 10px;border:1px solid var(--border);border-radius:3px;
+  background:var(--surface);font-family:var(--mono);font-size:11px;
+  cursor:pointer;font-weight:600}
+.btn-sm:hover{background:#f0f0f0}
+.chart-area{flex:1;position:relative;margin:8px 12px;
+  border:1px solid var(--border);border-radius:6px;overflow:hidden}
+#tradeChart{width:100%;height:100%;min-height:420px}
+.chart-orb-zone{position:absolute;left:0;right:52px;pointer-events:none;z-index:5}
+.chart-explain{padding:8px 16px;display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;
+  max-height:180px;overflow-y:auto}
+.explain-card{background:#f6f8fa;border:1px solid var(--border);border-radius:3px;
+  padding:6px 10px;font-size:11px}
+.explain-card-title{font-size:9px;font-weight:700;color:var(--accent);
+  text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px}
+
+/* ── Empty state ── */
+.empty-state{flex:1;display:flex;align-items:center;justify-content:center;
+  color:var(--muted);font-size:14px;text-align:center;padding:40px}
+
+/* ── Preset bar ── */
+.preset-bar{display:flex;gap:6px;align-items:center;padding:6px 14px;
+  border-bottom:1px solid var(--border);background:#f6f8fa}
+.preset-name{font-size:11px;font-weight:600;color:var(--accent)}
+.btn-preset{padding:2px 8px;border:1px solid var(--border);border-radius:2px;
+  background:var(--surface);font-size:10px;cursor:pointer;font-family:var(--mono)}
+.btn-preset:hover{background:#f0f0f0}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ── Sidebar ── -->
+<div class="sidebar">
+  <div class="sidebar-header">BDRR Backtest Lab</div>
+
+  <div class="preset-bar">
+    <span class="preset-name" id="presetName">Frozen Default</span>
+    <button class="btn-preset" onclick="resetDefaults()">Reset</button>
+  </div>
+
+  <!-- Symbol -->
+  <div class="param-group">
+    <div class="param-group-title">Data</div>
+    <div class="param-row">
+      <span class="param-label">Symbol</span>
+      <select class="param-select" id="pSymbol" style="width:80px"></select>
+    </div>
+    <div class="param-row">
+      <span class="param-label">Timeframe</span>
+      <select class="param-select" id="pTimeframe" style="width:80px">
+        <option value="5m">5m</option>
+        <option value="2m" disabled>2m (no data)</option>
+        <option value="1m" disabled>1m (no data)</option>
+      </select>
+    </div>
+    <div class="param-row">
+      <span class="param-label">Start</span>
+      <input class="param-input" type="date" id="pStartDate" style="width:120px">
+    </div>
+    <div class="param-row">
+      <span class="param-label">End</span>
+      <input class="param-input" type="date" id="pEndDate" style="width:120px">
+    </div>
+    <div class="param-info" id="dateInfo"></div>
+  </div>
+
+  <!-- Direction -->
+  <div class="param-group">
+    <div class="param-group-title">Direction</div>
+    <div class="param-row">
+      <span class="param-label">Direction</span>
+      <select class="param-select" id="pDirection">
+        <option value="LONG">LONG</option>
+        <option value="SHORT">SHORT</option>
+      </select>
+    </div>
+    <div class="param-row">
+      <span class="param-label">Level Source</span>
+      <select class="param-select" id="pLevelSource">
+        <option value="ORB_HIGH">ORB_HIGH</option>
+        <option value="ORB_LOW">ORB_LOW</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- ORB -->
+  <div class="param-group">
+    <div class="param-group-title">ORB</div>
+    <div class="param-row">
+      <span class="param-label">Duration (min)</span>
+      <input class="param-input" type="number" id="pOrbDuration" value="5" min="1" max="30" style="width:60px">
+    </div>
+  </div>
+
+  <!-- Sequence -->
+  <div class="param-group">
+    <div class="param-group-title">Sequence Lifecycle</div>
+    <div class="param-row">
+      <span class="param-label">Consec ORB Closes</span>
+      <input class="param-input" type="number" id="pConsecOrbCloses" value="2" min="1" max="10" style="width:60px">
+    </div>
+  </div>
+
+  <!-- Risk -->
+  <div class="param-group">
+    <div class="param-group-title">Risk / Exit</div>
+    <div class="param-row">
+      <span class="param-label">Exit Target (R)</span>
+      <select class="param-select" id="pExitTargetR" style="width:60px">
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+      </select>
+    </div>
+    <div class="param-row">
+      <span class="param-label">Entry Buffer (ticks)</span>
+      <input class="param-input" type="number" id="pEntryBuffer" value="0" min="0" max="20" style="width:60px">
+    </div>
+    <div class="param-row">
+      <span class="param-label">Stop Buffer (ticks)</span>
+      <input class="param-input" type="number" id="pStopBuffer" value="0" min="0" max="20" style="width:60px">
+    </div>
+    <div class="param-row">
+      <span class="param-label">Tick Size</span>
+      <input class="param-input" type="number" id="pTickSize" value="0.01" step="0.001" min="0.001" max="1" style="width:60px">
+    </div>
+  </div>
+
+  <!-- Entry Model -->
+  <div class="param-group">
+    <div class="param-group-title">Confirmation</div>
+    <div class="param-row">
+      <span class="param-label">Entry Model</span>
+      <select class="param-select" id="pEntryModel">
+        <option value="CONFIRMATION_CLOSE">CONFIRMATION_CLOSE</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Run -->
+  <div class="run-section">
+    <button class="btn-run" id="btnRun" onclick="runBacktest()">RUN BACKTEST</button>
+    <div class="run-status" id="runStatus"></div>
+  </div>
+</div>
+
+<!-- ── Main area ── -->
+<div class="main">
+
+  <!-- Empty state -->
+  <div class="view active" id="viewEmpty">
+    <div class="empty-state">
+      Configure parameters and click<br><b>RUN BACKTEST</b><br>to begin.
+    </div>
+  </div>
+
+  <!-- Results view -->
+  <div class="view" id="viewResults">
+    <div class="topbar">
+      <div class="topbar-tabs">
+        <div class="tab active" data-tab="summary" onclick="switchTab(this)">Summary</div>
+        <div class="tab" data-tab="trades" onclick="switchTab(this)">Trades</div>
+      </div>
+      <div style="font-size:10px;color:var(--muted)" id="runMeta"></div>
+    </div>
+
+    <!-- Summary tab -->
+    <div id="tabSummary" class="tab-content" style="flex:1;overflow-y:auto">
+      <div class="metrics-grid" id="metricsGrid"></div>
+      <div class="equity-section">
+        <div class="equity-chart" id="equityChartWrap"></div>
+      </div>
+    </div>
+
+    <!-- Trades tab -->
+    <div id="tabTrades" class="tab-content" style="display:none;flex:1;overflow:hidden;display:none;flex-direction:column">
+      <div class="filters" id="tradeFilters"></div>
+      <div class="trade-table-wrap" id="tradeTableWrap"></div>
+    </div>
+  </div>
+
+  <!-- Chart view -->
+  <div class="view" id="viewChart">
+    <div class="chart-topbar">
+      <button class="btn-sm" onclick="chartNav(-1)">&#9664; Prev</button>
+      <h2 id="chartTitle"></h2>
+      <button class="btn-sm" onclick="chartNav(1)">Next &#9654;</button>
+      <button class="btn-sm" onclick="showView('viewResults')" style="margin-left:8px">&#10005; Back</button>
+    </div>
+    <div class="chart-area">
+      <div id="tradeChart"></div>
+      <div class="chart-orb-zone" id="chartOrbZone"></div>
+    </div>
+    <div class="chart-explain" id="chartExplain"></div>
+  </div>
+
+</div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+var API="/api";
+var state={symbols:[],defaults:null,result:null,chartEvents:[],currentChart:-1};
+var tradeChart=null,tradeSeries=null;
+
+// ── Init ──
+async function init(){
+  var syms=await(await fetch(API+"/symbols")).json();
+  state.symbols=syms;
+  var sel=document.getElementById("pSymbol");
+  syms.forEach(function(s){
+    var o=document.createElement("option");
+    o.value=s.symbol;o.textContent=s.symbol;
+    sel.appendChild(o);
+  });
+  if(syms.length>0){
+    updateDateRange(syms[0]);
+  }
+  sel.addEventListener("change",function(){
+    var s=syms.find(function(x){return x.symbol===sel.value;});
+    if(s) updateDateRange(s);
+  });
+
+  state.defaults=await(await fetch(API+"/defaults")).json();
+}
+
+function updateDateRange(s){
+  document.getElementById("pStartDate").value=s.earliest;
+  document.getElementById("pStartDate").min=s.earliest;
+  document.getElementById("pStartDate").max=s.latest;
+  document.getElementById("pEndDate").value=s.latest;
+  document.getElementById("pEndDate").min=s.earliest;
+  document.getElementById("pEndDate").max=s.latest;
+  document.getElementById("dateInfo").textContent=
+    s.session_count+" sessions | "+s.earliest+" → "+s.latest;
+}
+
+function resetDefaults(){
+  document.getElementById("pDirection").value="LONG";
+  document.getElementById("pLevelSource").value="ORB_HIGH";
+  document.getElementById("pOrbDuration").value="5";
+  document.getElementById("pConsecOrbCloses").value="2";
+  document.getElementById("pExitTargetR").value="2";
+  document.getElementById("pEntryBuffer").value="0";
+  document.getElementById("pStopBuffer").value="0";
+  document.getElementById("pTickSize").value="0.01";
+  document.getElementById("pEntryModel").value="CONFIRMATION_CLOSE";
+  document.getElementById("presetName").textContent="Frozen Default";
+}
+
+// ── Run Backtest ──
+window.runBacktest=async function(){
+  var btn=document.getElementById("btnRun");
+  var status=document.getElementById("runStatus");
+  btn.disabled=true;
+  status.textContent="Loading data...";
+
+  var body={
+    symbols:[document.getElementById("pSymbol").value],
+    start_date:document.getElementById("pStartDate").value,
+    end_date:document.getElementById("pEndDate").value,
+    timeframe:document.getElementById("pTimeframe").value,
+    preset:{
+      direction:document.getElementById("pDirection").value,
+      level_source:document.getElementById("pLevelSource").value,
+      orb_duration_minutes:parseInt(document.getElementById("pOrbDuration").value),
+      consecutive_orb_closes:parseInt(document.getElementById("pConsecOrbCloses").value),
+      entry_model:document.getElementById("pEntryModel").value,
+      entry_buffer_ticks:parseInt(document.getElementById("pEntryBuffer").value),
+      stop_buffer_ticks:parseInt(document.getElementById("pStopBuffer").value),
+    },
+    config:{
+      exit_target_r:parseInt(document.getElementById("pExitTargetR").value),
+      tick_size:parseFloat(document.getElementById("pTickSize").value),
+    }
+  };
+
+  status.textContent="Running detector...";
+  try{
+    var resp=await fetch(API+"/run",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(body)
+    });
+    var data=await resp.json();
+    if(data.error){
+      status.textContent="Error: "+data.error;
+      btn.disabled=false;return;
+    }
+    state.result=data;
+    state.chartEvents=data.chart_events||[];
+    status.textContent="Done in "+data.elapsed_seconds+"s — "+
+      data.metrics.total_detected+" trades from "+data.total_sessions+" sessions";
+    renderResults(data);
+    showView("viewResults");
+  }catch(e){
+    status.textContent="Error: "+e.message;
+  }
+  btn.disabled=false;
+};
+
+// ── Render Results ──
+function renderResults(data){
+  var m=data.metrics;
+  var grid=document.getElementById("metricsGrid");
+  grid.innerHTML="";
+  var cards=[
+    ["Sessions",m.total_sessions,""],
+    ["Detected Trades",m.total_detected,""],
+    ["Winners",m.winning_trades,"win"],
+    ["Losers",m.losing_trades,"loss"],
+    ["Win Rate",(m.win_rate*100).toFixed(1)+"%",m.win_rate>0.5?"win":""],
+    ["Net R",m.net_r.toFixed(2)+"R",m.net_r>0?"win":"loss"],
+    ["Avg R",m.avg_r.toFixed(2)+"R",m.avg_r>0?"win":"loss"],
+    ["Expectancy",m.expectancy.toFixed(3),m.expectancy>0?"win":"loss"],
+    ["Profit Factor",typeof m.profit_factor==="string"?m.profit_factor:m.profit_factor.toFixed(2),""],
+    ["Max Drawdown",m.max_drawdown.toFixed(2)+"R","loss"],
+    ["Max Consec Wins",m.max_consecutive_wins,""],
+    ["Max Consec Losses",m.max_consecutive_losses,""],
+    ["Direction",data.preset.direction,""],
+    ["Timeframe",data.timeframe,""],
+    ["Date Range",data.start_date+" → "+data.end_date,""],
+    ["Consec ORB Closes",data.preset.consecutive_orb_closes,""],
+  ];
+  cards.forEach(function(c){
+    var d=document.createElement("div");d.className="metric-card";
+    d.innerHTML='<div class="metric-label">'+c[0]+'</div><div class="metric-value '+c[2]+'">'+c[1]+'</div>';
+    grid.appendChild(d);
+  });
+
+  // Equity chart
+  renderEquityChart(m);
+
+  // Run meta
+  document.getElementById("runMeta").textContent=
+    "Run "+data.run_id.substring(0,8)+" | "+data.timestamp;
+
+  // Trade table
+  renderTradeTable(data.trades);
+}
+
+function renderEquityChart(m){
+  var el=document.getElementById("equityChartWrap");
+  el.innerHTML="";
+  if(!m.equity_curve||m.equity_curve.length===0){
+    el.innerHTML='<div style="padding:20px;color:var(--muted);text-align:center">No trades to chart</div>';
+    return;
+  }
+  var chart=LightweightCharts.createChart(el,{
+    width:el.clientWidth,height:200,
+    layout:{background:{type:"solid",color:"#fff"},textColor:"#333",fontSize:10},
+    grid:{vertLines:{color:"#f5f5f5"},horzLines:{color:"#f5f5f5"}},
+    rightPriceScale:{borderColor:"#d0d7de"},
+    timeScale:{visible:false},
+  });
+  var series=chart.addLineSeries({color:"#1565c0",lineWidth:2});
+  var data=m.equity_curve.map(function(v,i){return{time:i+1,value:v};});
+  series.setData(data);
+
+  // Zero line
+  series.createPriceLine({price:0,color:"#d0d7de",lineWidth:1,lineStyle:2,axisLabelVisible:false});
+
+  // Drawdown as area
+  if(m.drawdown_curve&&m.drawdown_curve.length>0){
+    var ddSeries=chart.addLineSeries({color:"#ef5350",lineWidth:1,lineStyle:2});
+    var ddData=m.drawdown_curve.map(function(v,i){return{time:i+1,value:-v};});
+    ddSeries.setData(ddData);
+  }
+  chart.timeScale().fitContent();
+}
+
+function renderTradeTable(trades){
+  var wrap=document.getElementById("tradeTableWrap");
+  if(!trades||trades.length===0){
+    wrap.innerHTML='<div style="padding:20px;color:var(--muted)">No trades</div>';return;
+  }
+  var h='<table><thead><tr>';
+  var cols=["#","Symbol","Date","Dir","Seq","Entry","Stop","Target","Outcome","R"];
+  cols.forEach(function(c){h+='<th>'+c+'</th>';});
+  h+='</tr></thead><tbody>';
+  trades.forEach(function(t,i){
+    var oc=t.outcome||"";
+    var ocClass=oc.indexOf("TARGET")>=0?"outcome-win":oc.indexOf("STOPPED")>=0?"outcome-loss":"";
+    var rr=t.realized_r!=null?parseFloat(t.realized_r).toFixed(2):"—";
+    h+='<tr class="clickable" onclick="openChart('+i+')">';
+    h+='<td>'+t.trade_number+'</td>';
+    h+='<td>'+t.symbol+'</td>';
+    h+='<td>'+t.date+'</td>';
+    h+='<td>'+t.direction+'</td>';
+    h+='<td>'+t.sequence_id+'</td>';
+    h+='<td>'+(t.entry_price||"—")+'</td>';
+    h+='<td>'+(t.stop_price||"—")+'</td>';
+    h+='<td>'+(t.target_price||"—")+'</td>';
+    h+='<td class="'+ocClass+'">'+oc+'</td>';
+    h+='<td class="'+ocClass+'">'+rr+'</td>';
+    h+='</tr>';
+  });
+  h+='</tbody></table>';
+  wrap.innerHTML=h;
+}
+
+// ── Views ──
+window.showView=function(id){
+  document.querySelectorAll(".view").forEach(function(v){v.classList.remove("active");});
+  document.getElementById(id).classList.add("active");
+};
+
+window.switchTab=function(el){
+  document.querySelectorAll(".tab").forEach(function(t){t.classList.remove("active");});
+  el.classList.add("active");
+  var tab=el.getAttribute("data-tab");
+  document.getElementById("tabSummary").style.display=tab==="summary"?"block":"none";
+  document.getElementById("tabTrades").style.display=tab==="trades"?"flex":"none";
+};
+
+// ── Chart view ──
+var ET_OFFSET=-4*3600;
+
+window.openChart=function(idx){
+  if(!state.chartEvents||idx<0||idx>=state.chartEvents.length) return;
+  state.currentChart=idx;
+  renderTradeChart(state.chartEvents[idx],idx);
+  showView("viewChart");
+};
+
+window.chartNav=function(delta){
+  var next=state.currentChart+delta;
+  if(next>=0&&next<state.chartEvents.length) openChart(next);
+};
+
+function renderTradeChart(E,idx){
+  var el=document.getElementById("tradeChart");
+  el.innerHTML="";
+  var ann=E.annotations||{};
+  var TS=parseFloat(document.getElementById("pTickSize").value)||0.01;
+  function tp(t){return t==null?null:Math.round(t*TS*1e6)/1e6;}
+  function fmtP(v){return v==null?"—":v.toFixed(2);}
+
+  var candles=E.candles.map(function(c){
+    return{time:Math.floor(c.time_ms/1000)+ET_OFFSET,
+           open:c.open,high:c.high,low:c.low,close:c.close};
+  });
+
+  if(tradeChart){tradeChart.remove();tradeChart=null;}
+  tradeChart=LightweightCharts.createChart(el,{
+    width:el.clientWidth,height:el.clientHeight||420,
+    layout:{background:{type:"solid",color:"#fff"},textColor:"#333",fontSize:11},
+    grid:{vertLines:{color:"#f5f5f5"},horzLines:{color:"#f5f5f5"}},
+    crosshair:{mode:0},
+    timeScale:{timeVisible:true,secondsVisible:false,borderColor:"#d0d7de"},
+    rightPriceScale:{borderColor:"#d0d7de",minMove:0.01,scaleMargins:{top:0.05,bottom:0.05}},
+  });
+  tradeSeries=tradeChart.addCandlestickSeries({
+    upColor:"#26a69a",downColor:"#ef5350",
+    borderUpColor:"#26a69a",borderDownColor:"#ef5350",
+    wickUpColor:"#26a69a",wickDownColor:"#ef5350",
+  });
+  tradeSeries.setData(candles);
+
+  // ORB lines
+  if(E.orb_high_ticks!=null){
+    var ohP=tp(E.orb_high_ticks);
+    tradeSeries.createPriceLine({price:ohP,color:"#e65100",lineWidth:3,lineStyle:0,
+      axisLabelVisible:true,title:"ORB High "+fmtP(ohP)});
+  }
+  if(E.orb_low_ticks!=null){
+    var olP=tp(E.orb_low_ticks);
+    tradeSeries.createPriceLine({price:olP,color:"#7b1fa2",lineWidth:3,lineStyle:0,
+      axisLabelVisible:true,title:"ORB Low "+fmtP(olP)});
+  }
+  // Entry/Stop/Target
+  if(ann.entry_price_ticks!=null){
+    var ep=tp(ann.entry_price_ticks);
+    tradeSeries.createPriceLine({price:ep,color:"#1565c0",lineWidth:2,lineStyle:0,
+      axisLabelVisible:true,title:"Entry "+fmtP(ep)});
+  }
+  if(ann.stop_price_ticks!=null){
+    var sp=tp(ann.stop_price_ticks);
+    tradeSeries.createPriceLine({price:sp,color:"#c62828",lineWidth:2,lineStyle:2,
+      axisLabelVisible:true,title:"Stop "+fmtP(sp)});
+  }
+  if(ann.r2_price_ticks!=null){
+    var r2=tp(ann.r2_price_ticks);
+    tradeSeries.createPriceLine({price:r2,color:"#2e7d32",lineWidth:2,lineStyle:2,
+      axisLabelVisible:true,title:"TP 2R "+fmtP(r2)});
+  }
+  // PDH/PDL
+  if(E.pdh!=null) tradeSeries.createPriceLine({price:E.pdh,color:"#6d4c41",lineWidth:1,lineStyle:3,axisLabelVisible:true,title:"PDH "+E.pdh.toFixed(2)});
+  if(E.pdl!=null) tradeSeries.createPriceLine({price:E.pdl,color:"#6d4c41",lineWidth:1,lineStyle:3,axisLabelVisible:true,title:"PDL "+E.pdl.toFixed(2)});
+
+  // Markers
+  function ts(i){return i!=null&&i>=0&&i<candles.length?candles[i].time:null;}
+  var markers=[];
+
+  // Failed retests
+  var frs=E.all_retest_candidates||[];
+  frs.forEach(function(fr){
+    if(fr.bar_index!=null&&ts(fr.bar_index)!=null)
+      markers.push({time:ts(fr.bar_index),position:"belowBar",color:"#d4a017",shape:"circle",text:"✗ Ret",size:0});
+  });
+  // Consecutive inside closes
+  var cic=E.consecutive_inside_closes||[];
+  cic.forEach(function(cc,ci){
+    if(cc.bar_index!=null&&ts(cc.bar_index)!=null)
+      markers.push({time:ts(cc.bar_index),position:"aboveBar",color:"#e65100",shape:"square",text:"In#"+(ci+1),size:0});
+  });
+  // Invalidation
+  if(E.invalidation_index!=null&&ts(E.invalidation_index)!=null)
+    markers.push({time:ts(E.invalidation_index),position:"aboveBar",color:"#c62828",shape:"square",text:"✗ INVALID",size:1});
+
+  if(ann.break_candle_index!=null&&ts(ann.break_candle_index)!=null)
+    markers.push({time:ts(ann.break_candle_index),position:"aboveBar",color:"#1565c0",shape:"arrowDown",text:"Break",size:1});
+  if(ann.confirmation_candle_index!=null&&ts(ann.confirmation_candle_index)!=null)
+    markers.push({time:ts(ann.confirmation_candle_index),position:"belowBar",color:"#2e7d32",shape:"arrowUp",text:"Confirm",size:1});
+  if(ann.exit_candle_index!=null&&ts(ann.exit_candle_index)!=null)
+    markers.push({time:ts(ann.exit_candle_index),position:"aboveBar",color:"#e65100",shape:"circle",text:"Exit",size:2});
+
+  markers.sort(function(a,b){return a.time-b.time;});
+  if(markers.length>0) tradeSeries.setMarkers(markers);
+  tradeChart.timeScale().fitContent();
+
+  // ORB zone
+  setTimeout(function(){
+    var zone=document.getElementById("chartOrbZone");
+    if(E.orb_high_ticks==null||E.orb_low_ticks==null){zone.style.display="none";return;}
+    var yH=tradeSeries.priceToCoordinate(tp(E.orb_high_ticks));
+    var yL=tradeSeries.priceToCoordinate(tp(E.orb_low_ticks));
+    if(yH==null||yL==null){zone.style.display="none";return;}
+    var top=Math.min(yH,yL),height=Math.abs(yL-yH);
+    if(height<2)height=2;
+    zone.style.display="block";zone.style.top=top+"px";zone.style.height=height+"px";
+    zone.style.background="rgba(255,152,0,0.08)";
+    zone.style.borderTop="1px solid rgba(230,81,0,0.3)";
+    zone.style.borderBottom="1px solid rgba(123,31,162,0.3)";
+  },100);
+
+  // Title
+  document.getElementById("chartTitle").textContent=
+    (E.symbol||"?")+" — "+(E.session_date||"?")+" | "+(E.sequence_id||"")+
+    " | "+(ann.outcome||"")+(E.wick_depth_ticks!=null?" | Wick: "+E.wick_depth_ticks+"t":"");
+
+  // Explain cards
+  var ex=document.getElementById("chartExplain");
+  ex.innerHTML="";
+  var cards=[
+    ["ORB","High: "+fmtP(tp(E.orb_high_ticks))+" Low: "+fmtP(tp(E.orb_low_ticks))],
+    ["Break","Bar #"+(ann.break_candle_index||"—")],
+    ["Displacement",(ann.displacement_start_index||"—")+" → "+(ann.displacement_end_index||"—")],
+    ["Confirmation","Bar #"+(ann.confirmation_candle_index||"—")],
+    ["Sequence",E.sequence_id||"—"],
+    ["Wick Depth",(E.wick_depth_ticks||"—")+" ticks"],
+    ["Failed Retests",(frs.length||0)],
+    ["Invalidation",E.invalidation_index!=null?"Bar #"+E.invalidation_index:"None"],
+    ["Outcome",ann.outcome||"—"],
+    ["Result R",state.result&&state.result.trades&&state.result.trades[idx]?
+      (state.result.trades[idx].realized_r!=null?parseFloat(state.result.trades[idx].realized_r).toFixed(2)+"R":"—"):"—"],
+  ];
+  cards.forEach(function(c){
+    var d=document.createElement("div");d.className="explain-card";
+    d.innerHTML='<div class="explain-card-title">'+c[0]+'</div>'+c[1];
+    ex.appendChild(d);
+  });
+}
+
+window.addEventListener("resize",function(){
+  if(tradeChart&&document.getElementById("viewChart").classList.contains("active")){
+    var el=document.getElementById("tradeChart");
+    tradeChart.applyOptions({width:el.clientWidth});
+  }
+});
+
+window.resetDefaults=resetDefaults;
+init();
+})();
+</script>
+</body>
+</html>
