@@ -89,39 +89,39 @@ _HTML_TEMPLATE = """\
 <style>
 *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:"SF Mono","Cascadia Code","Consolas",monospace;
-  background:#0e1117;color:#c9d1d9;padding:16px}}
+  background:#ffffff;color:#1a1a1a;padding:16px 20px}}
 .header{{display:flex;flex-wrap:wrap;gap:8px 24px;align-items:baseline;
   margin-bottom:12px}}
 .header h1{{font-size:18px;font-weight:600;letter-spacing:0.02em}}
 .tag{{display:inline-block;padding:2px 8px;border-radius:3px;
   font-size:12px;font-weight:500;letter-spacing:0.04em}}
-.tag-long{{background:#0d4429;color:#3fb950}}
-.tag-short{{background:#4a1524;color:#f85149}}
-.tag-valid{{background:#0c2d6b;color:#58a6ff}}
-.tag-invalid{{background:#3d1d00;color:#d29922}}
-.tag-outcome{{background:#1c1d21;color:#8b949e;border:1px solid #30363d}}
-.meta{{font-size:12px;color:#8b949e;margin-bottom:8px}}
-.chart-container{{width:100%;height:480px;border-radius:4px;
-  border:1px solid #21262d;overflow:hidden}}
+.tag-long{{background:#dafbe1;color:#116329}}
+.tag-short{{background:#ffebe9;color:#a40e26}}
+.tag-valid{{background:#dbeafe;color:#1d4ed8}}
+.tag-invalid{{background:#fff8c5;color:#6a5d00}}
+.tag-outcome{{background:#f0f0f0;color:#656d76;border:1px solid #d0d7de}}
+.meta{{font-size:12px;color:#656d76;margin-bottom:8px}}
+.chart-container{{width:100%;height:520px;border-radius:6px;
+  border:1px solid #d0d7de;overflow:hidden}}
 .legend{{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:11px;
-  color:#8b949e;margin-top:8px;padding-top:8px;
-  border-top:1px solid #21262d}}
+  color:#656d76;margin-top:8px;padding-top:8px;
+  border-top:1px solid #d0d7de}}
 .legend-item{{display:flex;align-items:center;gap:4px}}
 .legend-swatch{{width:14px;height:3px;border-radius:1px}}
 .summary{{margin-top:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
   gap:12px}}
-.summary-section{{background:#161b22;border:1px solid #21262d;
+.summary-section{{background:#f6f8fa;border:1px solid #d0d7de;
   border-radius:4px;padding:10px 14px}}
-.summary-section h3{{font-size:12px;color:#58a6ff;font-weight:500;
+.summary-section h3{{font-size:12px;color:#1d4ed8;font-weight:500;
   margin-bottom:6px;letter-spacing:0.06em;text-transform:uppercase}}
 .row{{display:flex;justify-content:space-between;padding:2px 0;
-  font-size:12px;border-bottom:1px solid #21262d}}
+  font-size:12px;border-bottom:1px solid #e8e8e8}}
 .row:last-child{{border-bottom:none}}
-.row-label{{color:#8b949e}}
-.row-value{{color:#c9d1d9;font-weight:500}}
-.row-value.selected{{color:#58a6ff}}
-.row-value.win{{color:#3fb950}}
-.row-value.loss{{color:#f85149}}
+.row-label{{color:#656d76}}
+.row-value{{color:#1a1a1a;font-weight:500}}
+.row-value.selected{{color:#1d4ed8}}
+.row-value.win{{color:#116329;font-weight:700}}
+.row-value.loss{{color:#a40e26;font-weight:700}}
 </style>
 </head>
 <body>
@@ -137,12 +137,12 @@ body{{font-family:"SF Mono","Cascadia Code","Consolas",monospace;
 </div>
 <div id="chart" class="chart-container"></div>
 <div class="legend">
-  <span class="legend-item"><span class="legend-swatch" style="background:#e3b341"></span>ORB High</span>
-  <span class="legend-item"><span class="legend-swatch" style="background:#a371f7"></span>ORB Low</span>
-  <span class="legend-item"><span class="legend-swatch" style="background:#58a6ff"></span>Entry</span>
-  <span class="legend-item"><span class="legend-swatch" style="background:#f85149"></span>Stop</span>
-  <span class="legend-item"><span class="legend-swatch" style="background:#3fb950"></span>Targets</span>
-  <span class="legend-item"><span class="legend-swatch" style="background:#f0883e"></span>Exit</span>
+  <span class="legend-item"><span class="legend-swatch" style="background:#e65100"></span>ORB High</span>
+  <span class="legend-item"><span class="legend-swatch" style="background:#7b1fa2"></span>ORB Low</span>
+  <span class="legend-item"><span class="legend-swatch" style="background:#1565c0"></span>Entry</span>
+  <span class="legend-item"><span class="legend-swatch" style="background:#c62828"></span>Stop</span>
+  <span class="legend-item"><span class="legend-swatch" style="background:#2e7d32"></span>Targets</span>
+  <span class="legend-item"><span class="legend-swatch" style="background:#e65100"></span>Exit</span>
 </div>
 {summary_html}
 <script>
@@ -159,69 +159,70 @@ var candles=EVENT.candles.map(function(c){{
 
 var chart=LightweightCharts.createChart(document.getElementById("chart"),{{
   width:document.getElementById("chart").clientWidth,
-  height:480,
-  layout:{{background:{{type:"solid",color:"#0e1117"}},
-           textColor:"#8b949e",fontSize:11}},
-  grid:{{vertLines:{{color:"#1b1f27"}},horzLines:{{color:"#1b1f27"}}}},
+  height:520,
+  layout:{{background:{{type:"solid",color:"#ffffff"}},
+           textColor:"#333333",fontSize:11}},
+  grid:{{vertLines:{{color:"#f0f0f0"}},horzLines:{{color:"#f0f0f0"}}}},
   crosshair:{{mode:0}},
   timeScale:{{timeVisible:true,secondsVisible:false,
-              borderColor:"#21262d"}},
-  rightPriceScale:{{borderColor:"#21262d"}},
+              borderColor:"#d0d7de"}},
+  rightPriceScale:{{borderColor:"#d0d7de",minMove:0.01}},
 }});
 
 var series=chart.addCandlestickSeries({{
-  upColor:"#3fb950",downColor:"#f85149",
-  borderUpColor:"#3fb950",borderDownColor:"#f85149",
-  wickUpColor:"#3fb950",wickDownColor:"#f85149",
+  upColor:"#26a69a",downColor:"#ef5350",
+  borderUpColor:"#26a69a",borderDownColor:"#ef5350",
+  wickUpColor:"#26a69a",wickDownColor:"#ef5350",
 }});
 series.setData(candles);
 
 var ann=EVENT.annotations||{{}};
 var ls=EVENT.level_source||"";
 
-// ── ORB High and Low lines ──
-var orbHighLabel=ls==="ORB_HIGH"?"ORB High \u2190 selected":"ORB High";
-var orbLowLabel=ls==="ORB_LOW"?"ORB Low \u2190 selected":"ORB Low";
-var orbHighStyle=ls==="ORB_HIGH"?0:2;
-var orbLowStyle=ls==="ORB_LOW"?0:2;
-var orbHighWidth=ls==="ORB_HIGH"?2:1;
-var orbLowWidth=ls==="ORB_LOW"?2:1;
-
+// ── ORB High and Low: thick solid lines ──
 if(EVENT.orb_high_ticks!=null){{
-  series.createPriceLine({{price:tp(EVENT.orb_high_ticks),color:"#e3b341",
-    lineWidth:orbHighWidth,lineStyle:orbHighStyle,axisLabelVisible:true,
-    title:orbHighLabel}});
+  var ohP=tp(EVENT.orb_high_ticks);
+  series.createPriceLine({{price:ohP,color:"#e65100",
+    lineWidth:3,lineStyle:0,axisLabelVisible:true,
+    title:"ORB High "+ohP.toFixed(2)}});
 }}
 if(EVENT.orb_low_ticks!=null){{
-  series.createPriceLine({{price:tp(EVENT.orb_low_ticks),color:"#a371f7",
-    lineWidth:orbLowWidth,lineStyle:orbLowStyle,axisLabelVisible:true,
-    title:orbLowLabel}});
+  var olP=tp(EVENT.orb_low_ticks);
+  series.createPriceLine({{price:olP,color:"#7b1fa2",
+    lineWidth:3,lineStyle:0,axisLabelVisible:true,
+    title:"ORB Low "+olP.toFixed(2)}});
 }}
 
-// ── Trade lines ──
+// ── Trade lines: Entry, Stop, Targets ──
 if(ann.entry_price_ticks!=null){{
-  series.createPriceLine({{price:tp(ann.entry_price_ticks),color:"#58a6ff",
-    lineWidth:1,lineStyle:0,axisLabelVisible:true,title:"Entry"}});
+  var ep=tp(ann.entry_price_ticks);
+  series.createPriceLine({{price:ep,color:"#1565c0",
+    lineWidth:2,lineStyle:0,axisLabelVisible:true,title:"Entry "+ep.toFixed(2)}});
 }}
 if(ann.stop_price_ticks!=null){{
-  series.createPriceLine({{price:tp(ann.stop_price_ticks),color:"#f85149",
-    lineWidth:1,lineStyle:0,axisLabelVisible:true,title:"Stop"}});
+  var sp=tp(ann.stop_price_ticks);
+  series.createPriceLine({{price:sp,color:"#c62828",
+    lineWidth:2,lineStyle:2,axisLabelVisible:true,title:"Stop "+sp.toFixed(2)}});
 }}
 if(ann.r2_price_ticks!=null){{
-  series.createPriceLine({{price:tp(ann.r2_price_ticks),color:"#3fb950",
-    lineWidth:1,lineStyle:2,axisLabelVisible:true,title:"2R"}});
+  var r2=tp(ann.r2_price_ticks);
+  series.createPriceLine({{price:r2,color:"#2e7d32",
+    lineWidth:2,lineStyle:2,axisLabelVisible:true,title:"TP 2R "+r2.toFixed(2)}});
 }}
 if(ann.r3_price_ticks!=null){{
-  series.createPriceLine({{price:tp(ann.r3_price_ticks),color:"#3fb950",
-    lineWidth:1,lineStyle:3,axisLabelVisible:true,title:"3R"}});
+  var r3=tp(ann.r3_price_ticks);
+  series.createPriceLine({{price:r3,color:"#2e7d32",
+    lineWidth:1,lineStyle:3,axisLabelVisible:true,title:"TP 3R "+r3.toFixed(2)}});
 }}
 if(ann.r4_price_ticks!=null){{
-  series.createPriceLine({{price:tp(ann.r4_price_ticks),color:"#3fb950",
-    lineWidth:1,lineStyle:3,axisLabelVisible:true,title:"4R"}});
+  var r4=tp(ann.r4_price_ticks);
+  series.createPriceLine({{price:r4,color:"#2e7d32",
+    lineWidth:1,lineStyle:3,axisLabelVisible:true,title:"TP 4R "+r4.toFixed(2)}});
 }}
 if(ann.exit_price_ticks!=null){{
-  series.createPriceLine({{price:tp(ann.exit_price_ticks),color:"#f0883e",
-    lineWidth:2,lineStyle:0,axisLabelVisible:true,title:"Exit"}});
+  var ex=tp(ann.exit_price_ticks);
+  series.createPriceLine({{price:ex,color:"#e65100",
+    lineWidth:2,lineStyle:0,axisLabelVisible:true,title:"Exit "+ex.toFixed(2)}});
 }}
 
 // ── Candle markers ──
@@ -229,40 +230,19 @@ function ts(idx){{
   if(idx==null||idx<0||idx>=candles.length) return null;
   return candles[idx].time;
 }}
-var mList=[
-  {{idx:ann.break_candle_index,label:"Break",tip:"Break candle",
-    color:"#58a6ff",pos:"aboveBar"}},
-  {{idx:ann.displacement_start_index,label:"Disp\u2192",tip:"Displacement start",
-    color:"#a371f7",pos:"aboveBar"}},
-  {{idx:ann.displacement_end_index,label:"\u2190Disp",tip:"Displacement end",
-    color:"#a371f7",pos:"aboveBar"}},
-  {{idx:ann.retest_start_index,label:"Ret\u2192",tip:"Retest start",
-    color:"#d29922",pos:"belowBar"}},
-  {{idx:ann.retest_end_index,label:"\u2190Ret",tip:"Retest end",
-    color:"#d29922",pos:"belowBar"}},
-  {{idx:ann.confirmation_candle_index,label:"Confirm",tip:"Confirmation candle",
-    color:"#3fb950",pos:"belowBar"}},
-  {{idx:ann.exit_candle_index,label:"Exit",tip:"Exit candle",
-    color:"#f0883e",pos:"aboveBar"}},
-];
-
-// Deduplicate markers on the same candle
-var seen={{}};
-var validMarkers=[];
-mList.forEach(function(m){{
-  if(m.idx==null||ts(m.idx)==null) return;
-  var t=ts(m.idx);
-  if(seen[t]){{
-    seen[t].text+=(" | "+m.label);
-    return;
-  }}
-  var mk={{time:t,position:m.pos,color:m.color,
-           shape:"circle",text:m.label,size:1}};
-  seen[t]=mk;
-  validMarkers.push(mk);
-}});
-validMarkers.sort(function(a,b){{return a.time-b.time;}});
-if(validMarkers.length>0) series.setMarkers(validMarkers);
+// Only 3 markers: Break, Confirm, Exit
+var markers=[];
+if(ann.break_candle_index!=null&&ts(ann.break_candle_index)!=null)
+  markers.push({{time:ts(ann.break_candle_index),position:"aboveBar",
+    color:"#1565c0",shape:"arrowDown",text:"Break",size:1}});
+if(ann.confirmation_candle_index!=null&&ts(ann.confirmation_candle_index)!=null)
+  markers.push({{time:ts(ann.confirmation_candle_index),position:"belowBar",
+    color:"#2e7d32",shape:"arrowUp",text:"Confirm",size:1}});
+if(ann.exit_candle_index!=null&&ts(ann.exit_candle_index)!=null)
+  markers.push({{time:ts(ann.exit_candle_index),position:"aboveBar",
+    color:"#e65100",shape:"circle",text:"Exit",size:2}});
+markers.sort(function(a,b){{return a.time-b.time;}});
+if(markers.length>0) series.setMarkers(markers);
 
 chart.timeScale().fitContent();
 window.addEventListener("resize",function(){{
