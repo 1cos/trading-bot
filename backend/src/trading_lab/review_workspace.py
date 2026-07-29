@@ -573,15 +573,30 @@ function renderEvent(idx){{
   }}
   var markers=[];
 
-  // Failed retests as small dots
+  // Failed retests as small yellow dots
   var fr=expl.failed_retests||[];
   for(var fi=0;fi<fr.length;fi++){{
     var fri=fr[fi];
     if(fri.bar_index!=null&&ts(fri.bar_index)!=null){{
       markers.push({{time:ts(fri.bar_index),position:"belowBar",
-        color:"#d4a017",shape:"circle",text:"✗",size:0}});
+        color:"#d4a017",shape:"circle",text:"✗ Ret",size:0}});
     }}
   }}
+
+  // Consecutive inside closes (orange squares)
+  var cic=E.consecutive_inside_closes||[];
+  for(var ci=0;ci<cic.length;ci++){{
+    var cc=cic[ci];
+    if(cc.bar_index!=null&&ts(cc.bar_index)!=null){{
+      markers.push({{time:ts(cc.bar_index),position:"aboveBar",
+        color:"#e65100",shape:"square",text:"In#"+(ci+1),size:0}});
+    }}
+  }}
+
+  // Invalidation marker (red X)
+  if(E.invalidation_index!=null&&ts(E.invalidation_index)!=null)
+    markers.push({{time:ts(E.invalidation_index),position:"aboveBar",
+      color:"#c62828",shape:"square",text:"✗ INVALID",size:1}});
 
   if(ann.break_candle_index!=null&&ts(ann.break_candle_index)!=null)
     markers.push({{time:ts(ann.break_candle_index),position:"aboveBar",
@@ -648,6 +663,8 @@ function renderHeader(E){{
   var statusClass=status==="VALID"?"tag-valid":"tag-invalid";
 
   var h='<h1>'+esc(E.symbol||"?")+' — '+esc(E.session_date||"?")+'</h1>';
+  if(E.sequence_id)
+    h+='<span class="tag" style="background:#dbeafe;color:#1d4ed8">'+esc(E.sequence_id)+'</span>';
   h+='<span class="tag '+dirClass+'">'+esc(dir)+'</span>';
   h+='<span class="tag '+statusClass+'">'+esc(status)+'</span>';
 
