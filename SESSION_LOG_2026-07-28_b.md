@@ -13,8 +13,10 @@ trader evaluation of BDRR events.
 |---|---|
 | Multi-event navigation | Previous/Next buttons + keyboard ←→ |
 | Accept/Reject/Skip | Decision buttons + keyboard A/R/S |
+| Decision export | Export all decisions to JSON (E key or button) |
 | Progress dots | Visual indicator of review progress |
 | ORB zone overlay | Semi-transparent band between ORB High and Low |
+| PDH/PDL lines | Previous Day High/Low as dotted brown lines |
 | Explain panel | Stage-by-stage reasoning (ORB, Break, Displacement, Retest, Confirmation) |
 | Failed retests | Shows geometry values + which rules failed |
 | Trade plan | Entry, Stop, Target 2R with computed risk |
@@ -29,31 +31,55 @@ trader evaluation of BDRR events.
 - `build_workspace_events()`: runs BDRR strategy, exports events with explain data
 - `render_workspace_html()`: generates standalone HTML with all events embedded
 - `write_workspace_html()`: writes to file
-- `generate_workspace_from_csv()`: one-step CSV → HTML generation
+- `generate_workspace_from_csv()`: one-step CSV → HTML with PDH/PDL computation
 
-**Tests:** 32 new tests.
-**Regression:** 1526 Python tests pass (1494 existing + 32 new).
+### 2. Retest Logic Investigation
 
-### 2. Visual Review HTML Improvements
+**Finding: The retest logic is correct. The issue was UI-only.**
 
-Updated `visual_review_html.py` with improvements from the patch:
+Investigation of 2026-05-26 SPY session:
+- Break at 13:40 (close=750.63 > ORB High 750.44)
+- 1 displacement bar at 13:45 (low=750.64, stays above level)
+- First retest contact at 13:50 (low=749.58, touches level)
+- This candle FAILS all 3 rejection geometry rules:
+  - Wick ratio: 38.4% (needed ≥47%) ← FAIL
+  - Body ratio: 57.5% (needed ≤40%) ← FAIL
+  - Close location: 38.4% (needed ≥80%) ← FAIL
+- Actual confirmation at 15:05 (bar #19):
+  - Wick ratio: 67.2% ✓
+  - Body ratio: 19.7% ✓
+  - Close location: 86.9% ✓
 
-- **Light theme**: white background, dark text (was dark theme)
-- **ORB lines**: thick solid orange (#e65100) and purple (#7b1fa2), lineWidth 3
-- **Trade lines**: distinctive colors with price labels (Entry blue, Stop red dashed, Target green dashed)
-- **Simplified markers**: only Break (arrow), Confirm (arrow), Exit (circle) — removed the confusing Disp→/←Disp and Ret→/←Ret markers that Max didn't want
-- **Updated legend**: matches new color scheme
-- **Candlestick colors**: TradingView standard teal/red (#26a69a/#ef5350)
+Max's concern: the old chart showed "Ret→" on the first contact candle,
+making it look like the engine called it a "retest." But the engine
+correctly identifies it as a failed retest contact, and only marks
+bar #19 as the Confirmation.
 
-### 3. Real Data Validation
+**Resolution:** The new workspace shows only Break/Confirm/Exit markers.
+Failed retests are shown as small dots + detailed geometry in the explain
+panel. No code change needed — this was purely a UI communication problem.
 
-Generated workspace from `dati/SPY_5m.csv`:
+### 3. PDH/PDL Levels
 
-- **VALID setups found:** 8 out of 60 sessions
-- **Results:** 6 STOPPED, 2 TARGET_HIT (2026-04-30, 2026-07-06)
-- **Workspace files generated:**
-  - `backend/output/SPY_review_workspace.html` (8 VALID events, 126KB)
-  - `backend/output/SPY_review_all.html` (60 events, 806KB)
+Added Previous Day High/Low computation to the workspace generator.
+PDH/PDL are computed from the previous session's candle data and
+displayed as dotted brown lines on the chart.
+
+### 4. Decision Export
+
+Added decision export functionality. Traders can press E or click
+Export to download a JSON file containing all Accept/Reject/Skip
+decisions, mapped to event IDs and session dates. This data will
+later train the Scorer.
+
+### 5. Visual Review HTML Improvements
+
+Updated `visual_review_html.py` with:
+- Light theme (white background)
+- Thick ORB lines (orange/purple, lineWidth 3)
+- Distinctive trade lines with price labels
+- Simplified markers (Break/Confirm/Exit only)
+- TradingView standard candlestick colors
 
 ---
 
@@ -71,26 +97,23 @@ Generated workspace from `dati/SPY_5m.csv`:
 - `backend/README.md` (updated status, workspace documentation)
 
 ### Test counts:
-- Python: 1526 tests passing
+- Python: 1531 tests passing (1494 existing + 37 new)
 - JavaScript: all 15 test files passing
 
 ---
 
 ## Next Session Priorities
 
-1. **Investigate retest logic** — Max disagrees with the first retest
-   marker placement. Compare engine behavior against his real trading
-   rules. This is a logic issue, not just UI.
+1. **Browser test the ORB zone overlay** — verify `series.priceToCoordinate()`
+   works correctly in LW Charts. If unreliable, use the v4 plugin API.
 
-2. **Add PDH/PDL levels** — Previous Day High/Low are needed for proper
-   trading context. Requires computing from the previous session's data.
+2. **Add pre-ORB candles** — chart needs context before 09:30 open.
 
-3. **Add pre-ORB candles** — Chart needs context before 09:30.
+3. **Scorer training loop** — load exported decisions JSON back into
+   the pipeline. Start building the feature vector for the Scorer.
 
-4. **Verify ORB zone visibility** — The overlay approach needs testing
-   in the browser. If `series.priceToCoordinate()` doesn't work reliably,
-   try the Lightweight Charts v4 plugin API.
+4. **Multi-symbol workspace** — generate workspaces for QQQ, NVDA, TSLA
+   from the other CSV files in `dati/`.
 
-5. **Scorer training data** — The Accept/Reject/Skip decisions from the
-   workspace need to be persisted (currently in-memory only). Next step
-   is exporting decisions to a JSON file or Supabase.
+5. **SHORT direction review** — generate SHORT workspace (ORB_LOW level)
+   and validate visually.

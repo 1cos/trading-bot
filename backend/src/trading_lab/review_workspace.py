@@ -259,6 +259,11 @@ def build_workspace_events(
 
         event = export_visual_event(candles, result)
         event["explain"] = _build_explain(result)
+
+        # Add PDH/PDL from session metadata
+        event["pdh"] = _get(session, "pdh")
+        event["pdl"] = _get(session, "pdl")
+
         events.append(event)
 
     return events
@@ -421,6 +426,7 @@ body{{font-family:"SF Mono","Cascadia Code","Consolas",monospace;
     <button class="btn btn-accept" id="btnAccept" onclick="decide('accept')">&#10003; Accept</button>
     <button class="btn btn-reject" id="btnReject" onclick="decide('reject')">&#10007; Reject</button>
     <button class="btn btn-skip" id="btnSkip" onclick="decide('skip')">&#9654; Skip</button>
+    <button class="btn btn-nav" id="btnExport" onclick="exportDecisions()" style="background:#dbeafe;color:#1d4ed8">&#8681; Export</button>
     <button class="btn btn-nav" id="btnNext" onclick="nav(1)">Next &#9654;</button>
   </div>
 </div>
@@ -445,7 +451,8 @@ body{{font-family:"SF Mono","Cascadia Code","Consolas",monospace;
   <kbd>&#8594;</kbd> Next &nbsp;
   <kbd>A</kbd> Accept &nbsp;
   <kbd>R</kbd> Reject &nbsp;
-  <kbd>S</kbd> Skip
+  <kbd>S</kbd> Skip &nbsp;
+  <kbd>E</kbd> Export decisions
 </div>
 
 <script>
@@ -545,6 +552,18 @@ function renderEvent(idx){{
     series.createPriceLine({{price:r2,color:"#2e7d32",
       lineWidth:2,lineStyle:2,axisLabelVisible:true,
       title:"TP 2R "+fmtP(r2)}});
+  }}
+
+  // ── PDH / PDL ──
+  if(E.pdh!=null){{
+    series.createPriceLine({{price:E.pdh,color:"#6d4c41",
+      lineWidth:1,lineStyle:3,axisLabelVisible:true,
+      title:"PDH "+E.pdh.toFixed(2)}});
+  }}
+  if(E.pdl!=null){{
+    series.createPriceLine({{price:E.pdl,color:"#6d4c41",
+      lineWidth:1,lineStyle:3,axisLabelVisible:true,
+      title:"PDL "+E.pdl.toFixed(2)}});
   }}
 
   // ── Markers: Break, Confirm, Exit only ──
@@ -734,6 +753,10 @@ function renderSummary(E){{
     h+='<div class="srow"><span class="srow-label">ORB Low</span><span class="srow-value">'+fmtP(tp(E.orb_low_ticks))+'</span></div>';
   if(E.level_source)
     h+='<div class="srow"><span class="srow-label">Level</span><span class="srow-value">'+esc(E.level_source)+'</span></div>';
+  if(E.pdh!=null)
+    h+='<div class="srow"><span class="srow-label">PDH</span><span class="srow-value">'+E.pdh.toFixed(2)+'</span></div>';
+  if(E.pdl!=null)
+    h+='<div class="srow"><span class="srow-label">PDL</span><span class="srow-value">'+E.pdl.toFixed(2)+'</span></div>';
   h+='</div>';
 
   // Stages section
@@ -799,7 +822,34 @@ document.addEventListener("keydown",function(e){{
   else if(e.key==="a"||e.key==="A") decide("accept");
   else if(e.key==="r"||e.key==="R") decide("reject");
   else if(e.key==="s"||e.key==="S") decide("skip");
+  else if(e.key==="e"||e.key==="E") exportDecisions();
 }});
+
+// ── Export decisions ──
+window.exportDecisions=function(){{
+  var out=[];
+  for(var i=0;i<EVENTS.length;i++){{
+    var e=EVENTS[i];
+    var d=decisions[i]||"pending";
+    out.push({{
+      index:i,
+      event_id:e.event_id||null,
+      symbol:e.symbol||null,
+      session_date:e.session_date||null,
+      direction:e.direction||null,
+      detection_status:e.detection_status||null,
+      decision:d
+    }});
+  }}
+  var json=JSON.stringify(out,null,2);
+  var blob=new Blob([json],{{type:"application/json"}});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement("a");
+  a.href=url;
+  a.download="bdrr_decisions.json";
+  a.click();
+  URL.revokeObjectURL(url);
+}};
 
 function esc(v){{return v==null?"":String(v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}}
 
@@ -895,8 +945,18 @@ def generate_workspace_from_csv(
             })
 
     session_list = []
+    prev_date = None
     for date in sorted(sessions_map.keys()):
         candles = sessions_map[date]
+
+        # Compute PDH/PDL from previous session
+        pdh = None
+        pdl = None
+        if prev_date is not None and prev_date in sessions_map:
+            prev_candles = sessions_map[prev_date]
+            pdh = max(c["high"] for c in prev_candles)
+            pdl = min(c["low"] for c in prev_candles)
+
         session_list.append({
             "symbol": symbol,
             "date": date,
@@ -905,7 +965,10 @@ def generate_workspace_from_csv(
             "session_close_utc_ms": candles[-1]["time_ms"],
             "timeframe": "5m",
             "candles": candles,
+            "pdh": pdh,
+            "pdl": pdl,
         })
+        prev_date = date
 
     preset = {
         "preset_id": "review",

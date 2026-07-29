@@ -334,3 +334,50 @@ class TestBuildExplain:
     def test_empty_runner_result(self):
         expl = _build_explain({})
         assert "stages" in expl
+
+
+# ── Test: PDH/PDL support ──────────────────────────────────────────────────
+
+
+class TestPdhPdl:
+    def test_pdh_pdl_in_event(self):
+        sessions = _make_sessions([VALID_CANDLES])
+        sessions[0]["pdh"] = 105.0
+        sessions[0]["pdl"] = 95.0
+        events = build_workspace_events(sessions, PRESET, CONFIG)
+        assert events[0]["pdh"] == 105.0
+        assert events[0]["pdl"] == 95.0
+
+    def test_pdh_pdl_none_when_missing(self):
+        sessions = _make_sessions([VALID_CANDLES])
+        events = build_workspace_events(sessions, PRESET, CONFIG)
+        assert events[0]["pdh"] is None
+        assert events[0]["pdl"] is None
+
+    def test_pdh_pdl_in_html(self):
+        sessions = _make_sessions([VALID_CANDLES])
+        sessions[0]["pdh"] = 105.0
+        sessions[0]["pdl"] = 95.0
+        events = build_workspace_events(sessions, PRESET, CONFIG)
+        html = render_workspace_html(events)
+        assert "PDH" in html
+        assert "PDL" in html
+
+
+# ── Test: Decision export ──────────────────────────────────────────────────
+
+
+class TestDecisionExport:
+    def test_export_button_in_html(self):
+        events = build_workspace_events(
+            _make_sessions([VALID_CANDLES]), PRESET, CONFIG)
+        html = render_workspace_html(events)
+        assert "btnExport" in html
+        assert "exportDecisions" in html
+
+    def test_export_keyboard_shortcut(self):
+        events = build_workspace_events(
+            _make_sessions([VALID_CANDLES]), PRESET, CONFIG)
+        html = render_workspace_html(events)
+        # E key triggers export
+        assert '"e"' in html or '"E"' in html
