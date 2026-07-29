@@ -313,7 +313,7 @@ class TestIntegration:
 
     def test_qqq_row_count(self):
         rows = _run_qqq()
-        assert len(rows) == 4
+        assert len(rows) == 2  # sequence_validator invalidates 2 former false positives
 
     def test_all_columns_present(self):
         rows = _run_spy()

@@ -532,10 +532,10 @@ class TestQQQIntegration:
         rows = build_research_rows(
             results, source_dataset_id="qqq-test", code_commit_hash="def",
         )
-        assert len(rows) == 4
+        assert len(rows) == 2  # sequence_validator invalidates 2 former false positives
         dates = [r["session_date"] for r in rows]
         assert set(dates) == {
-            "2026-04-29", "2026-05-06", "2026-05-13", "2026-07-14",
+            "2026-05-06", "2026-05-13",
         }
 
 

@@ -506,9 +506,9 @@ class TestT16QQQBatch:
         valid = [r for r in results if r["detection_status"] == "VALID"]
         valid_dates = sorted(r["session_date"] for r in valid)
 
-        assert len(valid) == 4
+        assert len(valid) == 2  # sequence_validator invalidates 2 former false positives
         assert set(valid_dates) == {
-            "2026-04-29", "2026-05-06", "2026-05-13", "2026-07-14"
+            "2026-05-06", "2026-05-13",
         }
 
 

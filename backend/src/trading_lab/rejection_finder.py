@@ -323,6 +323,12 @@ def find_rejection(
         result = evaluate_geometry(cnd)
 
         if result["qualifies"]:
+            # Record wick depth: how far the wick penetrated the ORB boundary
+            if is_short:
+                wick_depth = max(0, price_to_ticks(cnd["high"], tick_size) - level_ticks)
+            else:
+                wick_depth = max(0, level_ticks - price_to_ticks(cnd["low"], tick_size))
+
             return {
                 "status": "OK",
                 "date": orb["date"],
@@ -331,6 +337,7 @@ def find_rejection(
                 "confirmation_candle": cnd,
                 "confirmation_timestamp": cnd["time_ms"],
                 "geometry": result["geometry"],
+                "wick_depth_ticks": wick_depth,
                 "failed_retests": failed_retests,
                 "failed_retest_count": len(failed_retests),
             }

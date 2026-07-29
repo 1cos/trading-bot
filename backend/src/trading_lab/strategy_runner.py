@@ -29,6 +29,7 @@ from trading_lab.displacement_finder import find_displacement
 from trading_lab.orb_builder import build_orb
 from trading_lab.rejection_finder import find_rejection
 from trading_lab.retest_window import find_retest_window
+from trading_lab.sequence_validator import validate_sequence
 from trading_lab.session_context import build_session_context
 from trading_lab.trade_outcome_evaluator import evaluate_trade_outcome
 from trading_lab.trade_plan_builder import build_trade_plan
@@ -203,6 +204,24 @@ def _process_one_session(session, preset, engine_config, tp_config, outcome_conf
     else:
         disp = {"status": "FAILED", "failed_stage": brk.get("failed_stage"), "reason": brk.get("reason")}
 
+    # Stage 3b — Sequence validation
+    seq_val = None
+    if disp.get("status") == "OK":
+        seq_val = validate_sequence(sc_candles, orb, brk, disp, engine_config)
+        if seq_val.get("status") == "INVALIDATED":
+            max_vi = seq_val["max_valid_index"]
+            first_retest = disp["first_retest_contact_index"]
+            if max_vi < first_retest:
+                # Invalidation occurs before any retest is possible
+                disp = {
+                    "status": "FAILED",
+                    "failed_stage": "SEQUENCE_INVALIDATED",
+                    "reason": seq_val["invalidation_reason"],
+                }
+            else:
+                # Cap the retest window via config passthrough
+                engine_config = {**engine_config, "_max_valid_index": max_vi}
+
     # Stage 4
     if disp.get("status") == "OK":
         retest = find_retest_window(sc_candles, orb, brk, disp, engine_config)
@@ -369,6 +388,7 @@ def run_bdrr_strategy(sessions, preset, config, *, id_factory=None):
         "min_displacement_ticks": preset.get("min_displacement_ticks"),
         "min_penetration_ticks": preset.get("min_penetration_ticks"),
         "min_close_beyond_level_ticks": preset.get("min_close_beyond_level_ticks"),
+        "consecutive_orb_closes": preset.get("consecutive_orb_closes", 2),
     }
 
     tp_config = {

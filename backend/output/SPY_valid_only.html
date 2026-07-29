@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SPY LONG — BDRR Review (3 events)</title>
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"SF Mono","Cascadia Code","Consolas",monospace;
+  background:#f8f9fa;color:#1a1a1a;padding:0}
+
+/* ── Top bar ── */
+.topbar{display:flex;align-items:center;justify-content:space-between;
+  padding:8px 16px;background:#fff;border-bottom:1px solid #d0d7de;
+  position:sticky;top:0;z-index:100}
+.topbar-left{display:flex;align-items:center;gap:12px}
+.topbar-title{font-size:14px;font-weight:600}
+.topbar-counter{font-size:12px;color:#656d76}
+.topbar-right{display:flex;gap:8px}
+
+/* ── Nav buttons ── */
+.btn{border:none;border-radius:4px;padding:6px 14px;font-size:12px;
+  font-weight:600;cursor:pointer;letter-spacing:0.02em;transition:all 0.15s}
+.btn-nav{background:#e8e8e8;color:#1a1a1a}
+.btn-nav:hover{background:#d0d0d0}
+.btn-nav:disabled{opacity:0.3;cursor:default}
+
+/* ── Decision buttons ── */
+.btn-accept{background:#dafbe1;color:#116329;border:1px solid #a7f3d0}
+.btn-accept:hover{background:#bbf7d0}
+.btn-reject{background:#ffebe9;color:#a40e26;border:1px solid #fecdd3}
+.btn-reject:hover{background:#fecdd3}
+.btn-skip{background:#fff8c5;color:#6a5d00;border:1px solid #fde68a}
+.btn-skip:hover{background:#fef3c7}
+
+/* ── Header ── */
+.event-header{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;
+  padding:12px 16px 4px;background:#fff}
+.event-header h1{font-size:18px;font-weight:700}
+.tag{display:inline-block;padding:2px 8px;border-radius:3px;
+  font-size:11px;font-weight:600;letter-spacing:0.04em}
+.tag-long{background:#dafbe1;color:#116329}
+.tag-short{background:#ffebe9;color:#a40e26}
+.tag-valid{background:#dbeafe;color:#1d4ed8}
+.tag-invalid{background:#fff8c5;color:#6a5d00}
+.tag-win{background:#dafbe1;color:#116329}
+.tag-loss{background:#ffebe9;color:#a40e26}
+.tag-open{background:#f0f0f0;color:#656d76}
+.pnl{font-size:16px;font-weight:700;margin-left:auto}
+.pnl-win{color:#116329}
+.pnl-loss{color:#a40e26}
+
+/* ── Main layout ── */
+.main{display:flex;gap:0;padding:0}
+.chart-col{flex:1;min-width:0}
+.explain-col{width:320px;min-width:280px;background:#fff;
+  border-left:1px solid #d0d7de;overflow-y:auto;max-height:calc(100vh - 100px)}
+
+/* ── Chart ── */
+.chart-wrap{position:relative;margin:8px 12px;
+  border:1px solid #d0d7de;border-radius:6px;overflow:hidden}
+#chart{width:100%;height:520px}
+.orb-zone-overlay{position:absolute;left:0;right:52px;
+  pointer-events:none;z-index:5}
+
+/* ── Explain panel ── */
+.explain-panel{padding:12px}
+.explain-panel h2{font-size:13px;font-weight:700;color:#1a1a1a;
+  margin-bottom:10px;letter-spacing:0.04em;text-transform:uppercase}
+.explain-stage{margin-bottom:10px;padding:8px 10px;
+  background:#f6f8fa;border-radius:4px;border-left:3px solid #d0d7de}
+.explain-stage.ok{border-left-color:#22c55e}
+.explain-stage.failed{border-left-color:#ef4444}
+.explain-stage-name{font-size:11px;font-weight:700;color:#656d76;
+  text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px}
+.explain-stage-detail{font-size:12px;color:#1a1a1a;line-height:1.5}
+.explain-section{margin-top:16px}
+.explain-section h3{font-size:11px;font-weight:700;color:#656d76;
+  text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px}
+.explain-row{display:flex;justify-content:space-between;
+  font-size:12px;padding:2px 0;border-bottom:1px solid #f0f0f0}
+.explain-row:last-child{border-bottom:none}
+.explain-label{color:#656d76}
+.explain-value{color:#1a1a1a;font-weight:500}
+.explain-value.win{color:#116329;font-weight:700}
+.explain-value.loss{color:#a40e26;font-weight:700}
+
+/* ── Failed retest detail ── */
+.failed-retest{font-size:11px;background:#fff;border:1px solid #e8e8e8;
+  border-radius:3px;padding:6px 8px;margin-top:4px}
+.failed-retest-title{font-weight:600;color:#a40e26;margin-bottom:2px}
+.failed-retest-geo{color:#656d76}
+.failed-retest-rules{color:#a40e26;font-weight:500;margin-top:2px}
+
+/* ── Summary below chart ── */
+.summary{padding:8px 12px;display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px}
+.summary-section{background:#fff;border:1px solid #d0d7de;
+  border-radius:4px;padding:8px 12px}
+.summary-section h3{font-size:11px;color:#1d4ed8;font-weight:600;
+  margin-bottom:4px;letter-spacing:0.06em;text-transform:uppercase}
+.srow{display:flex;justify-content:space-between;font-size:12px;
+  padding:1px 0;border-bottom:1px solid #f6f8fa}
+.srow:last-child{border-bottom:none}
+.srow-label{color:#656d76}
+.srow-value{color:#1a1a1a;font-weight:500}
+
+/* ── Progress bar ── */
+.progress{display:flex;gap:3px;align-items:center}
+.progress-dot{width:8px;height:8px;border-radius:50%;border:1px solid #d0d7de;
+  background:#fff;transition:background 0.2s}
+.progress-dot.current{border-color:#1d4ed8;background:#dbeafe}
+.progress-dot.accepted{background:#22c55e;border-color:#22c55e}
+.progress-dot.rejected{background:#ef4444;border-color:#ef4444}
+.progress-dot.skipped{background:#eab308;border-color:#eab308}
+
+/* ── Keyboard hints ── */
+.kbd-hints{font-size:10px;color:#8b949e;padding:4px 16px;
+  border-top:1px solid #d0d7de;background:#fff;text-align:center}
+.kbd{display:inline-block;padding:1px 4px;border:1px solid #d0d7de;
+  border-radius:2px;font-family:inherit;background:#f6f8fa;font-size:10px}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <span class="topbar-title" id="topTitle">BDRR Review</span>
+    <span class="topbar-counter" id="topCounter"></span>
+    <div class="progress" id="progressDots"></div>
+  </div>
+  <div class="topbar-right">
+    <button class="btn btn-nav" id="btnPrev" onclick="nav(-1)">&#9664; Prev</button>
+    <button class="btn btn-accept" id="btnAccept" onclick="decide('accept')">&#10003; Accept</button>
+    <button class="btn btn-reject" id="btnReject" onclick="decide('reject')">&#10007; Reject</button>
+    <button class="btn btn-skip" id="btnSkip" onclick="decide('skip')">&#9654; Skip</button>
+    <button class="btn btn-nav" id="btnExport" onclick="exportDecisions()" style="background:#dbeafe;color:#1d4ed8">&#8681; Export</button>
+    <button class="btn btn-nav" id="btnNext" onclick="nav(1)">Next &#9654;</button>
+  </div>
+</div>
+
+<div class="event-header" id="eventHeader"></div>
+
+<div class="main">
+  <div class="chart-col">
+    <div class="chart-wrap">
+      <div id="chart"></div>
+      <div class="orb-zone-overlay" id="orbZone"></div>
+    </div>
+    <div class="summary" id="summaryPanel"></div>
+  </div>
+  <div class="explain-col">
+    <div class="explain-panel" id="explainPanel"></div>
+  </div>
+</div>
+
+<div class="kbd-hints">
+  <kbd>&#8592;</kbd> Previous &nbsp;
+  <kbd>&#8594;</kbd> Next &nbsp;
+  <kbd>A</kbd> Accept &nbsp;
+  <kbd>R</kbd> Reject &nbsp;
+  <kbd>S</kbd> Skip &nbsp;
+  <kbd>E</kbd> Export decisions
+</div>
+
+<script>
+(function(){
+"use strict";
+
+var EVENTS=[{"annotations":{"break_candle_index":2,"break_candle_time_ms":1779802800000,"confirmation_candle_index":19,"confirmation_candle_time_ms":1779807900000,"displacement_end_index":3,"displacement_start_index":3,"entry_price_ticks":75089,"exit_candle_index":21,"exit_candle_time_ms":1779808500000,"exit_price_ticks":75036,"failed_rules":[],"failed_stage":null,"outcome":"STOPPED","r2_price_ticks":75195,"r3_price_ticks":75248,"r4_price_ticks":75301,"retest_end_index":19,"retest_start_index":4,"stop_price_ticks":75036},"candles":[{"close":749.4299926757812,"high":750.4400024414062,"index":0,"low":749.3599853515625,"open":750.010009765625,"time_ms":1779802200000,"volume":2038420},{"close":749.72998046875,"high":750.0,"index":1,"low":749.1309814453125,"open":749.4498901367188,"time_ms":1779802500000,"volume":659614},{"close":750.6300048828125,"high":750.7000122070312,"index":2,"low":749.6865844726562,"open":749.719970703125,"time_ms":1779802800000,"volume":522602},{"close":750.97998046875,"high":751.1199951171875,"index":3,"low":750.6400146484375,"open":750.6500244140625,"time_ms":1779803100000,"volume":600452},{"close":750.1400146484375,"high":751.0399780273438,"index":4,"low":749.5800170898438,"open":750.97998046875,"time_ms":1779803400000,"volume":644375},{"close":750.780029296875,"high":750.780029296875,"index":5,"low":750.0900268554688,"open":750.155029296875,"time_ms":1779803700000,"volume":271151},{"close":751.110107421875,"high":751.1599731445312,"index":6,"low":750.5399780273438,"open":750.77001953125,"time_ms":1779804000000,"volume":329300},{"close":751.3150024414062,"high":751.4199829101562,"index":7,"low":751.0808715820312,"open":751.1400146484375,"time_ms":1779804300000,"volume":639552},{"close":751.4400024414062,"high":751.4500122070312,"index":8,"low":751.0650024414062,"open":751.3150024414062,"time_ms":1779804600000,"volume":271752},{"close":751.594970703125,"high":751.6400146484375,"index":9,"low":751.1900024414062,"open":751.4400024414062,"time_ms":1779804900000,"volume":279643},{"close":751.5299072265625,"high":751.7999877929688,"index":10,"low":751.4600219726562,"open":751.5900268554688,"time_ms":1779805200000,"volume":349172},{"close":751.5399780273438,"high":751.8690795898438,"index":11,"low":751.3099975585938,"open":751.530029296875,"time_ms":1779805500000,"volume":504776},{"close":751.3900146484375,"high":751.77001953125,"index":12,"low":751.3499755859375,"open":751.5449829101562,"time_ms":1779805800000,"volume":309163},{"close":751.7150268554688,"high":752.1099853515625,"index":13,"low":751.3699951171875,"open":751.3800048828125,"time_ms":1779806100000,"volume":579760},{"close":752.0399169921875,"high":752.1300048828125,"index":14,"low":751.719970703125,"open":751.719970703125,"time_ms":1779806400000,"volume":223358},{"close":751.72900390625,"high":752.0650024414062,"index":15,"low":751.7050170898438,"open":752.030029296875,"time_ms":1779806700000,"volume":377111},{"close":751.530029296875,"high":752.02001953125,"index":16,"low":751.4400024414062,"open":751.72998046875,"time_ms":1779807000000,"volume":213976},{"close":751.4000244140625,"high":751.5800170898438,"index":17,"low":751.0,"open":751.530029296875,"time_ms":1779807300000,"volume":281837},{"close":750.7600708007812,"high":751.469970703125,"index":18,"low":750.6500244140625,"open":751.3900146484375,"time_ms":1779807600000,"volume":478877},{"close":750.8901977539062,"high":750.969970703125,"index":19,"low":750.364990234375,"open":750.77001953125,"time_ms":1779807900000,"volume":452857},{"close":750.5900268554688,"high":750.9699096679688,"index":20,"low":750.469970703125,"open":750.8900146484375,"time_ms":1779808200000,"volume":527854},{"close":750.39990234375,"high":750.630126953125,"index":21,"low":750.0599975585938,"open":750.5900268554688,"time_ms":1779808500000,"volume":444268},{"close":750.1500244140625,"high":750.4600219726562,"index":22,"low":749.97998046875,"open":750.4000244140625,"time_ms":1779808800000,"volume":471023},{"close":749.8499755859375,"high":750.4299926757812,"index":23,"low":749.72998046875,"open":750.1500244140625,"time_ms":1779809100000,"volume":410974},{"close":749.8400268554688,"high":750.0,"index":24,"low":749.5499877929688,"open":749.8499755859375,"time_ms":1779809400000,"volume":476746},{"close":749.8300170898438,"high":749.97998046875,"index":25,"low":749.1699829101562,"open":749.8300170898438,"time_ms":1779809700000,"volume":603177},{"close":749.375,"high":749.8800048828125,"index":26,"low":749.260009765625,"open":749.8300170898438,"time_ms":1779810000000,"volume":433004},{"close":749.0999145507812,"high":749.4318237304688,"index":27,"low":748.967529296875,"open":749.375,"time_ms":1779810300000,"volume":668039},{"close":748.5499877929688,"high":749.2100219726562,"index":28,"low":748.4019775390625,"open":749.0800170898438,"time_ms":1779810600000,"volume":654016},{"close":748.9299926757812,"high":749.0,"index":29,"low":748.3699951171875,"open":748.5399780273438,"time_ms":1779810900000,"volume":481451},{"close":749.2449951171875,"high":749.4199829101562,"index":30,"low":748.9299926757812,"open":748.9299926757812,"time_ms":1779811200000,"volume":422161},{"close":748.8800048828125,"high":749.4000244140625,"index":31,"low":748.7999877929688,"open":749.239990234375,"time_ms":1779811500000,"volume":419521},{"close":748.9000244140625,"high":749.1500244140625,"index":32,"low":748.619384765625,"open":748.8599853515625,"time_ms":1779811800000,"volume":335572},{"close":749.3200073242188,"high":749.3499755859375,"index":33,"low":748.7999877929688,"open":748.8800048828125,"time_ms":1779812100000,"volume":242564},{"close":749.4299926757812,"high":749.47998046875,"index":34,"low":749.1500244140625,"open":749.3200073242188,"time_ms":1779812400000,"volume":215922},{"close":749.739990234375,"high":749.77001953125,"index":35,"low":749.3699951171875,"open":749.4199829101562,"time_ms":1779812700000,"volume":413548},{"close":749.97998046875,"high":750.0,"index":36,"low":749.6950073242188,"open":749.739990234375,"time_ms":1779813000000,"volume":428264},{"close":749.7100219726562,"high":750.030029296875,"index":37,"low":749.7000122070312,"open":749.97998046875,"time_ms":1779813300000,"volume":285757},{"close":749.2401123046875,"high":749.7000122070312,"index":38,"low":749.2000122070312,"open":749.7000122070312,"time_ms":1779813600000,"volume":239152},{"close":748.8699951171875,"high":749.4400024414062,"index":39,"low":748.8699951171875,"open":749.22998046875,"time_ms":1779813900000,"volume":455442},{"close":749.219970703125,"high":749.25,"index":40,"low":748.8699951171875,"open":748.8800048828125,"time_ms":1779814200000,"volume":373918},{"close":749.010009765625,"high":749.2899780273438,"index":41,"low":748.9600219726562,"open":749.2249755859375,"time_ms":1779814500000,"volume":188457},{"close":749.1033935546875,"high":749.4349975585938,"index":42,"low":748.9119873046875,"open":749.010009765625,"time_ms":1779814800000,"volume":262764},{"close":749.1199951171875,"high":749.2899780273438,"index":43,"low":749.0,"open":749.1099853515625,"time_ms":1779815100000,"volume":292905},{"close":749.2800903320312,"high":749.3900146484375,"index":44,"low":749.010009765625,"open":749.1199951171875,"time_ms":1779815400000,"volume":204305},{"close":748.8099975585938,"high":749.3099975585938,"index":45,"low":748.75,"open":749.280029296875,"time_ms":1779815700000,"volume":248504},{"close":748.7301025390625,"high":749.030029296875,"index":46,"low":748.6300048828125,"open":748.7999877929688,"time_ms":1779816000000,"volume":198432},{"close":748.6500244140625,"high":748.8300170898438,"index":47,"low":748.52001953125,"open":748.72998046875,"time_ms":1779816300000,"volume":186925},{"close":749.0700073242188,"high":749.0800170898438,"index":48,"low":748.5,"open":748.6500244140625,"time_ms":1779816600000,"volume":202697},{"close":748.8402709960938,"high":749.1500244140625,"index":49,"low":748.8300170898438,"open":749.0599975585938,"time_ms":1779816900000,"volume":230417},{"close":748.8400268554688,"high":748.969970703125,"index":50,"low":748.614990234375,"open":748.8400268554688,"time_ms":1779817200000,"volume":287633},{"close":749.2050170898438,"high":749.260009765625,"index":51,"low":748.8400268554688,"open":748.8400268554688,"time_ms":1779817500000,"volume":188476},{"close":749.0599975585938,"high":749.3200073242188,"index":52,"low":749.0599975585938,"open":749.2100219726562,"time_ms":1779817800000,"volume":339621},{"close":749.030029296875,"high":749.1199951171875,"index":53,"low":748.7800903320312,"open":749.0499877929688,"time_ms":1779818100000,"volume":207656},{"close":749.1849975585938,"high":749.22998046875,"index":54,"low":748.7999877929688,"open":749.030029296875,"time_ms":1779818400000,"volume":742668},{"close":749.4000244140625,"high":749.4000244140625,"index":55,"low":749.1300048828125,"open":749.1849975585938,"time_ms":1779818700000,"volume":327290},{"close":749.64501953125,"high":749.7000122070312,"index":56,"low":749.3900146484375,"open":749.405029296875,"time_ms":1779819000000,"volume":416084},{"close":749.9199829101562,"high":749.9199829101562,"index":57,"low":749.6400146484375,"open":749.64501953125,"time_ms":1779819300000,"volume":293388},{"close":749.8800048828125,"high":750.0,"index":58,"low":749.72998046875,"open":749.9299926757812,"time_ms":1779819600000,"volume":274191},{"close":749.655029296875,"high":749.9650268554688,"index":59,"low":749.6074829101562,"open":749.8800048828125,"time_ms":1779819900000,"volume":228847},{"close":749.9509887695312,"high":750.0,"index":60,"low":749.6400146484375,"open":749.6400146484375,"time_ms":1779820200000,"volume":225381},{"close":749.7000122070312,"high":749.9650268554688,"index":61,"low":749.6400146484375,"open":749.9550170898438,"time_ms":1779820500000,"volume":380067},{"close":749.405029296875,"high":749.719970703125,"index":62,"low":749.4000244140625,"open":749.7050170898438,"time_ms":1779820800000,"volume":337722},{"close":749.3150024414062,"high":749.5399780273438,"index":63,"low":749.27001953125,"open":749.405029296875,"time_ms":1779821100000,"volume":230629},{"close":749.385009765625,"high":749.5900268554688,"index":64,"low":749.1799926757812,"open":749.3099975585938,"time_ms":1779821400000,"volume":692726},{"close":749.0999755859375,"high":749.469970703125,"index":65,"low":749.0355834960938,"open":749.385009765625,"time_ms":1779821700000,"volume":532063},{"close":749.2000122070312,"high":749.27001953125,"index":66,"low":748.8499755859375,"open":749.0900268554688,"time_ms":1779822000000,"volume":403378},{"close":749.405029296875,"high":749.4400024414062,"index":67,"low":749.0599975585938,"open":749.2000122070312,"time_ms":1779822300000,"volume":256036},{"close":749.1950073242188,"high":749.4500122070312,"index":68,"low":749.1508178710938,"open":749.4000244140625,"time_ms":1779822600000,"volume":503429},{"close":749.4299926757812,"high":749.530029296875,"index":69,"low":749.1900024414062,"open":749.1900024414062,"time_ms":1779822900000,"volume":400558},{"close":749.5,"high":749.5700073242188,"index":70,"low":749.3400268554688,"open":749.4249877929688,"time_ms":1779823200000,"volume":395585},{"close":749.510009765625,"high":749.5800170898438,"index":71,"low":749.3900146484375,"open":749.489990234375,"time_ms":1779823500000,"volume":392851},{"close":749.9400024414062,"high":749.9600219726562,"index":72,"low":749.4949951171875,"open":749.5,"time_ms":1779823800000,"volume":530593},{"close":750.2100219726562,"high":750.22998046875,"index":73,"low":749.8800048828125,"open":749.9500122070312,"time_ms":1779824100000,"volume":731766},{"close":750.510009765625,"high":750.5399780273438,"index":74,"low":750.1599731445312,"open":750.2100219726562,"time_ms":1779824400000,"volume":463385},{"close":750.5900268554688,"high":750.7100219726562,"index":75,"low":750.3499755859375,"open":750.5,"time_ms":1779824700000,"volume":836282},{"close":750.6799926757812,"high":750.8699951171875,"index":76,"low":750.4100952148438,"open":750.5999755859375,"time_ms":1779825000000,"volume":1383766},{"close":750.469970703125,"high":750.719970703125,"index":77,"low":750.0399780273438,"open":750.6799926757812,"time_ms":1779825300000,"volume":2924838}],"detection_status":"VALID","direction":"LONG","event_id":"e85ea5f8-325c-4a8c-9c50-a11837f6dae7","explain":{"direction":"LONG","failed_retests":[],"level_source":"ORB_HIGH","outcome":{"realized_r":"-1","result":"STOPPED"},"stages":[{"detail":"ORB High=\u2014 Low=\u2014. Selected level: ORB_HIGH = \u2014","name":"ORB","status":"OK"},{"detail":"Close=\u2014 broke above level. Bar index: None","name":"Break","status":"OK"},{"detail":"1 bar(s) stayed beyond level. Max distance: \u2014 points.","name":"Displacement","status":"OK"},{"detail":"Window: 16 bar(s). Level contacts: 0.","name":"Retest Window","status":"OK"},{"detail":"Rejection wick: 67.2% (min 47%). Body: 19.7% (max 40%). Close location: 86.9% (min 80%).","name":"Confirmation","status":"OK"}],"trade_plan":{"entry":"\u2014","risk":"\u2014","stop":"\u2014","target_2r":"\u2014"}},"failed_rules":[],"failed_stage":null,"level_price_ticks":75044,"level_source":"ORB_HIGH","orb_high_ticks":75044,"orb_low_ticks":74936,"pdh":748.9400024414062,"pdl":744.47998046875,"session_date":"2026-05-26","symbol":"SPY"},{"annotations":{"break_candle_index":17,"break_candle_time_ms":1780930500000,"confirmation_candle_index":22,"confirmation_candle_time_ms":1780932000000,"displacement_end_index":20,"displacement_start_index":18,"entry_price_ticks":74493,"exit_candle_index":23,"exit_candle_time_ms":1780932300000,"exit_price_ticks":74414,"failed_rules":[],"failed_stage":null,"outcome":"STOPPED","r2_price_ticks":74651,"r3_price_ticks":74730,"r4_price_ticks":74809,"retest_end_index":22,"retest_start_index":21,"stop_price_ticks":74414},"candles":[{"close":742.1849975585938,"high":744.510009765625,"index":0,"low":742.1500244140625,"open":743.3599853515625,"time_ms":1780925400000,"volume":4049422},{"close":741.594970703125,"high":742.6599731445312,"index":1,"low":741.5800170898438,"open":742.1900024414062,"time_ms":1780925700000,"volume":1106579},{"close":742.719970703125,"high":743.0999755859375,"index":2,"low":741.47998046875,"open":741.594970703125,"time_ms":1780926000000,"volume":815319},{"close":742.5800170898438,"high":743.52001953125,"index":3,"low":742.0999755859375,"open":742.72998046875,"time_ms":1780926300000,"volume":836773},{"close":743.2000122070312,"high":743.7249755859375,"index":4,"low":741.9099731445312,"open":742.5599975585938,"time_ms":1780926600000,"volume":482738},{"close":740.8499755859375,"high":743.3300170898438,"index":5,"low":740.7999877929688,"open":743.2150268554688,"time_ms":1780926900000,"volume":768315},{"close":741.1799926757812,"high":742.330078125,"index":6,"low":740.5999755859375,"open":740.7999877929688,"time_ms":1780927200000,"volume":767557},{"close":742.3200073242188,"high":742.52001953125,"index":7,"low":741.0599975585938,"open":741.1699829101562,"time_ms":1780927500000,"volume":468580},{"close":741.639892578125,"high":742.4600219726562,"index":8,"low":741.4199829101562,"open":742.3200073242188,"time_ms":1780927800000,"volume":470734},{"close":741.5499877929688,"high":741.7999877929688,"index":9,"low":740.8499755859375,"open":741.625,"time_ms":1780928100000,"volume":425735},{"close":742.1400756835938,"high":742.3662109375,"index":10,"low":741.1751098632812,"open":741.47998046875,"time_ms":1780928400000,"volume":428768},{"close":742.47998046875,"high":743.02001953125,"index":11,"low":741.9500122070312,"open":742.1599731445312,"time_ms":1780928700000,"volume":547239},{"close":742.8699951171875,"high":742.97998046875,"index":12,"low":742.2999877929688,"open":742.4400024414062,"time_ms":1780929000000,"volume":445348},{"close":743.27001953125,"high":743.6699829101562,"index":13,"low":742.719970703125,"open":742.9000244140625,"time_ms":1780929300000,"volume":657893},{"close":742.5700073242188,"high":743.5,"index":14,"low":741.969970703125,"open":743.260009765625,"time_ms":1780929600000,"volume":774081},{"close":743.5401000976562,"high":744.3499755859375,"index":15,"low":742.5800170898438,"open":742.5800170898438,"time_ms":1780929900000,"volume":616876},{"close":744.1099853515625,"high":744.344970703125,"index":16,"low":743.2999877929688,"open":743.5800170898438,"time_ms":1780930200000,"volume":426502},{"close":744.9949951171875,"high":745.02001953125,"index":17,"low":743.6500244140625,"open":744.1300048828125,"time_ms":1780930500000,"volume":454713},{"close":744.6400146484375,"high":745.27001953125,"index":18,"low":744.6199951171875,"open":744.97998046875,"time_ms":1780930800000,"volume":482631},{"close":745.1199951171875,"high":745.3400268554688,"index":19,"low":744.5700073242188,"open":744.6300048828125,"time_ms":1780931100000,"volume":351220},{"close":744.719970703125,"high":745.2000122070312,"index":20,"low":744.6799926757812,"open":745.1199951171875,"time_ms":1780931400000,"volume":268198},{"close":744.843994140625,"high":745.1599731445312,"index":21,"low":744.3900146484375,"open":744.7700805664062,"time_ms":1780931700000,"volume":386838},{"close":744.9299926757812,"high":745.0800170898438,"index":22,"low":744.1400146484375,"open":744.8400268554688,"time_ms":1780932000000,"volume":385975},{"close":743.22998046875,"high":744.9299926757812,"index":23,"low":743.1099853515625,"open":744.9299926757812,"time_ms":1780932300000,"volume":429724},{"close":742.1599731445312,"high":743.3800048828125,"index":24,"low":741.8699951171875,"open":743.25,"time_ms":1780932600000,"volume":550471},{"close":743.5,"high":743.6300048828125,"index":25,"low":741.9099731445312,"open":742.1599731445312,"time_ms":1780932900000,"volume":454643},{"close":743.6900024414062,"high":743.9000244140625,"index":26,"low":743.1599731445312,"open":743.4749755859375,"time_ms":1780933200000,"volume":349964},{"close":743.364990234375,"high":744.3499755859375,"index":27,"low":743.280029296875,"open":743.7100219726562,"time_ms":1780933500000,"volume":456447},{"close":743.530029296875,"high":744.16357421875,"index":28,"low":743.3400268554688,"open":743.3400268554688,"time_ms":1780933800000,"volume":247455},{"close":742.7650146484375,"high":743.52001953125,"index":29,"low":742.489990234375,"open":743.5,"time_ms":1780934100000,"volume":421507},{"close":742.85302734375,"high":743.260009765625,"index":30,"low":742.1599731445312,"open":742.75,"time_ms":1780934400000,"volume":481256},{"close":742.6300048828125,"high":743.22998046875,"index":31,"low":742.489990234375,"open":742.8800048828125,"time_ms":1780934700000,"volume":279306},{"close":743.0700073242188,"high":743.25,"index":32,"low":742.3499755859375,"open":742.6699829101562,"time_ms":1780935000000,"volume":236361},{"close":743.7000122070312,"high":743.72998046875,"index":33,"low":743.02001953125,"open":743.094970703125,"time_ms":1780935300000,"volume":262419},{"close":742.989990234375,"high":743.969970703125,"index":34,"low":742.8599853515625,"open":743.6900024414062,"time_ms":1780935600000,"volume":331067},{"close":742.1400146484375,"high":743.4600219726562,"index":35,"low":742.114990234375,"open":743.030029296875,"time_ms":1780935900000,"volume":227650},{"close":741.9600219726562,"high":742.6199951171875,"index":36,"low":741.9000244140625,"open":742.1599731445312,"time_ms":1780936200000,"volume":248619},{"close":741.7899780273438,"high":742.4398803710938,"index":37,"low":741.510009765625,"open":741.9600219726562,"time_ms":1780936500000,"volume":354799},{"close":742.1300048828125,"high":742.3400268554688,"index":38,"low":741.614990234375,"open":741.780029296875,"time_ms":1780936800000,"volume":257751},{"close":742.489990234375,"high":742.969970703125,"index":39,"low":742.010009765625,"open":742.1599731445312,"time_ms":1780937100000,"volume":235060},{"close":742.4299926757812,"high":742.7000122070312,"index":40,"low":742.219970703125,"open":742.489990234375,"time_ms":1780937400000,"volume":230780},{"close":741.9099731445312,"high":742.47998046875,"index":41,"low":741.8900146484375,"open":742.4299926757812,"time_ms":1780937700000,"volume":423752},{"close":740.760009765625,"high":741.9749755859375,"index":42,"low":740.3400268554688,"open":741.9199829101562,"time_ms":1780938000000,"volume":670057},{"close":740.844970703125,"high":741.510009765625,"index":43,"low":740.614990234375,"open":740.760009765625,"time_ms":1780938300000,"volume":352306},{"close":740.9400024414062,"high":740.989990234375,"index":44,"low":740.1099853515625,"open":740.8400268554688,"time_ms":1780938600000,"volume":995671},{"close":740.3800048828125,"high":741.1300048828125,"index":45,"low":740.0800170898438,"open":740.9500122070312,"time_ms":1780938900000,"volume":379702},{"close":740.489990234375,"high":740.8699951171875,"index":46,"low":740.1400146484375,"open":740.39501953125,"time_ms":1780939200000,"volume":261333},{"close":742.030029296875,"high":742.0599975585938,"index":47,"low":740.3699951171875,"open":740.47998046875,"time_ms":1780939500000,"volume":533682},{"close":741.6199951171875,"high":742.3900146484375,"index":48,"low":741.030029296875,"open":742.010009765625,"time_ms":1780939800000,"volume":610127},{"close":741.1799926757812,"high":741.72998046875,"index":49,"low":740.5701293945312,"open":741.5999755859375,"time_ms":1780940100000,"volume":316054},{"close":740.4299926757812,"high":741.3300170898438,"index":50,"low":740.4000244140625,"open":741.2000122070312,"time_ms":1780940400000,"volume":263609},{"close":741.4000244140625,"high":741.4000244140625,"index":51,"low":740.4000244140625,"open":740.4249877929688,"time_ms":1780940700000,"volume":280600},{"close":741.52001953125,"high":741.7449951171875,"index":52,"low":741.010009765625,"open":741.375,"time_ms":1780941000000,"volume":235342},{"close":741.1300048828125,"high":741.5800170898438,"index":53,"low":740.8900146484375,"open":741.5050048828125,"time_ms":1780941300000,"volume":226970},{"close":741.6199951171875,"high":741.9299926757812,"index":54,"low":741.1199951171875,"open":741.1300048828125,"time_ms":1780941600000,"volume":437121},{"close":741.9099731445312,"high":742.2999877929688,"index":55,"low":741.5700073242188,"open":741.6199951171875,"time_ms":1780941900000,"volume":542187},{"close":741.280029296875,"high":742.0900268554688,"index":56,"low":741.0599975585938,"open":741.9299926757812,"time_ms":1780942200000,"volume":351607},{"close":741.6199951171875,"high":741.8099975585938,"index":57,"low":741.25,"open":741.2999877929688,"time_ms":1780942500000,"volume":503668},{"close":741.7899780273438,"high":741.9099731445312,"index":58,"low":741.2899780273438,"open":741.614990234375,"time_ms":1780942800000,"volume":296798},{"close":741.9600219726562,"high":742.0999755859375,"index":59,"low":741.5900268554688,"open":741.780029296875,"time_ms":1780943100000,"volume":233700},{"close":741.8200073242188,"high":742.4500122070312,"index":60,"low":741.77001953125,"open":741.969970703125,"time_ms":1780943400000,"volume":329028},{"close":740.989990234375,"high":742.0999755859375,"index":61,"low":740.8800048828125,"open":741.7999877929688,"time_ms":1780943700000,"volume":680153},{"close":740.8900146484375,"high":741.3499755859375,"index":62,"low":740.75,"open":740.989990234375,"time_ms":1780944000000,"volume":330517},{"close":740.989990234375,"high":741.5599975585938,"index":63,"low":740.9000244140625,"open":740.9000244140625,"time_ms":1780944300000,"volume":271061},{"close":741.260009765625,"high":741.3699951171875,"index":64,"low":740.9099731445312,"open":741.010009765625,"time_ms":1780944600000,"volume":256369},{"close":740.969970703125,"high":741.530029296875,"index":65,"low":740.8699951171875,"open":741.2650146484375,"time_ms":1780944900000,"volume":230249},{"close":740.969970703125,"high":741.1599731445312,"index":66,"low":740.5,"open":740.969970703125,"time_ms":1780945200000,"volume":369023},{"close":740.1799926757812,"high":741.1500244140625,"index":67,"low":740.1799926757812,"open":740.969970703125,"time_ms":1780945500000,"volume":415126},{"close":739.2600708007812,"high":740.2000122070312,"index":68,"low":739.260009765625,"open":740.1749877929688,"time_ms":1780945800000,"volume":1084506},{"close":739.25,"high":739.6199951171875,"index":69,"low":738.9600219726562,"open":739.27001953125,"time_ms":1780946100000,"volume":478017},{"close":738.5399780273438,"high":739.6900024414062,"index":70,"low":738.4099731445312,"open":739.25,"time_ms":1780946400000,"volume":492584},{"close":739.2000122070312,"high":739.22998046875,"index":71,"low":738.1900024414062,"open":738.5399780273438,"time_ms":1780946700000,"volume":610606},{"close":739.469970703125,"high":740.1799926757812,"index":72,"low":739.1199951171875,"open":739.2100219726562,"time_ms":1780947000000,"volume":545436},{"close":739.4099731445312,"high":739.9000244140625,"index":73,"low":739.0700073242188,"open":739.489990234375,"time_ms":1780947300000,"volume":459332},{"close":739.3499755859375,"high":739.72998046875,"index":74,"low":738.9199829101562,"open":739.385009765625,"time_ms":1780947600000,"volume":447047},{"close":739.2999877929688,"high":739.9000244140625,"index":75,"low":739.1300048828125,"open":739.3400268554688,"time_ms":1780947900000,"volume":691753},{"close":739.2000122070312,"high":739.969970703125,"index":76,"low":738.77001953125,"open":739.3400268554688,"time_ms":1780948200000,"volume":1239361},{"close":739.3099975585938,"high":739.530029296875,"index":77,"low":738.905029296875,"open":739.2100219726562,"time_ms":1780948500000,"volume":2498509}],"detection_status":"VALID","direction":"LONG","event_id":"96ceaada-3d86-479d-9ecf-4d5da403d041","explain":{"direction":"LONG","failed_retests":[],"level_source":"ORB_HIGH","outcome":{"realized_r":"-1","result":"STOPPED"},"stages":[{"detail":"ORB High=\u2014 Low=\u2014. Selected level: ORB_HIGH = \u2014","name":"ORB","status":"OK"},{"detail":"Close=\u2014 broke above level. Bar index: None","name":"Break","status":"OK"},{"detail":"3 bar(s) stayed beyond level. Max distance: \u2014 points.","name":"Displacement","status":"OK"},{"detail":"Window: 2 bar(s). Level contacts: 0.","name":"Retest Window","status":"OK"},{"detail":"Rejection wick: 74.5% (min 47%). Body: 9.6% (max 40%). Close location: 84.0% (min 80%).","name":"Confirmation","status":"OK"}],"trade_plan":{"entry":"\u2014","risk":"\u2014","stop":"\u2014","target_2r":"\u2014"}},"failed_rules":[],"failed_stage":null,"level_price_ticks":74451,"level_source":"ORB_HIGH","orb_high_ticks":74451,"orb_low_ticks":74215,"pdh":752.8200073242188,"pdl":735.5250244140625,"session_date":"2026-06-08","symbol":"SPY"},{"annotations":{"break_candle_index":10,"break_candle_time_ms":1783347600000,"confirmation_candle_index":14,"confirmation_candle_time_ms":1783348800000,"displacement_end_index":12,"displacement_start_index":11,"entry_price_ticks":74967,"exit_candle_index":23,"exit_candle_time_ms":1783351500000,"exit_price_ticks":75081,"failed_rules":[],"failed_stage":null,"outcome":"TARGET_HIT","r2_price_ticks":75081,"r3_price_ticks":75138,"r4_price_ticks":75195,"retest_end_index":14,"retest_start_index":13,"stop_price_ticks":74910},"candles":[{"close":749.1599731445312,"high":749.4849853515625,"index":0,"low":748.1199951171875,"open":748.739990234375,"time_ms":1783344600000,"volume":1901032},{"close":748.2916870117188,"high":749.1599731445312,"index":1,"low":747.4099731445312,"open":749.1599731445312,"time_ms":1783344900000,"volume":667148},{"close":748.6400146484375,"high":748.6599731445312,"index":2,"low":747.719970703125,"open":748.3099975585938,"time_ms":1783345200000,"volume":683589},{"close":748.9400024414062,"high":749.0999755859375,"index":3,"low":748.2999877929688,"open":748.6199951171875,"time_ms":1783345500000,"volume":796538},{"close":748.875,"high":749.5399780273438,"index":4,"low":748.25,"open":748.9500122070312,"time_ms":1783345800000,"volume":807576},{"close":748.5,"high":748.9650268554688,"index":5,"low":748.3099975585938,"open":748.8699951171875,"time_ms":1783346100000,"volume":440195},{"close":748.3800048828125,"high":749.010009765625,"index":6,"low":747.969970703125,"open":748.5399780273438,"time_ms":1783346400000,"volume":369303},{"close":748.8099975585938,"high":749.0499877929688,"index":7,"low":748.0499877929688,"open":748.3400268554688,"time_ms":1783346700000,"volume":335369},{"close":749.4000244140625,"high":749.4500122070312,"index":8,"low":748.5999755859375,"open":748.8090209960938,"time_ms":1783347000000,"volume":432665},{"close":749.1799926757812,"high":749.47998046875,"index":9,"low":748.9600219726562,"open":749.4000244140625,"time_ms":1783347300000,"volume":1553172},{"close":749.6500244140625,"high":749.8400268554688,"index":10,"low":749.0399780273438,"open":749.1900024414062,"time_ms":1783347600000,"volume":813372},{"close":749.9400024414062,"high":749.97998046875,"index":11,"low":749.5599975585938,"open":749.6699829101562,"time_ms":1783347900000,"volume":702714},{"close":749.7000122070312,"high":750.1699829101562,"index":12,"low":749.6199951171875,"open":749.9299926757812,"time_ms":1783348200000,"volume":539237},{"close":749.6668090820312,"high":749.8599853515625,"index":13,"low":749.4400024414062,"open":749.7000122070312,"time_ms":1783348500000,"volume":459219},{"close":749.6699829101562,"high":749.7550048828125,"index":14,"low":749.0999755859375,"open":749.6500244140625,"time_ms":1783348800000,"volume":356776},{"close":749.75,"high":749.8699951171875,"index":15,"low":749.5,"open":749.6500244140625,"time_ms":1783349100000,"volume":259281},{"close":749.8900146484375,"high":750.0399780273438,"index":16,"low":749.5999755859375,"open":749.75,"time_ms":1783349400000,"volume":439754},{"close":750.2750244140625,"high":750.2750244140625,"index":17,"low":749.7000122070312,"open":749.8599853515625,"time_ms":1783349700000,"volume":387027},{"close":750.1799926757812,"high":750.4199829101562,"index":18,"low":749.9500122070312,"open":750.280029296875,"time_ms":1783350000000,"volume":407756},{"close":750.25,"high":750.2999877929688,"index":19,"low":749.9949951171875,"open":750.1749877929688,"time_ms":1783350300000,"volume":308518},{"close":750.1099853515625,"high":750.4000244140625,"index":20,"low":749.8200073242188,"open":750.260009765625,"time_ms":1783350600000,"volume":427011},{"close":749.989990234375,"high":750.094970703125,"index":21,"low":749.6099853515625,"open":750.094970703125,"time_ms":1783350900000,"volume":275695},{"close":750.369873046875,"high":750.3699951171875,"index":22,"low":749.760009765625,"open":749.989990234375,"time_ms":1783351200000,"volume":369123},{"close":750.760009765625,"high":750.8099975585938,"index":23,"low":750.219970703125,"open":750.3300170898438,"time_ms":1783351500000,"volume":777787},{"close":750.6199951171875,"high":750.9600219726562,"index":24,"low":750.5900268554688,"open":750.780029296875,"time_ms":1783351800000,"volume":388160},{"close":750.6300048828125,"high":750.7050170898438,"index":25,"low":750.3499755859375,"open":750.6199951171875,"time_ms":1783352100000,"volume":324331},{"close":750.8099975585938,"high":750.8499755859375,"index":26,"low":750.5599975585938,"open":750.6300048828125,"time_ms":1783352400000,"volume":309989},{"close":750.8699951171875,"high":750.9299926757812,"index":27,"low":750.6508178710938,"open":750.8099975585938,"time_ms":1783352700000,"volume":318060},{"close":750.6300048828125,"high":750.969970703125,"index":28,"low":750.6099853515625,"open":750.8800048828125,"time_ms":1783353000000,"volume":351942},{"close":750.8400268554688,"high":750.9500122070312,"index":29,"low":750.6199951171875,"open":750.6400146484375,"time_ms":1783353300000,"volume":307064},{"close":750.7999877929688,"high":750.8699951171875,"index":30,"low":750.6599731445312,"open":750.8300170898438,"time_ms":1783353600000,"volume":196362},{"close":750.9400024414062,"high":751.030029296875,"index":31,"low":750.72998046875,"open":750.8049926757812,"time_ms":1783353900000,"volume":335347},{"close":750.989990234375,"high":751.1099853515625,"index":32,"low":750.8800048828125,"open":750.9249877929688,"time_ms":1783354200000,"volume":410148},{"close":750.989990234375,"high":751.0700073242188,"index":33,"low":750.8499755859375,"open":750.97998046875,"time_ms":1783354500000,"volume":337273},{"close":750.9000244140625,"high":751.1199951171875,"index":34,"low":750.8200073242188,"open":750.989990234375,"time_ms":1783354800000,"volume":285370},{"close":750.6500244140625,"high":750.9199829101562,"index":35,"low":750.5499877929688,"open":750.8699951171875,"time_ms":1783355100000,"volume":293745},{"close":750.6300048828125,"high":750.77001953125,"index":36,"low":750.469970703125,"open":750.6500244140625,"time_ms":1783355400000,"volume":394515},{"close":750.5999755859375,"high":750.6599731445312,"index":37,"low":750.3900146484375,"open":750.6300048828125,"time_ms":1783355700000,"volume":268717},{"close":750.719970703125,"high":750.760009765625,"index":38,"low":750.5800170898438,"open":750.60009765625,"time_ms":1783356000000,"volume":181265},{"close":751.010009765625,"high":751.030029296875,"index":39,"low":750.5499877929688,"open":750.719970703125,"time_ms":1783356300000,"volume":320021},{"close":750.6099853515625,"high":751.0800170898438,"index":40,"low":750.6099853515625,"open":751.02001953125,"time_ms":1783356600000,"volume":233763},{"close":750.4600219726562,"high":750.7299194335938,"index":41,"low":750.3699951171875,"open":750.6199951171875,"time_ms":1783356900000,"volume":451795},{"close":750.8756713867188,"high":750.9749755859375,"index":42,"low":750.405029296875,"open":750.47998046875,"time_ms":1783357200000,"volume":268503},{"close":751.3900146484375,"high":751.530029296875,"index":43,"low":750.8699951171875,"open":750.8701171875,"time_ms":1783357500000,"volume":455392},{"close":751.3499755859375,"high":751.469970703125,"index":44,"low":751.1898803710938,"open":751.3800048828125,"time_ms":1783357800000,"volume":222312},{"close":751.0850219726562,"high":751.4400024414062,"index":45,"low":750.97998046875,"open":751.3400268554688,"time_ms":1783358100000,"volume":560672},{"close":750.969970703125,"high":751.1199951171875,"index":46,"low":750.8150024414062,"open":751.0800170898438,"time_ms":1783358400000,"volume":202340},{"close":750.7000122070312,"high":751.0999755859375,"index":47,"low":750.6099853515625,"open":750.969970703125,"time_ms":1783358700000,"volume":447552},{"close":750.3494873046875,"high":750.75,"index":48,"low":750.25,"open":750.7000122070312,"time_ms":1783359000000,"volume":315372},{"close":750.344970703125,"high":750.530029296875,"index":49,"low":750.1799926757812,"open":750.3350219726562,"time_ms":1783359300000,"volume":218173},{"close":750.0850219726562,"high":750.3400268554688,"index":50,"low":749.6300048828125,"open":750.3400268554688,"time_ms":1783359600000,"volume":478553},{"close":750.296875,"high":750.4099731445312,"index":51,"low":749.8499755859375,"open":750.0850219726562,"time_ms":1783359900000,"volume":178229},{"close":750.0695190429688,"high":750.52001953125,"index":52,"low":750.0499877929688,"open":750.3099975585938,"time_ms":1783360200000,"volume":190389},{"close":750.1298828125,"high":750.14501953125,"index":53,"low":749.9299926757812,"open":750.0800170898438,"time_ms":1783360500000,"volume":164282},{"close":750.7100219726562,"high":750.77001953125,"index":54,"low":750.1300048828125,"open":750.1300048828125,"time_ms":1783360800000,"volume":376150},{"close":750.9600219726562,"high":751.1099853515625,"index":55,"low":750.6199951171875,"open":750.7100219726562,"time_ms":1783361100000,"volume":408703},{"close":751.010009765625,"high":751.0599975585938,"index":56,"low":750.8250122070312,"open":750.9600219726562,"time_ms":1783361400000,"volume":322665},{"close":751.3699951171875,"high":751.52001953125,"index":57,"low":751.02001953125,"open":751.0399780273438,"time_ms":1783361700000,"volume":357395},{"close":751.47998046875,"high":751.5,"index":58,"low":751.25,"open":751.3599853515625,"time_ms":1783362000000,"volume":296442},{"close":751.3300170898438,"high":751.6063842773438,"index":59,"low":751.280029296875,"open":751.47998046875,"time_ms":1783362300000,"volume":264314},{"close":751.1300048828125,"high":751.5180053710938,"index":60,"low":751.0900268554688,"open":751.3300170898438,"time_ms":1783362600000,"volume":328390},{"close":751.0650024414062,"high":751.2899780273438,"index":61,"low":751.010009765625,"open":751.1199951171875,"time_ms":1783362900000,"volume":622291},{"close":751.239990234375,"high":751.3599853515625,"index":62,"low":751.0700073242188,"open":751.0700073242188,"time_ms":1783363200000,"volume":235840},{"close":751.5900268554688,"high":751.6680297851562,"index":63,"low":751.2100219726562,"open":751.25,"time_ms":1783363500000,"volume":260397},{"close":751.8012084960938,"high":751.8200073242188,"index":64,"low":751.530029296875,"open":751.5900268554688,"time_ms":1783363800000,"volume":269865},{"close":751.9299926757812,"high":752.0250244140625,"index":65,"low":751.6799926757812,"open":751.8099975585938,"time_ms":1783364100000,"volume":393445},{"close":751.8599853515625,"high":752.1300048828125,"index":66,"low":751.6799926757812,"open":751.9400024414062,"time_ms":1783364400000,"volume":344140},{"close":751.77001953125,"high":751.97998046875,"index":67,"low":751.6900024414062,"open":751.8699951171875,"time_ms":1783364700000,"volume":831736},{"close":751.7899780273438,"high":751.9299926757812,"index":68,"low":751.6900024414062,"open":751.77001953125,"time_ms":1783365000000,"volume":365360},{"close":752.114990234375,"high":752.1400146484375,"index":69,"low":751.6599731445312,"open":751.7999877929688,"time_ms":1783365300000,"volume":876464},{"close":752.2999877929688,"high":752.4099731445312,"index":70,"low":752.0001220703125,"open":752.1099853515625,"time_ms":1783365600000,"volume":684081},{"close":752.2899780273438,"high":752.359375,"index":71,"low":752.1099853515625,"open":752.3099975585938,"time_ms":1783365900000,"volume":548469},{"close":752.0399780273438,"high":752.2899780273438,"index":72,"low":751.9349975585938,"open":752.280029296875,"time_ms":1783366200000,"volume":632983},{"close":751.9600219726562,"high":752.1500244140625,"index":73,"low":751.739990234375,"open":752.0449829101562,"time_ms":1783366500000,"volume":1458343},{"close":752.030029296875,"high":752.0449829101562,"index":74,"low":751.780029296875,"open":751.9500122070312,"time_ms":1783366800000,"volume":444293},{"close":751.9600219726562,"high":752.219970703125,"index":75,"low":751.8800048828125,"open":752.0399780273438,"time_ms":1783367100000,"volume":925725},{"close":751.2100219726562,"high":751.97998046875,"index":76,"low":751.2000122070312,"open":751.9600219726562,"time_ms":1783367400000,"volume":2227157},{"close":751.3099975585938,"high":751.4000244140625,"index":77,"low":750.77001953125,"open":751.219970703125,"time_ms":1783367700000,"volume":5168682}],"detection_status":"VALID","direction":"LONG","event_id":"cf4f8034-4ecb-40a2-89f0-a15d78d9c1f5","explain":{"direction":"LONG","failed_retests":[],"level_source":"ORB_HIGH","outcome":{"realized_r":"2","result":"TARGET_HIT"},"stages":[{"detail":"ORB High=\u2014 Low=\u2014. Selected level: ORB_HIGH = \u2014","name":"ORB","status":"OK"},{"detail":"Close=\u2014 broke above level. Bar index: None","name":"Break","status":"OK"},{"detail":"2 bar(s) stayed beyond level. Max distance: \u2014 points.","name":"Displacement","status":"OK"},{"detail":"Window: 2 bar(s). Level contacts: 0.","name":"Retest Window","status":"OK"},{"detail":"Rejection wick: 83.3% (min 47%). Body: 3.0% (max 40%). Close location: 86.4% (min 80%).","name":"Confirmation","status":"OK"}],"trade_plan":{"entry":"\u2014","risk":"\u2014","stop":"\u2014","target_2r":"\u2014"}},"failed_rules":[],"failed_stage":null,"level_price_ticks":74948,"level_source":"ORB_HIGH","orb_high_ticks":74948,"orb_low_ticks":74812,"pdh":751.3099975585938,"pdl":740.030029296875,"session_date":"2026-07-06","symbol":"SPY"}];
+var TICK_SIZE=0.01;
+var currentIdx=0;
+var decisions={};
+
+// ── Tick-to-price ──
+function tp(t){return t==null?null:Math.round(t*TICK_SIZE*1e6)/1e6;}
+function fmtP(v){return v==null?"—":v.toFixed(2);}
+
+// ── Timezone offset (EDT = UTC-4) ──
+var ET_OFFSET=-4*3600;
+
+var chart, series;
+
+function initChart(){
+  var el=document.getElementById("chart");
+  chart=LightweightCharts.createChart(el,{
+    width:el.clientWidth,height:520,
+    layout:{background:{type:"solid",color:"#ffffff"},
+             textColor:"#333",fontSize:11},
+    grid:{vertLines:{color:"#f5f5f5"},horzLines:{color:"#f5f5f5"}},
+    crosshair:{mode:0},
+    timeScale:{timeVisible:true,secondsVisible:false,borderColor:"#d0d7de"},
+    rightPriceScale:{borderColor:"#d0d7de",minMove:0.01,scaleMargins:{top:0.05,bottom:0.05}},
+  });
+  series=chart.addCandlestickSeries({
+    upColor:"#26a69a",downColor:"#ef5350",
+    borderUpColor:"#26a69a",borderDownColor:"#ef5350",
+    wickUpColor:"#26a69a",wickDownColor:"#ef5350",
+  });
+  window.addEventListener("resize",function(){
+    chart.applyOptions({width:document.getElementById("chart").clientWidth});
+    updateOrbZone();
+  });
+}
+
+function renderEvent(idx){
+  if(idx<0||idx>=EVENTS.length) return;
+  currentIdx=idx;
+  var E=EVENTS[idx];
+  var ann=E.annotations||{};
+  var expl=E.explain||{};
+
+  // ── Candle data ──
+  var candles=E.candles.map(function(c){
+    return {time:Math.floor(c.time_ms/1000)+ET_OFFSET,
+            open:c.open,high:c.high,low:c.low,close:c.close};
+  });
+  series.setData(candles);
+
+  // ── Remove old price lines ──
+  // Re-create series to clear price lines
+  chart.removeSeries(series);
+  series=chart.addCandlestickSeries({
+    upColor:"#26a69a",downColor:"#ef5350",
+    borderUpColor:"#26a69a",borderDownColor:"#ef5350",
+    wickUpColor:"#26a69a",wickDownColor:"#ef5350",
+  });
+  series.setData(candles);
+
+  // ── ORB lines: thick, distinctive ──
+  var orbHighP=null, orbLowP=null;
+  if(E.orb_high_ticks!=null){
+    orbHighP=tp(E.orb_high_ticks);
+    series.createPriceLine({price:orbHighP,color:"#e65100",
+      lineWidth:3,lineStyle:0,axisLabelVisible:true,
+      title:"ORB High "+fmtP(orbHighP)});
+  }
+  if(E.orb_low_ticks!=null){
+    orbLowP=tp(E.orb_low_ticks);
+    series.createPriceLine({price:orbLowP,color:"#7b1fa2",
+      lineWidth:3,lineStyle:0,axisLabelVisible:true,
+      title:"ORB Low "+fmtP(orbLowP)});
+  }
+
+  // ── Entry / Stop / Target ──
+  if(ann.entry_price_ticks!=null){
+    var ep=tp(ann.entry_price_ticks);
+    series.createPriceLine({price:ep,color:"#1565c0",
+      lineWidth:2,lineStyle:0,axisLabelVisible:true,
+      title:"Entry "+fmtP(ep)});
+  }
+  if(ann.stop_price_ticks!=null){
+    var sp=tp(ann.stop_price_ticks);
+    series.createPriceLine({price:sp,color:"#c62828",
+      lineWidth:2,lineStyle:2,axisLabelVisible:true,
+      title:"Stop "+fmtP(sp)});
+  }
+  if(ann.r2_price_ticks!=null){
+    var r2=tp(ann.r2_price_ticks);
+    series.createPriceLine({price:r2,color:"#2e7d32",
+      lineWidth:2,lineStyle:2,axisLabelVisible:true,
+      title:"TP 2R "+fmtP(r2)});
+  }
+
+  // ── PDH / PDL ──
+  if(E.pdh!=null){
+    series.createPriceLine({price:E.pdh,color:"#6d4c41",
+      lineWidth:1,lineStyle:3,axisLabelVisible:true,
+      title:"PDH "+E.pdh.toFixed(2)});
+  }
+  if(E.pdl!=null){
+    series.createPriceLine({price:E.pdl,color:"#6d4c41",
+      lineWidth:1,lineStyle:3,axisLabelVisible:true,
+      title:"PDL "+E.pdl.toFixed(2)});
+  }
+
+  // ── Markers: Break, Confirm, Exit only ──
+  function ts(idx){
+    if(idx==null||idx<0||idx>=candles.length) return null;
+    return candles[idx].time;
+  }
+  var markers=[];
+
+  // Failed retests as small dots
+  var fr=expl.failed_retests||[];
+  for(var fi=0;fi<fr.length;fi++){
+    var fri=fr[fi];
+    if(fri.bar_index!=null&&ts(fri.bar_index)!=null){
+      markers.push({time:ts(fri.bar_index),position:"belowBar",
+        color:"#d4a017",shape:"circle",text:"✗",size:0});
+    }
+  }
+
+  if(ann.break_candle_index!=null&&ts(ann.break_candle_index)!=null)
+    markers.push({time:ts(ann.break_candle_index),position:"aboveBar",
+      color:"#1565c0",shape:"arrowDown",text:"Break",size:1});
+  if(ann.confirmation_candle_index!=null&&ts(ann.confirmation_candle_index)!=null)
+    markers.push({time:ts(ann.confirmation_candle_index),position:"belowBar",
+      color:"#2e7d32",shape:"arrowUp",text:"Confirm",size:1});
+  if(ann.exit_candle_index!=null&&ts(ann.exit_candle_index)!=null)
+    markers.push({time:ts(ann.exit_candle_index),position:"aboveBar",
+      color:"#e65100",shape:"circle",text:"Exit",size:2});
+
+  markers.sort(function(a,b){return a.time-b.time;});
+  if(markers.length>0) series.setMarkers(markers);
+
+  chart.timeScale().fitContent();
+
+  // ── ORB zone overlay ──
+  setTimeout(function(){ updateOrbZone(); }, 100);
+
+  // ── Header ──
+  renderHeader(E);
+
+  // ── Explain panel ──
+  renderExplain(E);
+
+  // ── Summary ──
+  renderSummary(E);
+
+  // ── Nav state ──
+  document.getElementById("btnPrev").disabled=(idx===0);
+  document.getElementById("btnNext").disabled=(idx===EVENTS.length-1);
+  document.getElementById("topCounter").textContent=
+    (idx+1)+" / "+EVENTS.length;
+  renderProgress();
+}
+
+// ── ORB Zone overlay (semi-transparent band) ──
+function updateOrbZone(){
+  var el=document.getElementById("orbZone");
+  var E=EVENTS[currentIdx];
+  if(!E||E.orb_high_ticks==null||E.orb_low_ticks==null){
+    el.style.display="none";return;
+  }
+  var ohP=tp(E.orb_high_ticks), olP=tp(E.orb_low_ticks);
+  var yH=series.priceToCoordinate(ohP);
+  var yL=series.priceToCoordinate(olP);
+  if(yH==null||yL==null){el.style.display="none";return;}
+  var top=Math.min(yH,yL), height=Math.abs(yL-yH);
+  if(height<2) height=2;
+  el.style.display="block";
+  el.style.top=top+"px";
+  el.style.height=height+"px";
+  el.style.background="rgba(255,152,0,0.08)";
+  el.style.borderTop="1px solid rgba(230,81,0,0.3)";
+  el.style.borderBottom="1px solid rgba(123,31,162,0.3)";
+}
+
+function renderHeader(E){
+  var ann=E.annotations||{};
+  var dir=E.direction||"?";
+  var status=E.detection_status||"?";
+  var outcome=ann.outcome||"";
+  var dirClass=dir==="LONG"?"tag-long":"tag-short";
+  var statusClass=status==="VALID"?"tag-valid":"tag-invalid";
+
+  var h='<h1>'+esc(E.symbol||"?")+' — '+esc(E.session_date||"?")+'</h1>';
+  h+='<span class="tag '+dirClass+'">'+esc(dir)+'</span>';
+  h+='<span class="tag '+statusClass+'">'+esc(status)+'</span>';
+
+  if(outcome&&outcome!=="NO_VALID_SETUP"&&outcome!=="None"){
+    var ocClass=outcome.indexOf("TARGET")>=0?"tag-win":
+                outcome.indexOf("STOPPED")>=0?"tag-loss":"tag-open";
+    h+='<span class="tag '+ocClass+'">'+esc(outcome)+'</span>';
+  }
+
+  // P&L display
+  var expl=E.explain||{};
+  if(expl.outcome){
+    var rr=expl.outcome.realized_r;
+    if(rr&&rr!=="—"){
+      var pnlClass=parseFloat(rr)>0?"pnl-win":"pnl-loss";
+      h+='<span class="pnl '+pnlClass+'">'+esc(rr)+'R</span>';
+    }
+  }
+
+  // Decision badge
+  var dec=decisions[currentIdx];
+  if(dec){
+    var decClass=dec==="accept"?"tag-win":dec==="reject"?"tag-loss":"tag-open";
+    h+='<span class="tag '+decClass+'" style="margin-left:8px">'+
+       esc(dec.toUpperCase())+'</span>';
+  }
+
+  document.getElementById("eventHeader").innerHTML=h;
+}
+
+function renderExplain(E){
+  var expl=E.explain||{};
+  var panel=document.getElementById("explainPanel");
+  var h='<h2>Detection Explain</h2>';
+
+  var stages=expl.stages||[];
+  for(var i=0;i<stages.length;i++){
+    var s=stages[i];
+    var cls=s.status==="OK"?"ok":"failed";
+    h+='<div class="explain-stage '+cls+'">';
+    h+='<div class="explain-stage-name">'+esc(s.name)+'</div>';
+    if(s.detail) h+='<div class="explain-stage-detail">'+esc(s.detail)+'</div>';
+    if(s.reason) h+='<div class="explain-stage-detail" style="color:#a40e26">'+esc(s.reason)+'</div>';
+    h+='</div>';
+  }
+
+  // Failed retests
+  var fr=expl.failed_retests||[];
+  if(fr.length>0){
+    h+='<div class="explain-section"><h3>Failed Retests ('+fr.length+')</h3>';
+    for(var j=0;j<fr.length;j++){
+      var f=fr[j];
+      h+='<div class="failed-retest">';
+      h+='<div class="failed-retest-title">Bar #'+f.bar_index+'</div>';
+      h+='<div class="failed-retest-geo">';
+      h+='Wick: '+(f.rejection_wick_ratio!=null?(f.rejection_wick_ratio*100).toFixed(1)+"%":"—");
+      h+=' &middot; Body: '+(f.body_ratio!=null?(f.body_ratio*100).toFixed(1)+"%":"—");
+      h+=' &middot; Close: '+(f.favorable_close_location!=null?(f.favorable_close_location*100).toFixed(1)+"%":"—");
+      h+='</div>';
+      if(f.failed_rules&&f.failed_rules.length>0){
+        h+='<div class="failed-retest-rules">'+f.failed_rules.join(", ")+'</div>';
+      }
+      h+='</div>';
+    }
+    h+='</div>';
+  }
+
+  // Trade plan
+  if(expl.trade_plan){
+    var tp=expl.trade_plan;
+    h+='<div class="explain-section"><h3>Trade Plan</h3>';
+    h+='<div class="explain-row"><span class="explain-label">Entry</span><span class="explain-value">'+esc(tp.entry)+'</span></div>';
+    h+='<div class="explain-row"><span class="explain-label">Stop</span><span class="explain-value">'+esc(tp.stop)+'</span></div>';
+    h+='<div class="explain-row"><span class="explain-label">Target 2R</span><span class="explain-value">'+esc(tp.target_2r)+'</span></div>';
+    h+='<div class="explain-row"><span class="explain-label">Risk</span><span class="explain-value">'+esc(tp.risk)+'</span></div>';
+    h+='</div>';
+  }
+
+  // Outcome
+  if(expl.outcome){
+    var oc=expl.outcome;
+    var ocClass=oc.result.indexOf("TARGET")>=0?"win":
+                oc.result.indexOf("STOPPED")>=0?"loss":"";
+    h+='<div class="explain-section"><h3>Outcome</h3>';
+    h+='<div class="explain-row"><span class="explain-label">Result</span><span class="explain-value '+ocClass+'">'+esc(oc.result)+'</span></div>';
+    h+='<div class="explain-row"><span class="explain-label">Realized R</span><span class="explain-value '+ocClass+'">'+esc(oc.realized_r)+'</span></div>';
+    h+='</div>';
+  }
+
+  panel.innerHTML=h;
+}
+
+function renderSummary(E){
+  var ann=E.annotations||{};
+  var panel=document.getElementById("summaryPanel");
+  var h='';
+
+  // ORB section
+  h+='<div class="summary-section"><h3>Opening Range</h3>';
+  if(E.orb_high_ticks!=null)
+    h+='<div class="srow"><span class="srow-label">ORB High</span><span class="srow-value">'+fmtP(tp(E.orb_high_ticks))+'</span></div>';
+  if(E.orb_low_ticks!=null)
+    h+='<div class="srow"><span class="srow-label">ORB Low</span><span class="srow-value">'+fmtP(tp(E.orb_low_ticks))+'</span></div>';
+  if(E.level_source)
+    h+='<div class="srow"><span class="srow-label">Level</span><span class="srow-value">'+esc(E.level_source)+'</span></div>';
+  if(E.pdh!=null)
+    h+='<div class="srow"><span class="srow-label">PDH</span><span class="srow-value">'+E.pdh.toFixed(2)+'</span></div>';
+  if(E.pdl!=null)
+    h+='<div class="srow"><span class="srow-label">PDL</span><span class="srow-value">'+E.pdl.toFixed(2)+'</span></div>';
+  h+='</div>';
+
+  // Stages section
+  h+='<div class="summary-section"><h3>Stages</h3>';
+  if(ann.break_candle_index!=null)
+    h+='<div class="srow"><span class="srow-label">Break</span><span class="srow-value">Bar #'+ann.break_candle_index+'</span></div>';
+  if(ann.displacement_start_index!=null)
+    h+='<div class="srow"><span class="srow-label">Displacement</span><span class="srow-value">'+ann.displacement_start_index+' → '+(ann.displacement_end_index||"?")+'</span></div>';
+  if(ann.confirmation_candle_index!=null)
+    h+='<div class="srow"><span class="srow-label">Confirmation</span><span class="srow-value">Bar #'+ann.confirmation_candle_index+'</span></div>';
+  h+='</div>';
+
+  // Trade section
+  if(ann.entry_price_ticks!=null){
+    h+='<div class="summary-section"><h3>Trade</h3>';
+    h+='<div class="srow"><span class="srow-label">Entry</span><span class="srow-value">'+fmtP(tp(ann.entry_price_ticks))+'</span></div>';
+    h+='<div class="srow"><span class="srow-label">Stop</span><span class="srow-value">'+fmtP(tp(ann.stop_price_ticks))+'</span></div>';
+    h+='<div class="srow"><span class="srow-label">Target 2R</span><span class="srow-value">'+fmtP(tp(ann.r2_price_ticks))+'</span></div>';
+    var oc=ann.outcome||"";
+    var ocStyle=oc.indexOf("TARGET")>=0?"color:#116329;font-weight:700":
+                oc.indexOf("STOPPED")>=0?"color:#a40e26;font-weight:700":"";
+    h+='<div class="srow"><span class="srow-label">Outcome</span><span class="srow-value" style="'+ocStyle+'">'+esc(oc)+'</span></div>';
+    h+='</div>';
+  }
+
+  panel.innerHTML=h;
+}
+
+function renderProgress(){
+  var h='';
+  for(var i=0;i<EVENTS.length;i++){
+    var cls="progress-dot";
+    if(i===currentIdx) cls+=" current";
+    var d=decisions[i];
+    if(d==="accept") cls+=" accepted";
+    else if(d==="reject") cls+=" rejected";
+    else if(d==="skip") cls+=" skipped";
+    h+='<span class="'+cls+'" onclick="nav('+(i-currentIdx)+')" title="Event '+(i+1)+'"></span>';
+  }
+  document.getElementById("progressDots").innerHTML=h;
+}
+
+// ── Navigation ──
+window.nav=function(delta){
+  var next=currentIdx+delta;
+  if(next>=0&&next<EVENTS.length) renderEvent(next);
+};
+
+// ── Decision ──
+window.decide=function(d){
+  decisions[currentIdx]=d;
+  renderHeader(EVENTS[currentIdx]);
+  renderProgress();
+  // Auto-advance to next undecided
+  if(currentIdx<EVENTS.length-1) nav(1);
+};
+
+// ── Keyboard shortcuts ──
+document.addEventListener("keydown",function(e){
+  if(e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA") return;
+  if(e.key==="ArrowLeft") nav(-1);
+  else if(e.key==="ArrowRight") nav(1);
+  else if(e.key==="a"||e.key==="A") decide("accept");
+  else if(e.key==="r"||e.key==="R") decide("reject");
+  else if(e.key==="s"||e.key==="S") decide("skip");
+  else if(e.key==="e"||e.key==="E") exportDecisions();
+});
+
+// ── Export decisions ──
+window.exportDecisions=function(){
+  var out=[];
+  for(var i=0;i<EVENTS.length;i++){
+    var e=EVENTS[i];
+    var d=decisions[i]||"pending";
+    out.push({
+      index:i,
+      event_id:e.event_id||null,
+      symbol:e.symbol||null,
+      session_date:e.session_date||null,
+      direction:e.direction||null,
+      detection_status:e.detection_status||null,
+      decision:d
+    });
+  }
+  var json=JSON.stringify(out,null,2);
+  var blob=new Blob([json],{type:"application/json"});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement("a");
+  a.href=url;
+  a.download="bdrr_decisions.json";
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+function esc(v){return v==null?"":String(v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+
+// ── Init ──
+initChart();
+renderEvent(0);
+
+})();
+</script>
+</body>
+</html>

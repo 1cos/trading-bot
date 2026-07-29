@@ -387,8 +387,8 @@ class TestTD10bQQQIntegration:
         ds = build_trade_dataset(results)
         assert ds["metadata"]["session_count"] == len(sessions)
         assert ds["metadata"]["symbol"] == "QQQ"
-        assert ds["metadata"]["trade_count"] == 4
-        assert len(ds["trades"]) == 4
+        assert ds["metadata"]["trade_count"] == 2  # sequence_validator invalidates 2
+        assert len(ds["trades"]) == 2
 
 
 # ── TD11: schema_version constant ────────────────────────────────────────────

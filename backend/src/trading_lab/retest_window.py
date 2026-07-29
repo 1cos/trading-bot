@@ -162,7 +162,14 @@ def find_retest_window(
     level_ticks = orb["level_price_ticks"]
     tick_size = config["tick_size"]
     retest_start_index = contact_idx
-    window_end_index = len(candles) - 1
+
+    # Accept optional max_valid_index from sequence validator
+    max_valid_index = config.get("_max_valid_index")
+    if max_valid_index is not None and max_valid_index < len(candles) - 1:
+        window_end_index = max_valid_index
+    else:
+        window_end_index = len(candles) - 1
+
     displacement_ticks = displacement_result["displacement_distance"]["ticks"]
     is_short = direction == "SHORT"
 
