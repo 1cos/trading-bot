@@ -153,13 +153,7 @@ tr.clickable{cursor:pointer}
     </div>
     <div class="param-row">
       <span class="param-label">Timeframe</span>
-      <select class="param-select" id="pTimeframe">
-        <option value="1m" disabled title="Requires 1-minute historical data">1m</option>
-        <option value="2m" disabled title="Requires 1-minute historical data">2m</option>
-        <option value="3m" disabled title="Requires 1-minute historical data">3m</option>
-        <option value="5m" selected>5m</option>
-        <option value="10m" disabled title="Requires 10-minute historical data">10m</option>
-      </select>
+      <select class="param-select" id="pTimeframe"></select>
     </div>
     <div class="param-tooltip">Disabled timeframes require source data at that resolution.</div>
     <div class="param-row">
@@ -178,17 +172,21 @@ tr.clickable{cursor:pointer}
     <div class="param-group-title">Direction</div>
     <div class="param-row">
       <span class="param-label">Direction</span>
-      <select class="param-select" id="pDirection">
+      <select class="param-select" id="pDirection" onchange="onDirectionChange()">
         <option value="LONG">LONG</option>
         <option value="SHORT">SHORT</option>
+        <option value="BOTH">BOTH</option>
       </select>
     </div>
-    <div class="param-row">
+    <div class="param-row" id="levelSourceRow">
       <span class="param-label">Level Source</span>
       <select class="param-select" id="pLevelSource">
         <option value="ORB_HIGH">ORB_HIGH</option>
         <option value="ORB_LOW">ORB_LOW</option>
       </select>
+    </div>
+    <div class="param-tooltip" id="levelSourceNote" style="display:none;color:var(--accent)">
+      BOTH: LONG uses ORB_HIGH, SHORT uses ORB_LOW automatically.
     </div>
   </div>
 
@@ -325,10 +323,16 @@ async function init(){
     o.value=s.symbol;o.textContent=s.symbol;
     sel.appendChild(o);
   });
-  if(syms.length>0) updateDateRange(syms[0]);
+  if(syms.length>0){
+    updateDateRange(syms[0]);
+    updateTimeframes(syms[0].symbol);
+  }
   sel.addEventListener("change",function(){
     var s=syms.find(function(x){return x.symbol===sel.value;});
-    if(s) updateDateRange(s);
+    if(s){
+      updateDateRange(s);
+      updateTimeframes(s.symbol);
+    }
   });
   state.defaults=await(await fetch(API+"/defaults")).json();
 }
@@ -354,6 +358,40 @@ function resetDefaults(){
   document.getElementById("pStopBuffer").value="0";
   document.getElementById("pTickSize").value="0.01";
   document.getElementById("presetName").textContent="Frozen Default";
+  onDirectionChange();
+}
+
+window.onDirectionChange=function(){
+  var dir=document.getElementById("pDirection").value;
+  var lsRow=document.getElementById("levelSourceRow");
+  var lsNote=document.getElementById("levelSourceNote");
+  if(dir==="BOTH"){
+    lsRow.style.display="none";
+    lsNote.style.display="block";
+  }else{
+    lsRow.style.display="flex";
+    lsNote.style.display="none";
+    // Auto-set level source
+    if(dir==="SHORT") document.getElementById("pLevelSource").value="ORB_LOW";
+    else document.getElementById("pLevelSource").value="ORB_HIGH";
+  }
+};
+
+function updateTimeframes(sym){
+  var s=state.symbols.find(function(x){return x.symbol===sym;});
+  if(!s||!s.timeframes) return;
+  var sel=document.getElementById("pTimeframe");
+  sel.innerHTML="";
+  s.timeframes.forEach(function(tf){
+    var o=document.createElement("option");
+    o.value=tf.value;
+    o.textContent=tf.value;
+    o.disabled=!tf.available;
+    if(!tf.available&&tf.reason) o.title=tf.reason;
+    sel.appendChild(o);
+  });
+  // Select 5m by default
+  sel.value="5m";
 }
 
 // ── Run Backtest ──
