@@ -226,3 +226,101 @@ def load_candles_for_timeframe(
         "latest": dates[-1] if dates else None,
         "session_count": len(dates),
     }
+
+def aggregate_post_orb(
+    candles_1m: list[dict],
+    target_minutes: int,
+    timezone_str: str = "America/New_York",
+) -> tuple[dict, list[dict]]:
+    """Build canonical ORB summary + post-ORB aggregated candles from 1m bars.
+
+    The ORB is computed from exactly the five 1-minute bars at 09:30–09:34.
+    Post-ORB candles begin at exactly 09:35 and are aggregated to the
+    target timeframe, anchored at 09:35.
+
+    Returns (orb_summary_candle, post_orb_candles).
+    Raises ValueError if the five ORB bars are not present.
+    """
+    from datetime import timezone as _tz
+    from zoneinfo import ZoneInfo
+
+    tz = ZoneInfo(timezone_str)
+
+    orb_bars = []
+    post_bars = []
+    for c in candles_1m:
+        dt = datetime.fromtimestamp(c["time_ms"] / 1000, tz=_tz.utc).astimezone(tz)
+        minute_of_day = dt.hour * 60 + dt.minute
+        if 570 <= minute_of_day <= 574:  # 09:30–09:34
+            orb_bars.append(c)
+        elif minute_of_day >= 575:  # 09:35+
+            post_bars.append(c)
+
+    if len(orb_bars) != 5:
+        raise ValueError(
+            f"Expected exactly 5 ORB bars (09:30-09:34), got {len(orb_bars)}"
+        )
+
+    orb_summary = {
+        "time_ms": orb_bars[0]["time_ms"],
+        "open": orb_bars[0]["open"],
+        "high": max(b["high"] for b in orb_bars),
+        "low": min(b["low"] for b in orb_bars),
+        "close": orb_bars[-1]["close"],
+        "volume": sum(b.get("volume", 0) for b in orb_bars),
+    }
+
+    if target_minutes == 1:
+        agg_post = list(post_bars)
+    else:
+        agg_post = _aggregate_from_anchor(post_bars, target_minutes, tz)
+
+    # Verify first post-ORB candle starts at 09:35
+    if agg_post:
+        from datetime import timezone as _tz2
+        first_dt = datetime.fromtimestamp(
+            agg_post[0]["time_ms"] / 1000, tz=_tz2.utc
+        ).astimezone(tz)
+        if first_dt.hour * 60 + first_dt.minute != 575:
+            raise ValueError(
+                f"First post-ORB candle starts at {first_dt.strftime('%H:%M')}, "
+                f"expected 09:35"
+            )
+
+    return orb_summary, agg_post
+
+
+def _aggregate_from_anchor(bars, target_minutes, tz):
+    """Aggregate bars anchored at the first bar's timestamp."""
+    if not bars:
+        return []
+
+    from datetime import timezone as _tz
+
+    result = []
+    bucket: list[dict] = []
+    anchor_min = None
+    current_bucket_id = None
+
+    for bar in bars:
+        dt = datetime.fromtimestamp(
+            bar["time_ms"] / 1000, tz=_tz.utc
+        ).astimezone(tz)
+        total_min = dt.hour * 60 + dt.minute
+
+        if anchor_min is None:
+            anchor_min = total_min
+
+        bucket_id = (total_min - anchor_min) // target_minutes
+
+        if current_bucket_id is not None and bucket_id != current_bucket_id:
+            result.append(_flush_bucket(bucket))
+            bucket = []
+
+        bucket.append(bar)
+        current_bucket_id = bucket_id
+
+    if bucket:
+        result.append(_flush_bucket(bucket))
+
+    return result

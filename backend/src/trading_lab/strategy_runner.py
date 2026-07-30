@@ -27,6 +27,7 @@ from trading_lab.break_finder import find_break
 from trading_lab.detection_result_builder import build_detection_result
 from trading_lab.displacement_finder import find_displacement
 from trading_lab.orb_builder import build_orb
+from trading_lab.tick_arithmetic import price_to_ticks
 from trading_lab.rejection_finder import find_rejection
 from trading_lab.retest_window import find_retest_window
 from trading_lab.sequence_validator import validate_sequence
@@ -135,6 +136,57 @@ def _build_failure_record(
 
 # ── Single-session pipeline ──────────────────────────────────────────────────
 
+def _build_orb_from_override(override, session_context, engine_config):
+    """Construct an ORB result dict from an externally precomputed override.
+
+    Used by multi-timeframe runs where the canonical ORB is computed from
+    the five 09:30–09:34 one-minute bars and injected into the pipeline.
+
+    The override must contain at minimum:
+        orb_high (float), orb_low (float), orb_candle (dict with time_ms),
+        orb_candle_index (int).
+
+    Returns the same dict shape as build_orb() so all downstream stages
+    receive an identical contract.
+    """
+    required = ("orb_high", "orb_low", "orb_candle", "orb_candle_index")
+    for key in required:
+        if key not in override:
+            return {
+                "status": "FAILED",
+                "failed_stage": "INVALID_ORB_OVERRIDE",
+                "reason": f"orb_override missing required field: {key}",
+            }
+
+    orb_candle = override["orb_candle"]
+    if not isinstance(orb_candle, dict) or "time_ms" not in orb_candle:
+        return {
+            "status": "FAILED",
+            "failed_stage": "INVALID_ORB_OVERRIDE",
+            "reason": "orb_override.orb_candle must be a dict with time_ms",
+        }
+
+    orb_high = override["orb_high"]
+    orb_low = override["orb_low"]
+    level_source = engine_config.get("level_source", "ORB_HIGH")
+    level_price = orb_low if level_source == "ORB_LOW" else orb_high
+    tick_size = engine_config["tick_size"]
+
+    return {
+        "status": "OK",
+        "date": session_context.get("date", ""),
+        "orb_candle_index": override["orb_candle_index"],
+        "orb_candle": orb_candle,
+        "orb_high": orb_high,
+        "orb_low": orb_low,
+        "orb_low_active": level_source == "ORB_LOW",
+        "level_source": level_source,
+        "level_price": level_price,
+        "level_price_ticks": price_to_ticks(level_price, tick_size),
+        "direction": engine_config.get("direction", "LONG"),
+    }
+
+
 def _process_one_session(session, preset, engine_config, tp_config, outcome_config, config, id_factory=None):
     run_record_id = _uuidv4()
     tick_size = config["tick_size"]
@@ -189,8 +241,15 @@ def _process_one_session(session, preset, engine_config, tp_config, outcome_conf
 
     sc_candles = sc["candles"]
 
-    # Stage 1b
-    orb = build_orb(sc_candles, sc, engine_config)
+    # Stage 1b — ORB construction
+    # If an orb_override is provided (multi-timeframe runs with canonical
+    # 1-minute ORB), use it instead of calling build_orb.
+    # This is the ONLY strategy_runner change for multi-timeframe support.
+    orb_override = _get(session, "_orb_override")
+    if orb_override is not None:
+        orb = _build_orb_from_override(orb_override, sc, engine_config)
+    else:
+        orb = build_orb(sc_candles, sc, engine_config)
 
     # Stage 2
     if orb.get("status") == "OK":
