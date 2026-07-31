@@ -529,7 +529,7 @@ class TestBalancedSamplingEnabled:
         assert result[2]["candidate_status"] == "VALID"
 
     def test_valid_with_max_records(self):
-        """VALID records preserved within max_records budget."""
+        """max_records caps REJECTED only; VALID appended in full."""
         events = (
             [_make_event("A", i) for i in range(100)] +
             [_make_event(None, i, status="VALID") for i in range(5)]
@@ -539,9 +539,9 @@ class TestBalancedSamplingEnabled:
                          if e["candidate_status"] == "VALID")
         rejected_count = sum(1 for e in result
                              if e["candidate_status"] == "REJECTED")
-        assert valid_count == 5
-        assert rejected_count == 15
-        assert len(result) == 20
+        assert rejected_count == 20  # max_records caps rejected
+        assert valid_count == 5      # VALID appended in full
+        assert len(result) == 25     # total = 20 rejected + 5 valid
         # VALID at end
         for e in result[-5:]:
             assert e["candidate_status"] == "VALID"
@@ -574,3 +574,131 @@ class TestBalancedSamplingEnabled:
         )
         result = balance_by_failed_stage(events)
         assert len(result) == 140
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Correction tests (A5.4.1)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestCorrectedBudgetSemantics:
+    def test_90_rejected_31_valid_produces_121(self):
+        """max_records=90 with 31 VALID must produce 121 total."""
+        events = (
+            [_make_event("A", i) for i in range(200)] +
+            [_make_event("B", i) for i in range(100)] +
+            [_make_event("C", i) for i in range(50)] +
+            [_make_event(None, i, status="VALID") for i in range(31)]
+        )
+        result = balance_by_failed_stage(events, max_records=90)
+        valid_count = sum(1 for e in result
+                         if e["candidate_status"] == "VALID")
+        rejected_count = sum(1 for e in result
+                             if e["candidate_status"] == "REJECTED")
+        assert rejected_count == 90
+        assert valid_count == 31
+        assert len(result) == 121
+
+    def test_valid_does_not_reduce_rejected_budget(self):
+        """VALID count must not affect how many rejected are sampled."""
+        # With 50 VALID and max_records=30:
+        # old behavior would cap total to 30
+        # correct behavior: 30 rejected + 50 VALID = 80
+        events = (
+            [_make_event("A", i) for i in range(100)] +
+            [_make_event(None, i, status="VALID") for i in range(50)]
+        )
+        result = balance_by_failed_stage(events, max_records=30)
+        rejected_count = sum(1 for e in result
+                             if e["candidate_status"] == "REJECTED")
+        valid_count = sum(1 for e in result
+                         if e["candidate_status"] == "VALID")
+        assert rejected_count == 30
+        assert valid_count == 50
+        assert len(result) == 80
+
+    def test_no_final_cap_removes_valid(self):
+        """After VALID appended, no further truncation occurs."""
+        events = (
+            [_make_event("A", i) for i in range(10)] +
+            [_make_event(None, i, status="VALID") for i in range(100)]
+        )
+        result = balance_by_failed_stage(events, max_records=5)
+        valid_count = sum(1 for e in result
+                         if e["candidate_status"] == "VALID")
+        rejected_count = sum(1 for e in result
+                             if e["candidate_status"] == "REJECTED")
+        assert rejected_count == 5
+        assert valid_count == 100  # all 100 VALID preserved
+        assert len(result) == 105
+
+
+class TestAvailableVsSelected:
+    def test_available_counts_captured_before_sampling(self):
+        """available_by_stage must reflect pre-sampling counts."""
+        # Simulate what build_audit_events returns
+        summary = {
+            "symbol": "SPY",
+            "total_pipeline": 100,
+            "total_valid": 5,
+            "total_rejected": 95,
+            "total_audit_worthy": 80,
+            "total_excluded": 15,
+            "included_in_batch": 85,
+            "available_by_stage": {
+                "RETEST_BEFORE_DISPLACEMENT": 50,
+                "NO_QUALIFYING_REJECTION_CANDLE": 25,
+                "RETEST_NOT_FOUND": 5,
+                "VALID": 5,
+            },
+            "by_stage": {},
+            "by_timeframe": {},
+            "by_direction": {},
+            "build_errors": [],
+        }
+        # After balanced sampling, only 10 per stage selected
+        selected_events = (
+            [_make_event("RETEST_BEFORE_DISPLACEMENT", i)
+             for i in range(10)] +
+            [_make_event("NO_QUALIFYING_REJECTION_CANDLE", i)
+             for i in range(10)] +
+            [_make_event("RETEST_NOT_FOUND", i) for i in range(5)]
+        )
+        html = generate_audit_html(selected_events, [summary])
+        # Available shows pre-sampling numbers
+        assert "RETEST_BEFORE_DISPLACEMENT: 50" in html
+        assert "NO_QUALIFYING_REJECTION_CANDLE: 25" in html
+        # Selected shows post-sampling numbers
+        assert "10" in html  # selected counts present
+
+    def test_selected_counts_reflect_sampled_batch(self):
+        """Selected stage counts must come from final event list."""
+        events = [_make_event("A", i) for i in range(3)]
+        summary = {
+            "symbol": "T",
+            "total_pipeline": 10,
+            "total_valid": 0,
+            "total_rejected": 10,
+            "total_audit_worthy": 10,
+            "total_excluded": 0,
+            "included_in_batch": 10,
+            "available_by_stage": {"A": 10},
+            "by_stage": {},
+            "by_timeframe": {},
+            "by_direction": {},
+            "build_errors": [],
+        }
+        html = generate_audit_html(events, [summary])
+        # Available = 10, Selected = 3
+        assert "A: 10" in html  # available
+        assert "3" in html      # selected in the arrow display
+
+
+class TestLegacyBehaviorUnchanged:
+    def test_legacy_no_balancing_no_flag(self):
+        args = parse_args([])
+        assert args.balanced_failed_stage is False
+
+    def test_legacy_max_records_still_truncates(self):
+        args = parse_args(["--max-records", "10"])
+        assert args.max_records == 10
+        assert args.balanced_failed_stage is False

@@ -184,6 +184,12 @@ def build_audit_events(
         d = ev.get("direction", "?")
         by_dir[d] = by_dir.get(d, 0) + 1
 
+    # Available counts: all events before balancing/truncation
+    available_by_stage: dict[str, int] = {}
+    for ev in events:
+        fs = ev.get("failed_stage") or "VALID"
+        available_by_stage[fs] = available_by_stage.get(fs, 0) + 1
+
     summary = {
         "symbol": symbol,
         "total_pipeline": len(all_records),
@@ -192,6 +198,7 @@ def build_audit_events(
         "total_audit_worthy": total_audit_worthy,
         "total_excluded": len(all_records) - total_audit_worthy,
         "included_in_batch": len(events),
+        "available_by_stage": available_by_stage,
         "by_stage": by_stage,
         "by_timeframe": by_tf,
         "by_direction": by_dir,
@@ -219,7 +226,9 @@ def balance_by_failed_stage(
     events : list[dict]
         Visual event dicts from export_audit_visual_event.
     max_records : int or None
-        If set, cap the total output (rejected + valid combined).
+        If set, caps the number of REJECTED records only.
+        VALID records are always appended in full and do not
+        consume this budget.
 
     Returns
     -------
@@ -257,19 +266,12 @@ def balance_by_failed_stage(
             else:
                 exhausted.add(stage)
 
-    # Cap rejected portion if max_records is set
+    # Cap REJECTED portion only; VALID never consumes this budget
     if max_records is not None:
-        rejected_cap = max(0, max_records - len(valid))
-        balanced = balanced[:rejected_cap]
+        balanced = balanced[:max_records]
 
-    # Append VALID after balanced rejected
-    result = balanced + valid
-
-    # Final cap
-    if max_records is not None and len(result) > max_records:
-        result = result[:max_records]
-
-    return result
+    # Append VALID after balanced rejected — no further cap
+    return balanced + valid
 
 
 # ── HTML generation ──────────────────────────────────────────────────────────
@@ -298,7 +300,8 @@ def generate_audit_html(
         grand_rejected += s["total_rejected"]
         grand_audit += s["total_audit_worthy"]
         grand_excluded += s["total_excluded"]
-        for stage, cnt in s.get("by_stage", {}).items():
+        # Available counts come from the pre-sampling summary
+        for stage, cnt in s.get("available_by_stage", {}).items():
             all_available_stages[stage] = (
                 all_available_stages.get(stage, 0) + cnt
             )
@@ -314,7 +317,7 @@ def generate_audit_html(
                 f"{err.get('direction','')} — {err['error']}"
             )
 
-    # Compute selected stage counts from final events
+    # Selected stage counts from the final (possibly balanced) events
     selected_stages: dict[str, int] = {}
     for e in events:
         fs = e.get("failed_stage") or "VALID"
