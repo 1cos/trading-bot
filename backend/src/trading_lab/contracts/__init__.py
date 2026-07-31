@@ -7,6 +7,10 @@ BDRR_ENGINE_CANONICAL_HANDOFF.md §3.2–§3.6.
 from trading_lab.contracts.bar import Bar
 from trading_lab.contracts.confluence_result import ConfluenceResult
 from trading_lab.contracts.detection_result import DetectionResult
+from trading_lab.contracts.detector_audit_record import (
+    CandidateStatus,
+    DetectorAuditRecord,
+)
 from trading_lab.contracts.distances import (
     AbsoluteTickDistance,
     DirectionalTickDistance,
@@ -41,9 +45,11 @@ from trading_lab.contracts.trade_plan import EntryModel, TradePlan
 __all__ = [
     "AbsoluteTickDistance",
     "Bar",
+    "CandidateStatus",
     "ConfluenceResult",
     "ConfluenceStatus",
     "DetectionResult",
+    "DetectorAuditRecord",
     "DetectionStatus",
     "Direction",
     "DirectionalTickDistance",
