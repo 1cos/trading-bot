@@ -201,6 +201,77 @@ def build_audit_events(
     return events, summary
 
 
+# ── Balanced sampling ────────────────────────────────────────────────────────
+
+def balance_by_failed_stage(
+    events: list[dict],
+    max_records: int | None = None,
+) -> list[dict]:
+    """Stratified round-robin sampling across FailedStage values.
+
+    Groups REJECTED events by failed_stage, preserves chronological
+    order within each group, then interleaves round-robin.
+    VALID events are separated and appended after the balanced
+    rejected sample.
+
+    Parameters
+    ----------
+    events : list[dict]
+        Visual event dicts from export_audit_visual_event.
+    max_records : int or None
+        If set, cap the total output (rejected + valid combined).
+
+    Returns
+    -------
+    list[dict]
+        Balanced event list. Never duplicates records.
+    """
+    valid = [e for e in events if e.get("candidate_status") == "VALID"]
+    rejected = [e for e in events if e.get("candidate_status") != "VALID"]
+
+    # Group rejected by failed_stage, preserving order within each group
+    stage_buckets: dict[str, list[dict]] = {}
+    for e in rejected:
+        fs = e.get("failed_stage") or "UNKNOWN"
+        if fs not in stage_buckets:
+            stage_buckets[fs] = []
+        stage_buckets[fs].append(e)
+
+    # Deterministic stage order: alphabetical
+    stage_names = sorted(stage_buckets.keys())
+
+    # Round-robin across stages
+    balanced: list[dict] = []
+    cursors = {s: 0 for s in stage_names}
+    exhausted = set()
+
+    while len(exhausted) < len(stage_names):
+        for stage in stage_names:
+            if stage in exhausted:
+                continue
+            bucket = stage_buckets[stage]
+            idx = cursors[stage]
+            if idx < len(bucket):
+                balanced.append(bucket[idx])
+                cursors[stage] = idx + 1
+            else:
+                exhausted.add(stage)
+
+    # Cap rejected portion if max_records is set
+    if max_records is not None:
+        rejected_cap = max(0, max_records - len(valid))
+        balanced = balanced[:rejected_cap]
+
+    # Append VALID after balanced rejected
+    result = balanced + valid
+
+    # Final cap
+    if max_records is not None and len(result) > max_records:
+        result = result[:max_records]
+
+    return result
+
+
 # ── HTML generation ──────────────────────────────────────────────────────────
 
 def generate_audit_html(
@@ -220,12 +291,17 @@ def generate_audit_html(
     grand_rejected = 0
     grand_audit = 0
     grand_excluded = 0
+    all_available_stages: dict[str, int] = {}
     for s in summaries:
         grand_total += s["total_pipeline"]
         grand_valid += s["total_valid"]
         grand_rejected += s["total_rejected"]
         grand_audit += s["total_audit_worthy"]
         grand_excluded += s["total_excluded"]
+        for stage, cnt in s.get("by_stage", {}).items():
+            all_available_stages[stage] = (
+                all_available_stages.get(stage, 0) + cnt
+            )
         summary_lines.append(
             f"{s['symbol']}: {s['total_pipeline']} pipeline, "
             f"{s['total_valid']} valid, {s['total_rejected']} rejected, "
@@ -237,6 +313,25 @@ def generate_audit_html(
                 f"  WARN: {err['symbol']} {err['date']} {err['tf']} "
                 f"{err.get('direction','')} — {err['error']}"
             )
+
+    # Compute selected stage counts from final events
+    selected_stages: dict[str, int] = {}
+    for e in events:
+        fs = e.get("failed_stage") or "VALID"
+        selected_stages[fs] = selected_stages.get(fs, 0) + 1
+
+    # Add stage distribution to summary
+    all_stage_names = sorted(
+        set(list(all_available_stages.keys()) +
+            list(selected_stages.keys()))
+    )
+    if all_stage_names:
+        summary_lines.append("")
+        summary_lines.append("Stage Distribution (Available → Selected):")
+        for stage in all_stage_names:
+            avail = all_available_stages.get(stage, 0)
+            sel = selected_stages.get(stage, 0)
+            summary_lines.append(f"  {stage}: {avail} → {sel}")
 
     summary_text = json.dumps(
         "\\n".join(summary_lines), ensure_ascii=True
@@ -407,6 +502,8 @@ def parse_args(argv=None):
                     help="Input data directory")
     p.add_argument("--exclude-dates", nargs="*", default=["2026-07-30"],
                     help="Dates to exclude")
+    p.add_argument("--balanced-failed-stage", action="store_true",
+                    help="Stratified round-robin sampling across FailedStage")
     return p.parse_args(argv)
 
 
@@ -479,9 +576,28 @@ def main(argv=None):
         print("Try --include-valid to include VALID records.")
         sys.exit(1)
 
-    # Apply max-records
+    # Apply balanced sampling if requested
     omitted = 0
-    if args.max_records and len(all_events) > args.max_records:
+    if args.balanced_failed_stage:
+        before = len(all_events)
+        all_events = balance_by_failed_stage(
+            all_events, max_records=args.max_records
+        )
+        omitted = before - len(all_events)
+        if omitted > 0:
+            print(f"\nBalanced sampling: {len(all_events)} selected, "
+                  f"{omitted} omitted")
+
+        # Show per-stage selection counts
+        from collections import Counter
+        stage_sel = Counter(
+            e.get("failed_stage") or "VALID"
+            for e in all_events
+        )
+        print("  Selected per stage:")
+        for s, c in stage_sel.most_common():
+            print(f"    {s}: {c}")
+    elif args.max_records and len(all_events) > args.max_records:
         omitted = len(all_events) - args.max_records
         all_events = all_events[:args.max_records]
         print(f"\nMax records applied: showing {args.max_records}, "

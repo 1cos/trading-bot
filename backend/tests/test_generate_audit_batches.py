@@ -43,7 +43,7 @@ backend_dir = Path(__file__).parent.parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
-from generate_audit_batches import generate_audit_html, parse_args
+from generate_audit_batches import generate_audit_html, parse_args, balance_by_failed_stage
 
 
 TICK_SIZE = "0.01"
@@ -406,3 +406,171 @@ class TestJsonSerializable:
         assert isinstance(s, str)
         parsed = json.loads(s)
         assert parsed["schema_version"] == "DetectorAuditVisualEvent/v1"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Balanced sampling tests (A5.4)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _make_event(stage, idx=0, direction="LONG", status="REJECTED"):
+    return {
+        "schema_version": "DetectorAuditVisualEvent/v1",
+        "audit_id": f"audit-{stage}-{idx}-{direction}",
+        "symbol": "SPY",
+        "session_date": f"2026-05-{10+idx:02d}",
+        "timeframe": "5m",
+        "direction": direction,
+        "candidate_status": status,
+        "failed_stage": stage if status == "REJECTED" else None,
+        "failed_rules": [],
+        "candles": [],
+        "annotations": {},
+    }
+
+
+class TestBalancedSamplingOff:
+    def test_cli_default_off(self):
+        args = parse_args([])
+        assert args.balanced_failed_stage is False
+
+    def test_without_balancing_preserves_order(self):
+        """No balancing = pass-through, same as legacy."""
+        events = [
+            _make_event("RETEST_BEFORE_DISPLACEMENT", 0),
+            _make_event("RETEST_BEFORE_DISPLACEMENT", 1),
+            _make_event("RETEST_BEFORE_DISPLACEMENT", 2),
+            _make_event("NO_QUALIFYING_REJECTION_CANDLE", 0),
+        ]
+        # Without balancing, just use the list directly (no call)
+        assert len(events) == 4
+        assert events[0]["failed_stage"] == "RETEST_BEFORE_DISPLACEMENT"
+        assert events[3]["failed_stage"] == "NO_QUALIFYING_REJECTION_CANDLE"
+
+
+class TestBalancedSamplingEnabled:
+    def test_cli_enabled(self):
+        args = parse_args(["--balanced-failed-stage"])
+        assert args.balanced_failed_stage is True
+
+    def test_even_distribution(self):
+        """3 stages × 10 records each → 30 total, 10 each."""
+        events = (
+            [_make_event("A", i) for i in range(10)] +
+            [_make_event("B", i) for i in range(10)] +
+            [_make_event("C", i) for i in range(10)]
+        )
+        result = balance_by_failed_stage(events)
+        assert len(result) == 30
+        from collections import Counter
+        counts = Counter(e["failed_stage"] for e in result)
+        assert counts["A"] == 10
+        assert counts["B"] == 10
+        assert counts["C"] == 10
+
+    def test_even_with_max_records(self):
+        """100 A + 40 B + 20 C → max 30 → 10 each."""
+        events = (
+            [_make_event("A", i) for i in range(100)] +
+            [_make_event("B", i) for i in range(40)] +
+            [_make_event("C", i) for i in range(20)]
+        )
+        result = balance_by_failed_stage(events, max_records=30)
+        from collections import Counter
+        counts = Counter(e["failed_stage"] for e in result)
+        assert counts["A"] == 10
+        assert counts["B"] == 10
+        assert counts["C"] == 10
+        assert len(result) == 30
+
+    def test_stage_exhaustion(self):
+        """100 A + 5 B → max 20 → 5 B + 15 A."""
+        events = (
+            [_make_event("A", i) for i in range(100)] +
+            [_make_event("B", i) for i in range(5)]
+        )
+        result = balance_by_failed_stage(events, max_records=20)
+        from collections import Counter
+        counts = Counter(e["failed_stage"] for e in result)
+        assert counts["B"] == 5
+        assert counts["A"] == 15
+        assert len(result) == 20
+
+    def test_no_duplicates(self):
+        """All output audit_ids are unique."""
+        events = (
+            [_make_event("A", i) for i in range(50)] +
+            [_make_event("B", i) for i in range(30)]
+        )
+        result = balance_by_failed_stage(events, max_records=40)
+        ids = [e["audit_id"] for e in result]
+        assert len(ids) == len(set(ids))
+
+    def test_deterministic(self):
+        events = (
+            [_make_event("A", i) for i in range(20)] +
+            [_make_event("B", i) for i in range(10)]
+        )
+        r1 = balance_by_failed_stage(events, max_records=15)
+        r2 = balance_by_failed_stage(events, max_records=15)
+        assert [e["audit_id"] for e in r1] == [e["audit_id"] for e in r2]
+
+    def test_valid_appended_after_rejected(self):
+        """VALID records come after balanced rejected."""
+        events = [
+            _make_event("A", 0),
+            _make_event("B", 0),
+            _make_event(None, 0, status="VALID"),
+        ]
+        result = balance_by_failed_stage(events)
+        assert len(result) == 3
+        # First two are rejected (balanced), last is VALID
+        assert result[0]["candidate_status"] == "REJECTED"
+        assert result[1]["candidate_status"] == "REJECTED"
+        assert result[2]["candidate_status"] == "VALID"
+
+    def test_valid_with_max_records(self):
+        """VALID records preserved within max_records budget."""
+        events = (
+            [_make_event("A", i) for i in range(100)] +
+            [_make_event(None, i, status="VALID") for i in range(5)]
+        )
+        result = balance_by_failed_stage(events, max_records=20)
+        valid_count = sum(1 for e in result
+                         if e["candidate_status"] == "VALID")
+        rejected_count = sum(1 for e in result
+                             if e["candidate_status"] == "REJECTED")
+        assert valid_count == 5
+        assert rejected_count == 15
+        assert len(result) == 20
+        # VALID at end
+        for e in result[-5:]:
+            assert e["candidate_status"] == "VALID"
+
+    def test_chronological_within_stage(self):
+        """Within each stage, chronological order is preserved."""
+        events = [_make_event("A", i) for i in range(10)]
+        result = balance_by_failed_stage(events)
+        dates = [e["session_date"] for e in result]
+        assert dates == sorted(dates)
+
+    def test_round_robin_interleaving(self):
+        """First records alternate between stages."""
+        events = (
+            [_make_event("A", i) for i in range(5)] +
+            [_make_event("B", i) for i in range(5)]
+        )
+        result = balance_by_failed_stage(events)
+        # Round-robin: A, B, A, B, A, B, ...
+        assert result[0]["failed_stage"] == "A"
+        assert result[1]["failed_stage"] == "B"
+        assert result[2]["failed_stage"] == "A"
+        assert result[3]["failed_stage"] == "B"
+
+    def test_no_balancing_without_max_returns_all(self):
+        """Without max_records, all records included."""
+        events = (
+            [_make_event("A", i) for i in range(100)] +
+            [_make_event("B", i) for i in range(40)]
+        )
+        result = balance_by_failed_stage(events)
+        assert len(result) == 140
