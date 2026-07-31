@@ -29,12 +29,10 @@ Each flag is derived from typed DetectionResult fields only:
 
 Known limitation
 ----------------
-SEQUENCE_INVALIDATED failures produce a DetectionResult with
-failed_stage=None (the FailedStage enum lacks this member) and
-empty failed_rules.  This combination violates the audit record's
-INV-A-09 invariant (REJECTED must have a non-null failed_stage or
-non-empty failed_rules).  The builder raises ValueError for these
-cases until the FailedStage enum is extended.
+Previously, SEQUENCE_INVALIDATED failures produced a DetectionResult
+with failed_stage=None because the FailedStage enum lacked that member.
+This has been resolved: FailedStage now includes SEQUENCE_INVALIDATED,
+and the detection_result_builder maps it correctly.
 
 Public API
 ----------

@@ -543,3 +543,36 @@ class TestMixedBatch:
         assert result[0] is valid
         assert result[1] is rejection_fail
         assert result[2] is disp_fail
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Sequence invalidation regression (A3.1)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestSequenceInvalidationSelected:
+    def test_sequence_invalidated_is_audit_worthy(self):
+        """SEQUENCE_INVALIDATED after break must be selected for audit."""
+        r = _make_rejected_audit(
+            FailedStage.SEQUENCE_INVALIDATED,
+            reached_orb=True,
+            reached_break=True,
+            reached_displacement=False,
+            reached_retest=False,
+            reached_rejection_scan=False,
+            audit_id="55555555-5555-4555-a555-555555555555",
+        )
+        assert is_audit_worthy(r) is True
+
+    def test_sequence_invalidated_in_batch(self):
+        """SEQUENCE_INVALIDATED survives batch selection."""
+        r = _make_rejected_audit(
+            FailedStage.SEQUENCE_INVALIDATED,
+            reached_orb=True,
+            reached_break=True,
+            reached_displacement=False,
+            audit_id="66666666-6666-4666-a666-666666666666",
+        )
+        result = select_audit_candidates([r])
+        assert len(result) == 1
+        assert result[0] is r

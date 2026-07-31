@@ -345,16 +345,47 @@ class TestRejectedRecords:
         assert ar.orb_low is None
         assert ar.orb_candle_time_ms is None
 
-    def test_sequence_invalidated_raises(self):
-        """SEQUENCE_INVALIDATED has failed_stage=None in DR (enum gap)."""
-        dr = _break_failure_dr()
-        # Simulate SEQUENCE_INVALIDATED: INVALID with failed_stage=None
+    def test_sequence_invalidated_builds_correctly(self):
+        """SEQUENCE_INVALIDATED is now in FailedStage enum — builds OK."""
+        kw = _dr_invalid_kwargs()
+        kw.update(
+            failed_stage=FailedStage.SEQUENCE_INVALIDATED,
+            failed_rules=(),
+            # No displacement or later data (disp was overwritten to FAILED)
+            displacement_window=(),
+            displacement_bar_count=None,
+            displacement_pts=None,
+            displacement_pct=None,
+            rejection_side_clearance_by_bar=None,
+            minimum_rejection_side_clearance=None,
+            average_rejection_side_clearance=None,
+            retest_window=(),
+            retest_bar_count=None,
+            failed_retest_count=None,
+            failed_retests=(),
+            bars_break_to_first_retest=None,
+            retest_closest_approach=None,
+            retest_penetration_through_level=None,
+            retest_displacement_retracement_pct=None,
+        )
+        dr = DetectionResult(**kw)
+        rr = _rejected_runner_result(
+            failed_stage=FailedStage.SEQUENCE_INVALIDATED,
+        )
+        rr["detection_result"] = dr
+        ar = build_detector_audit_record(rr)
+        assert ar.candidate_status == CandidateStatus.REJECTED
+        assert ar.failed_stage == FailedStage.SEQUENCE_INVALIDATED
+        assert ar.reached_orb is True
+        assert ar.reached_break is True
+        assert ar.reached_displacement is False
+
+    def test_rejected_with_null_failed_stage_and_empty_rules_raises(self):
+        """REJECTED with both failed_stage=None and failed_rules=() raises."""
         kw = _dr_invalid_kwargs()
         kw.update(
             failed_stage=None,
             failed_rules=(),
-            displacement_window=(),
-            displacement_bar_count=None,
         )
         dr = DetectionResult(**kw)
         rr = _rejected_runner_result()

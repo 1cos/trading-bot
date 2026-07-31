@@ -39,11 +39,12 @@ class TestFailedStage:
             "RETEST_BEFORE_DISPLACEMENT",
             "RETEST_NOT_FOUND",
             "NO_QUALIFYING_REJECTION_CANDLE",
+            "SEQUENCE_INVALIDATED",
         }
         assert {m.value for m in FailedStage} == expected
 
     def test_member_count(self):
-        assert len(FailedStage) == 6
+        assert len(FailedStage) == 7
 
     def test_string_comparison(self):
         assert FailedStage.RETEST_BEFORE_DISPLACEMENT == "RETEST_BEFORE_DISPLACEMENT"

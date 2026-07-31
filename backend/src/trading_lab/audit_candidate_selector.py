@@ -25,6 +25,7 @@ Each FailedStage enum member is classified as:
         RETEST_BEFORE_DISPLACEMENT    — break OK, price retested before displacing
         RETEST_NOT_FOUND              — break OK, no retest contact found
         NO_QUALIFYING_REJECTION_CANDLE — full scan, no confirmation qualified
+        SEQUENCE_INVALIDATED          — break OK, consecutive closes back inside ORB
 
     NOT AUDIT-WORTHY (never reached break):
         LEVEL_NOT_FOUND               — no valid ORB / level
@@ -69,6 +70,7 @@ _AUDIT_WORTHY_STAGES: frozenset[FailedStage] = frozenset({
     FailedStage.RETEST_BEFORE_DISPLACEMENT,
     FailedStage.RETEST_NOT_FOUND,
     FailedStage.NO_QUALIFYING_REJECTION_CANDLE,
+    FailedStage.SEQUENCE_INVALIDATED,
 })
 
 # Not audit-worthy: failure occurred before or at the break stage.
