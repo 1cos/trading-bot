@@ -17,13 +17,17 @@ validated through real examples.
 
 Priority order selected by Max:
 
-1. **Order Block** created during strong momentum (MES, MNQ)
+1. **Order Block** created during strong momentum, studied across all
+   available assets (SPY, QQQ, AMZN, TSLA, NVDA, META, MSFT, GOOGL, MU).
+   MES and MNQ are priority future instruments to add when data becomes
+   available, but Order Blocks are a generic price-action structure and
+   the definition must not be modeled as instrument-specific.
 2. **Previous Day High / Previous Day Low**
 3. Other level sources only later
 
 No Level Provider framework will be built until the first non-ORB level
 source (Order Block) has been validated through manual labeling and
-discretionary review.
+discretionary review across multiple instruments.
 
 ---
 
@@ -282,7 +286,9 @@ five precise locations. The path is additive, not destructive.
 However, following the Architecture Philosophy (observation → evidence →
 implementation), the correct sequence is:
 
-1. Validate Order Block levels through manual labeling on MES/MNQ
+1. Validate Order Block levels through manual labeling across all
+   available assets (SPY, QQQ, AMZN, TSLA, NVDA, META, MSFT, GOOGL, MU);
+   add MES/MNQ when data becomes available
 2. Validate PDH/PDL levels through manual labeling on SPY/QQQ
 3. Only then build the generic Level Provider framework
 4. Only then refactor the remaining ORB coupling points
@@ -300,3 +306,4 @@ as valid setups.
 | 2026-07-31 | Architecture study completed via full codebase review |
 | 2026-07-31 | Decision: generic direction confirmed, implementation deferred |
 | 2026-07-31 | Priority order: Order Block → PDH/PDL → others |
+| 2026-07-31 | Scope corrected: OB studied across all assets, not MES/MNQ only |
