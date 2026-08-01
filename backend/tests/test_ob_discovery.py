@@ -213,6 +213,83 @@ class TestHTMLContent:
             assert parts[-1] == "5m"
 
 
+# ── Blank-page bug regression tests ────────────────────────────────────────
+
+class TestBlankPageBugFix:
+    """Regression tests for the f-string brace corruption bug that
+    caused the workspace to render a blank page."""
+
+    def test_js_has_function_keyword(self, html_content):
+        """JavaScript must contain function definitions (f-string didn't eat them)."""
+        assert "function render(" in html_content or "function render " in html_content
+
+    def test_js_has_render_call(self, html_content):
+        """Initial render call must exist."""
+        assert "render(0)" in html_content
+
+    def test_js_has_curly_braces(self, html_content):
+        """JavaScript code must contain curly braces (not eaten by f-string)."""
+        # Find the script block
+        script_start = html_content.index("<script>\n") + len("<script>\n")
+        script_end = html_content.index("</script>", script_start)
+        js = html_content[script_start:script_end]
+        assert js.count("{") > 100, "JS should have many curly braces"
+        assert js.count("}") > 100, "JS should have many curly braces"
+
+    def test_inline_handlers_use_html_entities(self, html_content):
+        """Inline event handlers must use &#39; for quotes, not bare quotes."""
+        # The bug was: onchange="obFieldChange('+i+','field',this)"
+        # Fixed to: onchange="obFieldChange('+i+',&#39;field&#39;,this)"
+        assert "obFieldChange('+i+',&#39;" in html_content
+
+    def test_no_bare_quote_in_onchange(self, html_content):
+        """No bare single-quote corruption in obFieldChange handlers."""
+        import re
+        # Match obFieldChange in an onchange context with bare quotes
+        bad_pattern = r"obFieldChange\('\+i\+','[a-z_]+',this\)"
+        matches = re.findall(bad_pattern, html_content)
+        assert len(matches) == 0, f"Found bare-quote handlers: {matches[:3]}"
+
+    def test_embedded_json_parses(self, html_content):
+        """The embedded session JSON must parse correctly."""
+        match = re.search(r'var EV=(\[.*?\]);\s*var GEN_TS', html_content, re.DOTALL)
+        assert match is not None
+        events = json.loads(match.group(1))
+        assert isinstance(events, list)
+
+    def test_first_session_has_candle_data(self, html_content):
+        """First session must have candles with proper OHLC fields."""
+        match = re.search(r'var EV=(\[.*?\]);\s*var GEN_TS', html_content, re.DOTALL)
+        events = json.loads(match.group(1))
+        first = events[0]
+        assert "candles" in first
+        assert len(first["candles"]) > 0
+        c = first["candles"][0]
+        for field in ["time", "open", "high", "low", "close"]:
+            assert field in c, f"Missing field: {field}"
+
+    def test_required_dom_ids(self, html_content):
+        """All required DOM element IDs must exist in the HTML."""
+        for dom_id in ["counter", "dots", "content", "bPrev", "bNext",
+                       "bClearCurrent", "bClearAll", "bExport"]:
+            assert f'id="{dom_id}"' in html_content, f"Missing DOM id: {dom_id}"
+
+    def test_error_fallback_panel(self, html_content):
+        """Error fallback panel must exist for future startup failures."""
+        assert 'id="errorPanel"' in html_content
+        assert 'id="errorMsg"' in html_content
+        assert "Workspace failed to load" in html_content
+
+    def test_init_wrapped_in_try_catch(self, html_content):
+        """The render(0) init call must be wrapped in try/catch."""
+        # Find the init section
+        init_idx = html_content.find("// ── Init ──")
+        assert init_idx > 0
+        init_block = html_content[init_idx:init_idx+200]
+        assert "try{" in init_block or "try {" in init_block
+        assert "catch(e)" in init_block
+
+
 # ── Existing workspaces unchanged ──────────────────────────────────────────
 
 class TestExistingWorkspacesUnchanged:

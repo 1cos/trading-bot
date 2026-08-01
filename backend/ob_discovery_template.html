@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Order Block Discovery Workspace</title>
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f8f9fa;--s:#fff;--b:#d0d7de;--t:#1a1a1a;--m:#656d76;--a:#1565c0;--g:#116329;--r:#a40e26;--o:#e65100;--w:#7b1fa2}
+body{font-family:"SF Mono","Cascadia Code",Consolas,monospace;background:var(--bg);color:var(--t);font-size:14px}
+
+.topbar{display:flex;align-items:center;padding:12px 20px;background:var(--s);border-bottom:1px solid var(--b);gap:14px;flex-wrap:wrap;position:sticky;top:0;z-index:100}
+.topbar h1{font-size:18px;font-weight:700;color:var(--a)}
+.counter{font-size:14px;color:var(--m)}
+.btn{padding:8px 18px;border:1px solid var(--b);border-radius:4px;background:var(--s);font-family:inherit;font-size:14px;cursor:pointer;font-weight:600}
+.btn:hover{background:#f0f0f0}
+.btn-accent{background:var(--a);color:#fff;border-color:var(--a)}
+.btn-accent:hover{background:#1255a0}
+.btn-green{background:var(--g);color:#fff;border-color:var(--g)}
+.btn-red{background:var(--r);color:#fff;border-color:var(--r)}
+.btn-sm{padding:5px 12px;font-size:12px}
+
+.content{padding:16px 24px}
+.chart-box{background:var(--s);border:1px solid var(--b);border-radius:6px;overflow:hidden;margin-bottom:14px}
+.chart-box-title{font-size:12px;font-weight:700;color:var(--a);text-transform:uppercase;letter-spacing:.06em;padding:10px 14px;border-bottom:1px solid var(--b)}
+.chart-inner{height:480px;position:relative}
+.chart-hint{position:absolute;bottom:8px;right:14px;font-size:11px;color:var(--m);z-index:10;pointer-events:none}
+
+.section{background:var(--s);border:1px solid var(--b);border-radius:6px;padding:16px 20px;margin-bottom:14px}
+.section-title{font-size:14px;font-weight:700;color:var(--a);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px}
+
+.form-row{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:12px;align-items:flex-start}
+.form-group{min-width:180px}
+.form-label{font-size:12px;color:var(--m);margin-bottom:5px;font-weight:600}
+.form-options{display:flex;flex-wrap:wrap;gap:5px}
+.form-opt{padding:6px 14px;border:1px solid var(--b);border-radius:4px;font-size:12px;cursor:pointer;font-family:inherit;background:var(--s)}
+.form-opt:hover{background:#f0f0f0}
+.form-opt.selected{background:var(--a);color:#fff;border-color:var(--a)}
+.form-textarea{width:100%;height:50px;border:1px solid var(--b);border-radius:4px;padding:8px 10px;font-family:inherit;font-size:13px;resize:vertical}
+.form-input{border:1px solid var(--b);border-radius:4px;padding:6px 10px;font-family:inherit;font-size:13px;width:140px}
+.form-input.short{width:90px}
+
+.ob-card{background:#f6f8fa;border:1px solid var(--b);border-radius:6px;padding:14px 18px;margin-bottom:10px;position:relative}
+.ob-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.ob-card-title{font-size:13px;font-weight:700;color:var(--w)}
+.ob-warn{color:var(--o);font-size:11px;font-weight:600}
+
+.pdot{width:12px;height:12px;border-radius:50%;border:1px solid var(--b);background:var(--s);cursor:pointer;display:inline-block}
+.pdot.current{border-color:var(--a);background:#dbeafe}
+.pdot.reviewed{background:var(--g);border-color:var(--g)}
+
+.warn-bar{background:#fff3cd;border:1px solid #ffc107;border-radius:4px;padding:8px 14px;font-size:12px;color:#856404;margin-bottom:10px}
+.selected-candle{background:#e3f2fd;border:1px solid var(--a);border-radius:4px;padding:4px 10px;font-size:12px;display:inline-block;margin-right:6px}
+</style>
+</head>
+<body>
+<div class="topbar">
+<h1>OB Discovery</h1>
+<span class="counter" id="counter"></span>
+<span id="dots"></span>
+<div style="flex:1"></div>
+<button class="btn" id="bPrev">&#9664; Prev</button>
+<button class="btn" id="bNext">Next &#9654;</button>
+<button class="btn" id="bClearCurrent">Clear Session</button>
+<button class="btn" id="bClearAll">Clear All</button>
+<button class="btn btn-accent" id="bExport">Export JSON</button>
+</div>
+<div id="errorPanel" style="display:none;margin:20px;padding:20px;background:#fee;border:2px solid #a40e26;border-radius:8px;font-family:monospace">
+<h2 style="color:#a40e26;margin-bottom:10px">Workspace failed to load</h2>
+<pre id="errorMsg" style="white-space:pre-wrap;color:#1a1a1a"></pre>
+</div>
+<div class="content" id="content"></div>
+
+<script>
+var EV=__EVENTS_JSON__;
+var GEN_TS="__GEN_TS__";
+var ci=0;
+var charts=[];
+
+// ── localStorage ──
+var LS_PREFIX="ob_discovery_";
+function lsKey(ev){return LS_PREFIX+ev.session_id;}
+function loadReview(ev){
+  try{var s=localStorage.getItem(lsKey(ev));if(s)return JSON.parse(s);}catch(e){}
+  return {any_strong_momentum:null,any_order_block:null,session_note:"",order_blocks:[]};
+}
+function saveReview(ev,rev){
+  try{localStorage.setItem(lsKey(ev),JSON.stringify(rev));}catch(e){}
+}
+function getReview(){return loadReview(EV[ci]);}
+function putReview(rev){saveReview(EV[ci],rev);renderDots();}
+
+// ── Dots ──
+function renderDots(){
+  var d=document.getElementById("dots");if(!d)return;
+  var h="";
+  for(var i=0;i<EV.length;i++){
+    var r=loadReview(EV[i]);
+    var cls="pdot";
+    if(i===ci)cls+=" current";
+    else if(r.any_order_block!=null)cls+=" reviewed";
+    h+='<span class="'+cls+'" onclick="goTo('+i+')" title="'+EV[i].symbol+" "+EV[i].session_date+'"></span> ';
+  }
+  d.innerHTML=h;
+}
+
+function goTo(idx){if(idx>=0&&idx<EV.length)render(idx);}
+
+// ── Chart ──
+function buildChart(ev){
+  charts.forEach(function(c){try{c.remove();}catch(e){}});charts=[];
+  var el=document.getElementById("mainChart");if(!el)return;
+  var chart=LightweightCharts.createChart(el,{
+    width:el.clientWidth,height:el.clientHeight,
+    layout:{background:{type:"solid",color:"#ffffff"},textColor:"#1a1a1a",fontSize:12},
+    grid:{vertLines:{color:"#f0f0f0"},horzLines:{color:"#f0f0f0"}},
+    crosshair:{mode:0},
+    timeScale:{timeVisible:true,secondsVisible:false}
+  });
+  var series=chart.addCandlestickSeries({
+    upColor:"#116329",downColor:"#a40e26",borderVisible:false,
+    wickUpColor:"#116329",wickDownColor:"#a40e26"
+  });
+  series.setData(ev.candles);
+  chart.timeScale().fitContent();
+  charts.push(chart);
+
+  // Click to select candle
+  chart.subscribeCrosshairMove(function(param){
+    if(!param||!param.time)return;
+    window._hoveredTime=param.time;
+  });
+  el.addEventListener("click",function(){
+    if(window._hoveredTime){
+      var t=window._hoveredTime;
+      var c=ev.candles.find(function(x){return x.time===t;});
+      if(c){
+        var field=window._activeField;
+        if(field){
+          var inp=document.getElementById(field);
+          if(inp){inp.value=c.idx;inp.dispatchEvent(new Event("change"));}
+          window._activeField=null;
+        }
+      }
+    }
+  });
+
+  return {chart:chart,series:series};
+}
+
+// ── Option buttons ──
+function optHtml(name,opts,selected,obIdx){
+  var pfx=obIdx!=null?"ob_"+obIdx+"_":"sess_";
+  var h='<div class="form-options">';
+  for(var i=0;i<opts.length;i++){
+    var v=opts[i];
+    var sel=v===selected?" selected":"";
+    h+='<button class="form-opt'+sel+'" data-field="'+pfx+name+'" data-value="'+v+'" onclick="pickOpt(this)">'+v+'</button>';
+  }
+  h+="</div>";
+  return h;
+}
+function pickOpt(btn){
+  var field=btn.getAttribute("data-field");
+  var value=btn.getAttribute("data-value");
+  // Toggle off if already selected
+  var siblings=btn.parentElement.querySelectorAll(".form-opt");
+  var wasSelected=btn.classList.contains("selected");
+  siblings.forEach(function(s){s.classList.remove("selected");});
+  if(!wasSelected)btn.classList.add("selected");
+  var finalVal=wasSelected?null:value;
+
+  var rev=getReview();
+  if(field.startsWith("sess_")){
+    rev[field.replace("sess_","")]=finalVal;
+  } else {
+    var parts=field.split("_");
+    var idx=parseInt(parts[1]);
+    var key=parts.slice(2).join("_");
+    if(rev.order_blocks[idx])rev.order_blocks[idx][key]=finalVal;
+  }
+  putReview(rev);
+}
+
+// ── Add/Remove OB ──
+function addOB(){
+  var rev=getReview();
+  rev.order_blocks.push({
+    ob_id:rev.order_blocks.length+1,
+    momentum_direction:null,
+    momentum_start:null,momentum_end:null,
+    strong_momentum:null,
+    ob_candle_start:null,ob_candle_end:null,
+    ob_zone_top:null,ob_zone_bottom:null,
+    level_would_trade:null,
+    preferred_boundary:null,
+    later_retest:null,
+    would_trade:null,
+    quality:null,
+    notes:""
+  });
+  putReview(rev);
+  renderOBCards();
+}
+function removeOB(idx){
+  if(!confirm("Remove OB #"+(idx+1)+"?"))return;
+  var rev=getReview();
+  rev.order_blocks.splice(idx,1);
+  // Re-number
+  for(var i=0;i<rev.order_blocks.length;i++)rev.order_blocks[i].ob_id=i+1;
+  putReview(rev);
+  renderOBCards();
+}
+
+// ── Field change handler ──
+function obFieldChange(idx,key,el){
+  var rev=getReview();
+  if(!rev.order_blocks[idx])return;
+  var v=el.value;
+  if(["momentum_start","momentum_end","ob_candle_start","ob_candle_end"].indexOf(key)>=0){
+    v=v===""?null:parseInt(v);
+  } else if(["ob_zone_top","ob_zone_bottom","level_would_trade"].indexOf(key)>=0){
+    v=v===""?null:parseFloat(v);
+  }
+  rev.order_blocks[idx][key]=v;
+  putReview(rev);
+}
+function sessFieldChange(key,el){
+  var rev=getReview();
+  rev[key]=el.value;
+  putReview(rev);
+}
+
+// ── Select candle mode ──
+function activateSelect(fieldId){
+  window._activeField=fieldId;
+  document.querySelectorAll(".select-btn").forEach(function(b){b.style.background="";});
+  var btn=document.querySelector('[data-select-for="'+fieldId+'"]');
+  if(btn)btn.style.background="#dbeafe";
+}
+
+// ── Validation ──
+function obWarnings(ob){
+  var w=[];
+  if(ob.momentum_direction==null)w.push("No direction");
+  if(ob.ob_candle_start==null)w.push("No OB candle");
+  if(ob.ob_zone_top!=null&&ob.ob_zone_bottom!=null&&ob.ob_zone_top<=ob.ob_zone_bottom)w.push("Zone top ≤ bottom");
+  if((ob.ob_zone_top==null)!==(ob.ob_zone_bottom==null))w.push("Zone incomplete");
+  return w;
+}
+
+// ── Render OB cards ──
+function renderOBCards(){
+  var rev=getReview();
+  var container=document.getElementById("obCards");
+  if(!container)return;
+  var h="";
+  for(var i=0;i<rev.order_blocks.length;i++){
+    var ob=rev.order_blocks[i];
+    var warns=obWarnings(ob);
+    var warnHtml=warns.length>0?'<span class="ob-warn">⚠ '+warns.join(", ")+"</span>":"";
+
+    h+='<div class="ob-card">';
+    h+='<div class="ob-card-header"><span class="ob-card-title">Order Block #'+(i+1)+'</span>'+warnHtml;
+    h+='<button class="btn btn-sm btn-red" onclick="removeOB('+i+')">Remove</button></div>';
+
+    // Direction
+    h+='<div class="form-row">';
+    h+='<div class="form-group"><div class="form-label">Momentum Direction</div>'+optHtml("momentum_direction",["BULL","BEAR"],ob.momentum_direction,i)+'</div>';
+    h+='<div class="form-group"><div class="form-label">Strong Momentum?</div>'+optHtml("strong_momentum",["YES","NO","UNSURE"],ob.strong_momentum,i)+'</div>';
+    h+='</div>';
+
+    // Momentum candles
+    h+='<div class="form-row">';
+    h+='<div class="form-group"><div class="form-label">Momentum Start (candle #)</div>';
+    h+='<input class="form-input short" id="ob_'+i+'_momentum_start" type="number" value="'+(ob.momentum_start!=null?ob.momentum_start:"")+'" onchange="obFieldChange('+i+',&#39;momentum_start&#39;,this)">';
+    h+=' <button class="btn btn-sm select-btn" data-select-for="ob_'+i+'_momentum_start" onclick="activateSelect(&#39;ob_'+i+'_momentum_start&#39;)">Select</button></div>';
+
+    h+='<div class="form-group"><div class="form-label">Momentum End (candle #)</div>';
+    h+='<input class="form-input short" id="ob_'+i+'_momentum_end" type="number" value="'+(ob.momentum_end!=null?ob.momentum_end:"")+'" onchange="obFieldChange('+i+',&#39;momentum_end&#39;,this)">';
+    h+=' <button class="btn btn-sm select-btn" data-select-for="ob_'+i+'_momentum_end" onclick="activateSelect(&#39;ob_'+i+'_momentum_end&#39;)">Select</button></div>';
+    h+='</div>';
+
+    // OB candle(s)
+    h+='<div class="form-row">';
+    h+='<div class="form-group"><div class="form-label">OB Candle Start (#)</div>';
+    h+='<input class="form-input short" id="ob_'+i+'_ob_candle_start" type="number" value="'+(ob.ob_candle_start!=null?ob.ob_candle_start:"")+'" onchange="obFieldChange('+i+',&#39;ob_candle_start&#39;,this)">';
+    h+=' <button class="btn btn-sm select-btn" data-select-for="ob_'+i+'_ob_candle_start" onclick="activateSelect(&#39;ob_'+i+'_ob_candle_start&#39;)">Select</button></div>';
+
+    h+='<div class="form-group"><div class="form-label">OB Candle End (#)</div>';
+    h+='<input class="form-input short" id="ob_'+i+'_ob_candle_end" type="number" value="'+(ob.ob_candle_end!=null?ob.ob_candle_end:"")+'" onchange="obFieldChange('+i+',&#39;ob_candle_end&#39;,this)">';
+    h+=' <button class="btn btn-sm select-btn" data-select-for="ob_'+i+'_ob_candle_end" onclick="activateSelect(&#39;ob_'+i+'_ob_candle_end&#39;)">Select</button></div>';
+    h+='</div>';
+
+    // Zone prices
+    h+='<div class="form-row">';
+    h+='<div class="form-group"><div class="form-label">OB Zone Top (price)</div>';
+    h+='<input class="form-input" id="ob_'+i+'_ob_zone_top" type="number" step="0.01" value="'+(ob.ob_zone_top!=null?ob.ob_zone_top:"")+'" onchange="obFieldChange('+i+',&#39;ob_zone_top&#39;,this)"></div>';
+
+    h+='<div class="form-group"><div class="form-label">OB Zone Bottom (price)</div>';
+    h+='<input class="form-input" id="ob_'+i+'_ob_zone_bottom" type="number" step="0.01" value="'+(ob.ob_zone_bottom!=null?ob.ob_zone_bottom:"")+'" onchange="obFieldChange('+i+',&#39;ob_zone_bottom&#39;,this)"></div>';
+
+    h+='<div class="form-group"><div class="form-label">Level Would Trade (price)</div>';
+    h+='<input class="form-input" id="ob_'+i+'_level_would_trade" type="number" step="0.01" value="'+(ob.level_would_trade!=null?ob.level_would_trade:"")+'" onchange="obFieldChange('+i+',&#39;level_would_trade&#39;,this)"></div>';
+    h+='</div>';
+
+    // Preferred boundary
+    h+='<div class="form-row">';
+    h+='<div class="form-group"><div class="form-label">Preferred Boundary</div>'+optHtml("preferred_boundary",["HIGH","LOW","OPEN","CLOSE","BODY_TOP","BODY_BOTTOM","MIDPOINT","OTHER"],ob.preferred_boundary,i)+'</div>';
+    h+='</div>';
+
+    // Retest / trade / quality
+    h+='<div class="form-row">';
+    h+='<div class="form-group"><div class="form-label">Later Retest?</div>'+optHtml("later_retest",["YES","NO","PARTIAL","UNSURE"],ob.later_retest,i)+'</div>';
+    h+='<div class="form-group"><div class="form-label">Would Trade?</div>'+optHtml("would_trade",["YES","NO","UNSURE"],ob.would_trade,i)+'</div>';
+    h+='<div class="form-group"><div class="form-label">Quality</div>'+optHtml("quality",["A+","A","B","C","REJECT"],ob.quality,i)+'</div>';
+    h+='</div>';
+
+    // Notes
+    h+='<div class="form-group"><div class="form-label">Notes</div>';
+    h+='<textarea class="form-textarea" id="ob_'+i+'_notes" onchange="obFieldChange('+i+',&#39;notes&#39;,this)">'+((ob.notes||"").replace(/</g,"&lt;"))+'</textarea></div>';
+
+    h+='</div>';
+  }
+  container.innerHTML=h;
+}
+
+// ── Main render ──
+function render(idx){
+  ci=idx;
+  var ev=EV[ci];
+  document.getElementById("counter").textContent=(ci+1)+"/"+EV.length+"  "+ev.symbol+" "+ev.session_date+" ("+ev.timeframe+")";
+  renderDots();
+
+  var rev=getReview();
+  var h="";
+
+  // Chart
+  h+='<div class="chart-box"><div class="chart-box-title">'+ev.symbol+" — "+ev.session_date+" ("+ev.timeframe+")</div>";
+  h+='<div class="chart-inner" id="mainChart"><div class="chart-hint">Click chart to select candle index</div></div></div>';
+
+  // Session-level review
+  h+='<div class="section"><div class="section-title">Session Review</div>';
+  h+='<div class="form-row">';
+  h+='<div class="form-group"><div class="form-label">Any Strong Momentum?</div>'+optHtml("any_strong_momentum",["YES","NO","UNSURE"],rev.any_strong_momentum,null)+'</div>';
+  h+='<div class="form-group"><div class="form-label">Any Order Block?</div>'+optHtml("any_order_block",["YES","NO","UNSURE"],rev.any_order_block,null)+'</div>';
+  h+='</div>';
+  h+='<div class="form-group"><div class="form-label">Session Notes</div>';
+  h+='<textarea class="form-textarea" id="sess_note" onchange="sessFieldChange(&#39;session_note&#39;,this)">'+(rev.session_note||"").replace(/</g,"&lt;")+'</textarea></div>';
+  h+='</div>';
+
+  // OB cards
+  h+='<div class="section"><div class="section-title">Order Block Observations</div>';
+  h+='<div id="obCards"></div>';
+  h+='<button class="btn btn-green" onclick="addOB()">+ Add Order Block</button>';
+  h+='</div>';
+
+  document.getElementById("content").innerHTML=h;
+  buildChart(ev);
+  renderOBCards();
+}
+
+// ── Navigation ──
+document.getElementById("bPrev").onclick=function(){goTo(ci-1);};
+document.getElementById("bNext").onclick=function(){goTo(ci+1);};
+document.addEventListener("keydown",function(e){
+  if(e.target.tagName==="TEXTAREA"||e.target.tagName==="INPUT")return;
+  if(e.key==="ArrowLeft")goTo(ci-1);
+  else if(e.key==="ArrowRight")goTo(ci+1);
+});
+
+// ── Clear ──
+document.getElementById("bClearCurrent").onclick=function(){
+  if(!confirm("Clear review for "+EV[ci].symbol+" "+EV[ci].session_date+"?"))return;
+  localStorage.removeItem(lsKey(EV[ci]));
+  render(ci);
+};
+document.getElementById("bClearAll").onclick=function(){
+  if(!confirm("Clear ALL reviews? This cannot be undone."))return;
+  for(var i=0;i<EV.length;i++)localStorage.removeItem(lsKey(EV[i]));
+  render(ci);
+};
+
+// ── Export ──
+document.getElementById("bExport").onclick=function(){
+  var warnCount=0;
+  var sessions=[];
+  for(var i=0;i<EV.length;i++){
+    var ev=EV[i];
+    var rev=loadReview(ev);
+    var obs=[];
+    for(var j=0;j<rev.order_blocks.length;j++){
+      var ob=rev.order_blocks[j];
+      var w=obWarnings(ob);
+      warnCount+=w.length;
+      obs.push({
+        ob_id:ev.session_id+"_OB-"+(j+1),
+        momentum_direction:ob.momentum_direction,
+        momentum_start:ob.momentum_start,
+        momentum_end:ob.momentum_end,
+        strong_momentum:ob.strong_momentum,
+        ob_candle_start:ob.ob_candle_start,
+        ob_candle_end:ob.ob_candle_end,
+        ob_zone_top:ob.ob_zone_top,
+        ob_zone_bottom:ob.ob_zone_bottom,
+        level_would_trade:ob.level_would_trade,
+        preferred_boundary:ob.preferred_boundary,
+        later_retest:ob.later_retest,
+        would_trade:ob.would_trade,
+        quality:ob.quality,
+        notes:ob.notes||null,
+        warnings:w
+      });
+    }
+    sessions.push({
+      symbol:ev.symbol,
+      session_date:ev.session_date,
+      timeframe:ev.timeframe,
+      any_strong_momentum:rev.any_strong_momentum,
+      any_order_block:rev.any_order_block,
+      session_note:rev.session_note||null,
+      order_blocks:obs
+    });
+  }
+  if(warnCount>0&&!confirm(warnCount+" validation warning(s) found. Export anyway?"))return;
+  var out={
+    schema_version:"OrderBlockDiscoveryBatch/v1",
+    generated_at:new Date().toISOString(),
+    source_commit:GEN_TS,
+    timeframe:"5m",
+    session_count:EV.length,
+    sessions:sessions
+  };
+  var blob=new Blob([JSON.stringify(out,null,2)],{type:"application/json"});
+  var a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="ob_discovery_batch.json";
+  a.click();
+};
+
+// ── Init ──
+try{
+  if(EV.length>0)render(0);
+}catch(e){
+  var ep=document.getElementById("errorPanel");
+  if(ep){ep.style.display="block";document.getElementById("errorMsg").textContent=e.message+"\n"+e.stack;}
+  console.error("Workspace init failed:",e);
+}
+</script>
+</body>
+</html>
