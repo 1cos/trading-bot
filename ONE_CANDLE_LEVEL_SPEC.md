@@ -27,14 +27,17 @@ replace it with internet OB definitions.
 3. That bearish candle must have an upper wick (wick pointing in the
    direction of the trend).
 4. After that single bearish candle, the upward trend continues promptly.
-5. The One Candle Level is defined by the upper wick of that bearish candle.
+5. The OCL wick zone is defined as the bearish candle's open through its
+   high (i.e. the upper wick region).
 6. Later, price returns to retest that wick zone.
 7. The retest may touch only the wick — price does not need to enter the
    candle body.
-8. Entry requires a BDRR-style rejection/confirmation candle.
-9. Initial entry model: enter at the close of the valid confirmation candle.
+8. The entry/rejection candle itself performs the retest: a later bullish
+   candle that touches the OCL wick zone and rejects upward. The retest
+   and rejection are one candle, not two separate events.
+9. Initial entry model: enter at the close of that entry/rejection candle.
 10. Initial stop concepts (preserve for future testing, do not choose yet):
-    - Below the confirmation candle.
+    - Below the entry/rejection candle.
     - Below the complete One Candle.
 11. Initial target: 2R.
 
@@ -47,9 +50,12 @@ Exact mirror image:
 3. That bullish candle must have a lower wick (pointing in the direction
    of the downward trend).
 4. Downward momentum must resume promptly.
-5. The One Candle Level is defined by the lower wick of that bullish candle.
+5. The OCL wick zone is defined as the bullish candle's low through its
+   open (i.e. the lower wick region).
 6. Later, price returns to retest that wick zone.
-7. A valid BDRR-style rejection/confirmation candle is required.
+7. The entry/rejection candle itself performs the retest: a later bearish
+   candle that touches the OCL wick zone and rejects downward. The retest
+   and rejection are one candle, not two separate events.
 8. Initial target: 2R.
 
 ---
@@ -65,10 +71,12 @@ They are research starting points, not final optimized parameters.
 | Opposing candles      | Exactly one                            |
 | Wick requirement      | Must point in trend direction          |
 | Continuation          | Momentum must resume after the candle  |
-| Level zone            | Wick only                              |
+| LONG wick zone        | Bearish candle open through high       |
+| SHORT wick zone       | Bullish candle low through open        |
 | Retest focus          | First later retest of the wick         |
-| Entry trigger         | BDRR rejection/confirmation candle     |
+| Entry model           | The entry/rejection candle itself touches the wick zone and rejects — retest and rejection are one candle, not two |
 | Target                | 2R                                     |
+| Quality axes          | Formation quality and trade quality are judged separately |
 
 ---
 
