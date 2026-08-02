@@ -353,3 +353,22 @@ Once per month, review all discoveries and answer:
 
 > *The detector evolves through accumulated evidence.*
 > *Never through isolated examples.*
+
+---
+
+## Strategic Decisions
+
+### 2026-08-02 — Level Provider Research Track Change
+
+**Decision:** Order Block research is paused. One Candle Level (OCL) is
+the active Level Provider research track.
+
+**What this means:**
+- All existing OB documents and files are preserved — nothing deleted.
+- No OB detector, provider, or workspace development occurs.
+- OCL is defined in `ONE_CANDLE_LEVEL_SPEC.md` (v0.1).
+- Future OB work may resume separately.
+
+**Reason:** OCL is Max's specific continuation structure. Generic Order
+Block definitions introduce conflicting internet terminology. OCL uses
+an internal, precise definition owned by the project.
