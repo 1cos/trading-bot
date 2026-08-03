@@ -191,6 +191,44 @@ class PresetStore:
         with open(path, "r") as f:
             return json.loads(f.read())
 
+    def list_all(self) -> list[dict]:
+        """List all valid presets as summary dicts.
+
+        Skips temp files, non-JSON files, and corrupt files.
+        Returns sorted by updated_at (newest first), then name, then id.
+        """
+        summaries = []
+        for f in self._dir.iterdir():
+            if f.suffix != ".json":
+                continue
+            stem = f.stem
+            if not _SAFE_ID_RE.match(stem):
+                continue
+            try:
+                with open(f, "r") as fh:
+                    data = json.loads(fh.read())
+                p = data.get("parameters", {})
+                summaries.append({
+                    "preset_id": data["preset_id"],
+                    "name": data.get("name", ""),
+                    "strategy_id": data.get("strategy_id", ""),
+                    "symbol": p.get("symbol", ""),
+                    "timeframe": p.get("timeframe", ""),
+                    "direction": p.get("direction", ""),
+                    "level_source": p.get("level_source", ""),
+                    "updated_at": data.get("updated_at", ""),
+                })
+            except (json.JSONDecodeError, KeyError, TypeError):
+                continue  # skip corrupt files
+
+        summaries.sort(key=lambda s: (
+            s["updated_at"],  # will sort ascending; we reverse below
+            s["name"],
+            s["preset_id"],
+        ))
+        summaries.reverse()  # newest first
+        return summaries
+
     def _save_atomic(self, preset_id: str, preset: dict) -> None:
         """Write preset to disk atomically (temp + rename)."""
         path = self._path(preset_id)

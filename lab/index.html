@@ -142,9 +142,22 @@ tr.clickable{cursor:pointer}
 <div class="sidebar">
   <div class="sidebar-header">BDRR Backtest Lab</div>
 
-  <div class="preset-bar">
-    <span class="preset-name" id="presetName">Frozen Default</span>
-    <button class="btn-preset" onclick="resetDefaults()">Reset</button>
+  <div class="preset-bar" style="flex-direction:column;gap:6px;align-items:stretch">
+    <div style="display:flex;align-items:center;gap:6px">
+      <span class="preset-name" id="presetName">Unsaved configuration</span>
+      <button class="btn-preset" onclick="resetDefaults()">Reset</button>
+    </div>
+    <div style="display:flex;gap:4px">
+      <input class="param-input" type="text" id="presetNameInput" placeholder="Preset name..." style="flex:1;text-align:left;font-size:12px">
+      <button class="btn-preset" id="btnSavePreset" onclick="savePreset()">Save</button>
+    </div>
+    <div style="display:flex;gap:4px">
+      <select class="param-select" id="presetSelect" style="flex:1;font-size:12px">
+        <option value="">— Select preset —</option>
+      </select>
+      <button class="btn-preset" id="btnLoadPreset" onclick="loadPreset()">Load</button>
+    </div>
+    <div id="presetStatus" style="font-size:11px;color:var(--muted);min-height:14px"></div>
   </div>
 
   <!-- Data -->
@@ -318,7 +331,7 @@ tr.clickable{cursor:pointer}
 "use strict";
 
 var API="/api";
-var state={symbols:[],defaults:null,result:null,chartEvents:[],currentChart:-1};
+var state={symbols:[],defaults:null,result:null,chartEvents:[],currentChart:-1,activePreset:null};
 var tradeChart=null,tradeSeries=null;
 
 // ── Init ──
@@ -367,7 +380,137 @@ function resetDefaults(){
   document.getElementById("pTickSize").value="0.01";
   document.getElementById("pWickMin").value="47";
   document.getElementById("pBodyMax").value="40";
-  document.getElementById("presetName").textContent="Frozen Default";
+  document.getElementById("presetName").textContent="Unsaved configuration";
+  state.activePreset=null;
+  onDirectionChange();
+}
+
+// ── Preset active state tracking ──
+function clearActivePreset(){
+  state.activePreset=null;
+  document.getElementById("presetName").textContent="Unsaved configuration";
+}
+
+// Mark all strategy inputs to clear preset on change
+function _attachPresetClearListeners(){
+  var ids=["pSymbol","pTimeframe","pDirection","pLevelSource","pOrbDuration",
+           "pConsecOrbCloses","pExitTargetR","pEntryBuffer","pStopBuffer",
+           "pTickSize","pWickMin","pBodyMax"];
+  ids.forEach(function(id){
+    var el=document.getElementById(id);
+    if(el) el.addEventListener("input",clearActivePreset);
+    if(el) el.addEventListener("change",clearActivePreset);
+  });
+}
+
+// ── Preset list ──
+async function refreshPresetList(){
+  try{
+    var list=await(await fetch(API+"/presets")).json();
+    var sel=document.getElementById("presetSelect");
+    sel.innerHTML='<option value="">— Select preset —</option>';
+    if(Array.isArray(list)){
+      list.forEach(function(p){
+        var o=document.createElement("option");
+        o.value=p.preset_id;
+        o.textContent=p.name+" ("+p.symbol+" "+p.direction+")";
+        sel.appendChild(o);
+      });
+    }
+  }catch(e){
+    document.getElementById("presetStatus").textContent="Failed to load presets";
+  }
+}
+
+// ── Save preset ──
+window.savePreset=async function(){
+  var nameEl=document.getElementById("presetNameInput");
+  var name=nameEl.value.trim();
+  if(!name){
+    document.getElementById("presetStatus").textContent="Enter a preset name";
+    return;
+  }
+  var params={
+    symbol:document.getElementById("pSymbol").value,
+    timeframe:document.getElementById("pTimeframe").value,
+    direction:document.getElementById("pDirection").value,
+    level_source:document.getElementById("pLevelSource").value,
+    orb_duration_minutes:parseInt(document.getElementById("pOrbDuration").value),
+    consecutive_orb_closes:parseInt(document.getElementById("pConsecOrbCloses").value),
+    entry_model:"CONFIRMATION_CLOSE",
+    min_close_beyond_level_ticks:null,
+    entry_buffer_ticks:parseInt(document.getElementById("pEntryBuffer").value),
+    stop_buffer_ticks:parseInt(document.getElementById("pStopBuffer").value),
+    exit_target_r:document.getElementById("pExitTargetR").value,
+    rejection_wick_ratio_min:String(parseFloat(document.getElementById("pWickMin").value)/100),
+    body_ratio_max:String(parseFloat(document.getElementById("pBodyMax").value)/100),
+    tick_size:document.getElementById("pTickSize").value,
+  };
+  try{
+    var resp=await fetch(API+"/presets",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({name:name,parameters:params}),
+    });
+    if(!resp.ok){
+      var err=await resp.json();
+      document.getElementById("presetStatus").textContent="Error: "+(err.error||"Save failed");
+      return;
+    }
+    var preset=await resp.json();
+    state.activePreset=preset;
+    document.getElementById("presetName").textContent="Active: "+preset.name;
+    document.getElementById("presetStatus").textContent="Saved ✓";
+    nameEl.value="";
+    await refreshPresetList();
+    document.getElementById("presetSelect").value=preset.preset_id;
+  }catch(e){
+    document.getElementById("presetStatus").textContent="Error: "+e.message;
+  }
+};
+
+// ── Load preset ──
+window.loadPreset=async function(){
+  var sel=document.getElementById("presetSelect");
+  var pid=sel.value;
+  if(!pid){
+    document.getElementById("presetStatus").textContent="Select a preset first";
+    return;
+  }
+  try{
+    var resp=await fetch(API+"/presets/"+pid);
+    if(!resp.ok){
+      document.getElementById("presetStatus").textContent="Preset not found";
+      return;
+    }
+    var preset=await resp.json();
+    var p=preset.parameters;
+
+    // Populate all controls
+    document.getElementById("pSymbol").value=p.symbol||"SPY";
+    document.getElementById("pTimeframe").value=p.timeframe||"5m";
+    document.getElementById("pDirection").value=p.direction||"LONG";
+    document.getElementById("pLevelSource").value=p.level_source||"ORB_HIGH";
+    document.getElementById("pOrbDuration").value=String(p.orb_duration_minutes||5);
+    document.getElementById("pConsecOrbCloses").value=String(p.consecutive_orb_closes||2);
+    document.getElementById("pExitTargetR").value=p.exit_target_r||"2";
+    document.getElementById("pEntryBuffer").value=String(p.entry_buffer_ticks||0);
+    document.getElementById("pStopBuffer").value=String(p.stop_buffer_ticks||0);
+    document.getElementById("pTickSize").value=p.tick_size||"0.01";
+    // Convert ratio → percentage for display
+    document.getElementById("pWickMin").value=p.rejection_wick_ratio_min?
+      String(Math.round(parseFloat(p.rejection_wick_ratio_min)*100)):"47";
+    document.getElementById("pBodyMax").value=p.body_ratio_max?
+      String(Math.round(parseFloat(p.body_ratio_max)*100)):"40";
+
+    onDirectionChange();
+    state.activePreset=preset;
+    document.getElementById("presetName").textContent="Active: "+preset.name;
+    document.getElementById("presetStatus").textContent="Loaded ✓";
+  }catch(e){
+    document.getElementById("presetStatus").textContent="Error: "+e.message;
+  }
+};
   onDirectionChange();
 }
 
@@ -425,27 +568,37 @@ window.runBacktest=async function(){
     btn.disabled=false;return;
   }
 
-  var body={
-    symbols:[document.getElementById("pSymbol").value],
-    start_date:document.getElementById("pStartDate").value,
-    end_date:document.getElementById("pEndDate").value,
-    timeframe:document.getElementById("pTimeframe").value,
-    preset:{
-      direction:document.getElementById("pDirection").value,
-      level_source:document.getElementById("pLevelSource").value,
-      orb_duration_minutes:parseInt(document.getElementById("pOrbDuration").value),
-      consecutive_orb_closes:parseInt(document.getElementById("pConsecOrbCloses").value),
-      entry_model:"CONFIRMATION_CLOSE",
-      entry_buffer_ticks:parseInt(document.getElementById("pEntryBuffer").value),
-      stop_buffer_ticks:parseInt(document.getElementById("pStopBuffer").value),
-      rejection_wick_ratio_min:parseFloat(document.getElementById("pWickMin").value)/100,
-      body_ratio_max:parseFloat(document.getElementById("pBodyMax").value)/100,
-    },
-    config:{
-      exit_target_r:document.getElementById("pExitTargetR").value,
-      tick_size:parseFloat(document.getElementById("pTickSize").value),
-    }
-  };
+  var body;
+  if(state.activePreset){
+    // Run by preset_id — only send dates
+    body={
+      preset_id:state.activePreset.preset_id,
+      start_date:document.getElementById("pStartDate").value,
+      end_date:document.getElementById("pEndDate").value,
+    };
+  }else{
+    body={
+      symbols:[document.getElementById("pSymbol").value],
+      start_date:document.getElementById("pStartDate").value,
+      end_date:document.getElementById("pEndDate").value,
+      timeframe:document.getElementById("pTimeframe").value,
+      preset:{
+        direction:document.getElementById("pDirection").value,
+        level_source:document.getElementById("pLevelSource").value,
+        orb_duration_minutes:parseInt(document.getElementById("pOrbDuration").value),
+        consecutive_orb_closes:parseInt(document.getElementById("pConsecOrbCloses").value),
+        entry_model:"CONFIRMATION_CLOSE",
+        entry_buffer_ticks:parseInt(document.getElementById("pEntryBuffer").value),
+        stop_buffer_ticks:parseInt(document.getElementById("pStopBuffer").value),
+        rejection_wick_ratio_min:parseFloat(document.getElementById("pWickMin").value)/100,
+        body_ratio_max:parseFloat(document.getElementById("pBodyMax").value)/100,
+      },
+      config:{
+        exit_target_r:document.getElementById("pExitTargetR").value,
+        tick_size:parseFloat(document.getElementById("pTickSize").value),
+      }
+    };
+  }
 
   status.textContent="Running detector...";
   try{
@@ -803,6 +956,8 @@ window.addEventListener("resize",function(){
 });
 
 window.resetDefaults=resetDefaults;
+_attachPresetClearListeners();
+refreshPresetList();
 init();
 })();
 </script>

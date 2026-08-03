@@ -570,6 +570,15 @@ def api_defaults():
 # ── Preset endpoints ────────────────────────────────────────────────────────
 
 
+@app.route("/api/presets", methods=["GET"])
+def api_preset_list():
+    """List all saved presets."""
+    try:
+        return jsonify(_preset_store.list_all())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/presets", methods=["POST"])
 def api_preset_create():
     """Create and save a new persistent preset."""
