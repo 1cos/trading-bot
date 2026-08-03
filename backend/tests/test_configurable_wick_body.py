@@ -114,27 +114,139 @@ _CANDLES_PREFIX = [
 ]
 
 
-# ── Wick/Body Config Unit Tests ──────────────────────────────────────────────
+# ── Direct Pipeline Tests ────────────────────────────────────────────────────
+# These run the full pipeline (session_context → orb → break → displacement
+# → retest → rejection) with different wick/body thresholds.
+
+from trading_lab.session_context import build_session_context
+from trading_lab.orb_builder import build_orb
+from trading_lab.break_finder import find_break
+from trading_lab.displacement_finder import find_displacement
+from trading_lab.retest_window import find_retest_window
+
+# 2026-07-01 EDT (UTC-4)
+_MS_0930 = 1782912600000
+_MS_0935 = _MS_0930 + 300000
+_MS_0940 = _MS_0930 + 600000
+_MS_0945 = _MS_0930 + 900000
 
 
-class TestWickBodyConfigDefaults:
-    """Verify the constants still exist and config.get handles None."""
+def _c(ms, o, h, l, cl):
+    return {"time_ms": ms, "open": o, "high": h, "low": l, "close": cl}
+
+
+def _cfg(**overrides):
+    base = {
+        "timeframe_minutes": 5, "timezone": "America/New_York",
+        "session_open": "09:30", "orb_start": "session_open",
+        "orb_duration_minutes": 5, "level_source": "ORB_HIGH",
+        "direction": "LONG", "tick_size": 0.01,
+        "min_displacement_ticks": None, "min_penetration_ticks": None,
+        "min_close_beyond_level_ticks": 1,
+    }
+    base.update(overrides)
+    return base
+
+
+def _run_pipeline(candles, cfg):
+    sc = build_session_context(candles, cfg)
+    orb = build_orb(sc["candles"], sc, cfg)
+    brk = find_break(sc["candles"], orb, cfg)
+    disp = find_displacement(sc["candles"], orb, brk, cfg)
+    rw = find_retest_window(sc["candles"], orb, brk, disp, cfg)
+    return find_rejection(sc["candles"], orb, brk, disp, rw, cfg)
+
+
+def _test_candles_wick50_body30():
+    """Rejection candle: wick=0.50, body=0.30, fcl=0.80. Passes all defaults."""
+    return [
+        _c(_MS_0930, 100.00, 101.00, 99.00, 100.50),
+        _c(_MS_0935, 100.50, 101.50, 100.30, 101.20),
+        _c(_MS_0940, 101.20, 101.60, 101.10, 101.30),
+        _c(_MS_0945, 101.00, 106.00, 96.00, 104.00),
+    ]
+
+
+def _test_candles_wick30_body50():
+    """Rejection candle: wick=0.30, body=0.50, fcl=0.80. Body too big for default."""
+    return [
+        _c(_MS_0930, 100.00, 101.00, 99.00, 100.50),
+        _c(_MS_0935, 100.50, 101.50, 100.30, 101.20),
+        _c(_MS_0940, 101.20, 101.60, 101.10, 101.30),
+        _c(_MS_0945, 99.00, 106.00, 96.00, 104.00),
+    ]
+
+
+def _get_failed_rules(rej):
+    """Extract failed_rules from either OK result or FAILED failed_retests."""
+    if rej.get("status") == "OK":
+        return rej.get("failed_rules", [])
+    frs = rej.get("failed_retests", [])
+    if frs:
+        return frs[0].get("failed_rules", [])
+    return []
+
+
+class TestDirectWickThreshold:
+    def test_at_default_passes(self):
+        rej = _run_pipeline(_test_candles_wick50_body30(), _cfg())
+        assert rej["status"] == "OK"
+
+    def test_raised_threshold_rejects(self):
+        rej = _run_pipeline(_test_candles_wick50_body30(),
+                            _cfg(rejection_wick_ratio_min=0.60))
+        assert "REJECTION_WICK_RATIO_TOO_LOW" in _get_failed_rules(rej)
+
+    def test_wick30_fails_at_default(self):
+        rej = _run_pipeline(_test_candles_wick30_body50(), _cfg())
+        assert "REJECTION_WICK_RATIO_TOO_LOW" in _get_failed_rules(rej)
+
+    def test_wick30_passes_with_lowered_threshold(self):
+        rej = _run_pipeline(_test_candles_wick30_body50(),
+                            _cfg(rejection_wick_ratio_min=0.25, body_ratio_max=0.60))
+        assert rej["status"] == "OK"
+
+    def test_zero_threshold_accepts(self):
+        rej = _run_pipeline(_test_candles_wick30_body50(),
+                            _cfg(rejection_wick_ratio_min=0, body_ratio_max=0.60))
+        assert "REJECTION_WICK_RATIO_TOO_LOW" not in _get_failed_rules(rej)
+
+
+class TestDirectBodyThreshold:
+    def test_at_default_passes(self):
+        rej = _run_pipeline(_test_candles_wick50_body30(), _cfg())
+        assert rej["status"] == "OK"
+
+    def test_body50_fails_at_default(self):
+        rej = _run_pipeline(_test_candles_wick30_body50(), _cfg())
+        assert "BODY_RATIO_TOO_HIGH" in _get_failed_rules(rej)
+
+    def test_body50_passes_with_raised_max(self):
+        rej = _run_pipeline(_test_candles_wick30_body50(),
+                            _cfg(rejection_wick_ratio_min=0.25, body_ratio_max=0.60))
+        assert rej["status"] == "OK"
+
+    def test_body30_fails_with_lowered_max(self):
+        rej = _run_pipeline(_test_candles_wick50_body30(),
+                            _cfg(body_ratio_max=0.15))
+        assert "BODY_RATIO_TOO_HIGH" in _get_failed_rules(rej)
+
+
+class TestDirectZeroHandling:
+    def test_wick_zero_does_not_fallback_to_default(self):
+        rej = _run_pipeline(_test_candles_wick30_body50(),
+                            _cfg(rejection_wick_ratio_min=0, body_ratio_max=0.60))
+        assert "REJECTION_WICK_RATIO_TOO_LOW" not in _get_failed_rules(rej)
+
+    def test_body_zero_rejects_any_body(self):
+        rej = _run_pipeline(_test_candles_wick50_body30(),
+                            _cfg(body_ratio_max=0))
+        assert "BODY_RATIO_TOO_HIGH" in _get_failed_rules(rej)
 
     def test_constants_unchanged(self):
         assert REJECTION_WICK_RATIO_MIN == 0.47
         assert BODY_RATIO_MAX == 0.40
 
-    def test_config_get_none_uses_default(self):
-        """When config has key=None, rejection_finder uses frozen default."""
-        cfg = _config(rejection_wick_ratio_min=None, body_ratio_max=None)
-        # These should not crash — they fall back to constants
-        assert cfg["rejection_wick_ratio_min"] is None
-        assert cfg["body_ratio_max"] is None
-
-    def test_config_get_value_overrides(self):
-        cfg = _config(rejection_wick_ratio_min=0.30, body_ratio_max=0.60)
-        assert cfg["rejection_wick_ratio_min"] == 0.30
-        assert cfg["body_ratio_max"] == 0.60
 
 
 # ── Validation Tests ─────────────────────────────────────────────────────────
