@@ -18,6 +18,7 @@ from trading_lab.backtest_server import (
     parse_exit_target_r,
     _compute_metrics,
     _rational_to_number,
+    _rational_to_json_dict,
     _RationalEncoder,
     app,
 )
@@ -194,7 +195,7 @@ class TestJSONSerialization:
         data = {"r": Rational(5, 2), "d": Decimal("3.14")}
         result = json.dumps(data, cls=_RationalEncoder)
         parsed = json.loads(result)
-        assert parsed["r"] == 2.5
+        assert parsed["r"] == {"numerator": 5, "denominator": 2, "decimal": "2.5"}
         assert abs(parsed["d"] - 3.14) < 0.001
 
     def test_metrics_serializable(self):
@@ -211,13 +212,15 @@ class TestJSONSerialization:
         assert isinstance(parsed["win_rate"], (int, float))
 
     def test_flask_app_serializes_rational(self):
-        """Flask app with custom JSON provider can serialize Rational."""
+        """Flask app with custom JSON provider serializes Rational as dict."""
         with app.app_context():
             from flask import json as flask_json
             data = {"value": Rational(9, 4)}
             result = flask_json.dumps(data)
             parsed = json.loads(result)
-            assert parsed["value"] == 2.25
+            assert parsed["value"] == {
+                "numerator": 9, "denominator": 4, "decimal": "2.25"
+            }
 
 
 # ── /api/run endpoint ───────────────────────────────────────────────────────
@@ -290,3 +293,135 @@ class TestApiRunEndpoint:
         d2 = r2.get_json()
         assert d1["metrics"]["winning_trades"] == d2["metrics"]["winning_trades"]
         assert d1["metrics"]["losing_trades"] == d2["metrics"]["losing_trades"]
+
+
+# ── Exact Rational serialization tests ───────────────────────────────────────
+
+
+class TestRationalExactSerialization:
+    def test_rational_133_53_preserves_exact(self):
+        """Rational(133,53) serializes with numerator, denominator, decimal."""
+        r = _rational_to_json_dict(Rational(133, 53))
+        assert r["numerator"] == 133
+        assert r["denominator"] == 53
+        assert "." in r["decimal"]
+        # Verify it's a string, not float
+        assert isinstance(r["decimal"], str)
+        # Reconstructible
+        from decimal import Decimal
+        assert Decimal(r["decimal"]) == Decimal(133) / Decimal(53)
+
+    def test_rational_5_2_decimal(self):
+        """Rational(5,2) → decimal '2.5'."""
+        r = _rational_to_json_dict(Rational(5, 2))
+        assert r["decimal"] == "2.5"
+
+    def test_rational_2_1_decimal(self):
+        """Rational(2,1) → decimal '2' (no trailing zeros)."""
+        r = _rational_to_json_dict(Rational(2, 1))
+        assert r["decimal"] == "2"
+
+    def test_rational_9_4_decimal(self):
+        """Rational(9,4) → decimal '2.25'."""
+        r = _rational_to_json_dict(Rational(9, 4))
+        assert r["decimal"] == "2.25"
+
+    def test_no_float_in_decimal_field(self):
+        """The decimal field is a string built without float."""
+        r = _rational_to_json_dict(Rational(133, 53))
+        assert isinstance(r["decimal"], str)
+        # Must start with the correct digits (exact Decimal division)
+        assert r["decimal"].startswith("2.509433962264150943")
+        # Must NOT be a float artifact (float gives "2.5094339622641511")
+        assert "1511" not in r["decimal"]
+
+    def test_negative_rational(self):
+        r = _rational_to_json_dict(Rational(-1, 1))
+        assert r["numerator"] == -1
+        assert r["denominator"] == 1
+        assert r["decimal"] == "-1"
+
+    def test_json_encoder_rational_not_plain_float(self):
+        """Rational must NOT serialize as a plain JSON number."""
+        data = {"r": Rational(5, 2)}
+        result = json.dumps(data, cls=_RationalEncoder)
+        parsed = json.loads(result)
+        # Must be a dict, not a number
+        assert isinstance(parsed["r"], dict)
+        assert "numerator" in parsed["r"]
+
+    def test_decimal_still_serializes_as_number(self):
+        """Decimal metrics remain JSON numbers for frontend compat."""
+        data = {"net_r": Decimal("3.5")}
+        result = json.dumps(data, cls=_RationalEncoder)
+        parsed = json.loads(result)
+        assert isinstance(parsed["net_r"], (int, float))
+        assert parsed["net_r"] == 3.5
+
+
+class TestV2EndpointRationalFormat:
+    @pytest.fixture
+    def client(self):
+        app.config["TESTING"] = True
+        with app.test_client() as c:
+            yield c
+
+    def test_v2_config_has_rational_dict(self, client):
+        """v2 response config.exit_target_r is a Rational dict."""
+        resp = client.post("/api/run", json={
+            "symbols": ["SPY"], "timeframe": "5m",
+            "config": {"exit_target_r": "2.5"},
+        })
+        data = resp.get_json()
+        etr = data["config"]["exit_target_r"]
+        assert isinstance(etr, dict)
+        assert etr["numerator"] == 5
+        assert etr["denominator"] == 2
+        assert etr["decimal"] == "2.5"
+
+    def test_v1_config_remains_int(self, client):
+        """v1 response config.exit_target_r stays as int."""
+        resp = client.post("/api/run", json={
+            "symbols": ["SPY"], "timeframe": "5m",
+            "config": {"exit_target_r": 2},
+        })
+        data = resp.get_json()
+        assert data["config"]["exit_target_r"] == 2
+        assert isinstance(data["config"]["exit_target_r"], int)
+
+    def test_v2_trade_realized_r_is_number(self, client):
+        """Trade rows have realized_r as a number for frontend compat."""
+        resp = client.post("/api/run", json={
+            "symbols": ["SPY"], "timeframe": "5m",
+            "config": {"exit_target_r": "2.5"},
+        })
+        data = resp.get_json()
+        for t in data.get("trades", []):
+            rr = t.get("realized_r")
+            if rr is not None:
+                assert isinstance(rr, (int, float)), \
+                    f"trade realized_r must be a number, got {type(rr)}"
+
+    def test_v2_metrics_are_numbers(self, client):
+        """Metrics must be JSON numbers for frontend .toFixed() calls."""
+        resp = client.post("/api/run", json={
+            "symbols": ["SPY"], "timeframe": "5m",
+            "config": {"exit_target_r": "2.5"},
+        })
+        data = resp.get_json()
+        m = data["metrics"]
+        for field in ("win_rate", "net_r", "avg_r", "expectancy", "max_drawdown"):
+            assert isinstance(m[field], (int, float)), \
+                f"metrics.{field} must be a number, got {type(m[field])}"
+
+    def test_v2_response_fully_json_safe(self, client):
+        """Full v2 response can be serialized/deserialized without error."""
+        resp = client.post("/api/run", json={
+            "symbols": ["SPY"], "timeframe": "5m",
+            "config": {"exit_target_r": "2.5"},
+        })
+        assert resp.status_code == 200
+        raw = resp.get_data(as_text=True)
+        # Must parse without error
+        parsed = json.loads(raw)
+        assert "metrics" in parsed

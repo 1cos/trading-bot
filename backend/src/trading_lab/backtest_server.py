@@ -117,14 +117,30 @@ def _rational_to_number(r):
     return Decimal(str(r))
 
 
+def _rational_to_json_dict(r):
+    """Convert a Rational to the canonical JSON-safe dict.
+
+    Returns {"numerator": int, "denominator": int, "decimal": str}
+    where decimal is a canonical string with no trailing zeros.
+
+    Uses Decimal arithmetic — no float.
+    """
+    d = Decimal(r.numerator) / Decimal(r.denominator)
+    return {
+        "numerator": r.numerator,
+        "denominator": r.denominator,
+        "decimal": str(d.normalize()),
+    }
+
+
 class _RationalEncoder(json.JSONEncoder):
     """JSON encoder that handles Rational and Decimal types."""
 
     def default(self, obj):
         if isinstance(obj, Rational):
-            d = Decimal(obj.numerator) / Decimal(obj.denominator)
-            return float(d)
+            return _rational_to_json_dict(obj)
         if isinstance(obj, Decimal):
+            # Metrics are presentation values — safe to convert
             return float(obj)
         return super().default(obj)
 
@@ -134,8 +150,7 @@ class _RationalJSONProvider(flask.json.provider.DefaultJSONProvider):
 
     def default(self, obj):
         if isinstance(obj, Rational):
-            d = Decimal(obj.numerator) / Decimal(obj.denominator)
-            return float(d)
+            return _rational_to_json_dict(obj)
         if isinstance(obj, Decimal):
             return float(obj)
         return super().default(obj)
@@ -393,7 +408,8 @@ def _build_trade_row(r: dict, idx: int, sessions_data: dict) -> dict:
         "target_price": round(r2_ticks * tick_size, 2) if r2_ticks else None,
         "exit_price": round(exit_ticks * tick_size, 2) if exit_ticks else None,
         "outcome": str(r.get("outcome", "")),
-        "realized_r": r.get("realized_r"),
+        "realized_r": float(_rational_to_number(r.get("realized_r")))
+            if r.get("realized_r") is not None else None,
         "wick_depth_ticks": None,  # from rejection result
         "failed_retest_count": 0,
         "detection_status": r.get("detection_status"),
