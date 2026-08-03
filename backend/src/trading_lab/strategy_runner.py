@@ -33,6 +33,7 @@ from trading_lab.retest_window import find_retest_window
 from trading_lab.sequence_validator import validate_sequence
 from trading_lab.session_context import build_session_context
 from trading_lab.contracts.primitives import Rational
+from trading_lab.timeframe_aggregation import timeframe_to_seconds
 from trading_lab.trade_outcome_evaluator import evaluate_trade_outcome
 from trading_lab.trade_outcome_evaluator import evaluate_trade_outcome_v2
 from trading_lab.trade_plan_builder import build_trade_plan
@@ -194,12 +195,7 @@ def _process_one_session(session, preset, engine_config, tp_config, outcome_conf
     tick_size = config["tick_size"]
 
     tf = _get(session, "timeframe")
-    if tf == "5m":
-        tf_seconds = 300
-    elif isinstance(tf, (int, float)) and not isinstance(tf, bool):
-        tf_seconds = int(tf)
-    else:
-        tf_seconds = 300
+    tf_seconds = timeframe_to_seconds(tf)
 
     session_meta = {
         "symbol": _get(session, "symbol"),

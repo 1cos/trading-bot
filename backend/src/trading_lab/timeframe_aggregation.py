@@ -22,9 +22,38 @@ from __future__ import annotations
 
 import csv
 import math
+import re
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
+
+# ── Canonical timeframe parser ───────────────────────────────────────────────
+
+_TF_RE = re.compile(r"^(\d+)m$")
+
+
+def timeframe_to_seconds(tf) -> int:
+    """Convert a timeframe value to seconds.
+
+    Accepts:
+      - strings like "1m", "5m", "15m"
+      - numeric values (int/float, treated as seconds)
+
+    Raises ValueError for unrecognised formats.
+    """
+    if isinstance(tf, str):
+        m = _TF_RE.match(tf)
+        if m:
+            return int(m.group(1)) * 60
+        raise ValueError(
+            f"unrecognised timeframe string {tf!r}; expected '<N>m' (e.g. '1m', '5m')"
+        )
+    if isinstance(tf, (int, float)) and not isinstance(tf, bool):
+        return int(tf)
+    raise ValueError(
+        f"timeframe must be a string like '5m' or a numeric value, got {type(tf).__name__}"
+    )
 
 
 def aggregate_candles(
