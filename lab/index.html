@@ -214,11 +214,7 @@ tr.clickable{cursor:pointer}
     <div class="param-group-title">Risk / Exit</div>
     <div class="param-row">
       <span class="param-label">Exit Target (R)</span>
-      <select class="param-select" id="pExitTargetR" style="width:70px">
-        <option value="2">2</option>
-        <option value="3">3</option>
-        <option value="4">4</option>
-      </select>
+      <input class="param-input" type="number" id="pExitTargetR" value="2" min="0.1" step="0.1" style="width:70px">
     </div>
     <div class="param-row">
       <span class="param-label">Entry Offset (ticks)</span>
@@ -401,6 +397,22 @@ window.runBacktest=async function(){
   btn.disabled=true;
   status.textContent="Loading data...";
 
+  // Validate RR before sending
+  var rrRaw=document.getElementById("pExitTargetR").value.trim();
+  if(!rrRaw){
+    status.textContent="Error: Exit Target (R) cannot be empty";
+    btn.disabled=false;return;
+  }
+  var rrNum=Number(rrRaw);
+  if(isNaN(rrNum)||!isFinite(rrNum)){
+    status.textContent="Error: Exit Target (R) must be a valid number";
+    btn.disabled=false;return;
+  }
+  if(rrNum<=0){
+    status.textContent="Error: Exit Target (R) must be greater than zero";
+    btn.disabled=false;return;
+  }
+
   var body={
     symbols:[document.getElementById("pSymbol").value],
     start_date:document.getElementById("pStartDate").value,
@@ -416,7 +428,7 @@ window.runBacktest=async function(){
       stop_buffer_ticks:parseInt(document.getElementById("pStopBuffer").value),
     },
     config:{
-      exit_target_r:parseInt(document.getElementById("pExitTargetR").value),
+      exit_target_r:document.getElementById("pExitTargetR").value,
       tick_size:parseFloat(document.getElementById("pTickSize").value),
     }
   };
@@ -656,10 +668,25 @@ function renderTradeChart(E,idx){
     tradeSeries.createPriceLine({price:sp,color:"#c62828",lineWidth:2,lineStyle:2,
       axisLabelVisible:true,title:"Stop "+fmtP(sp)});
   }
-  if(ann.r2_price_ticks!=null){
-    var r2=tp(ann.r2_price_ticks);
-    tradeSeries.createPriceLine({price:r2,color:"#2e7d32",lineWidth:2,lineStyle:2,
-      axisLabelVisible:true,title:"TP 2R "+fmtP(r2)});
+  // ── Target line — use v2 configurable RR or fallback to r2 ──
+  var cfgEtr=state.result&&state.result.config?state.result.config.exit_target_r:null;
+  var rrLabel="2R";
+  var targetTicks=ann.r2_price_ticks;
+  if(cfgEtr&&typeof cfgEtr==="object"&&cfgEtr.decimal){
+    rrLabel=cfgEtr.decimal+"R";
+    // Compute v2 target from entry, stop, and RR
+    if(ann.entry_price_ticks!=null&&ann.stop_price_ticks!=null){
+      var risk=Math.abs(ann.entry_price_ticks-ann.stop_price_ticks);
+      var rrVal=cfgEtr.numerator/cfgEtr.denominator;
+      var offset=Math.round(risk*rrVal);
+      var dir=E.direction||"LONG";
+      targetTicks=dir==="SHORT"?ann.entry_price_ticks-offset:ann.entry_price_ticks+offset;
+    }
+  }
+  if(targetTicks!=null){
+    var tgtP=tp(targetTicks);
+    tradeSeries.createPriceLine({price:tgtP,color:"#2e7d32",lineWidth:2,lineStyle:2,
+      axisLabelVisible:true,title:"TP "+rrLabel+" "+fmtP(tgtP)});
   }
 
   // ── PDH / PDL ──
@@ -731,6 +758,22 @@ function renderTradeChart(E,idx){
   // ── Explain cards ──
   var ex=document.getElementById("chartExplain");
   ex.innerHTML="";
+
+  // Determine requested and effective RR from response
+  var reqRRLabel=rrLabel;  // from target line computation above
+  var effRRLabel="";
+  var trow=state.result&&state.result.trades?state.result.trades[idx]:null;
+  var tOutcome=null;
+  // Access the trade_outcome from chart_events if available
+  if(trow&&trow.realized_r!=null){
+    effRRLabel=parseFloat(trow.realized_r).toFixed(4).replace(/0+$/,"").replace(/\.$/,"")+"R";
+  }
+
+  var targetDisplay="Target "+reqRRLabel+": "+fmtP(targetTicks!=null?tp(targetTicks):null);
+  if(effRRLabel&&effRRLabel!==reqRRLabel){
+    targetDisplay+=" (eff: "+effRRLabel+")";
+  }
+
   var ecards=[
     ["ORB","High: "+fmtP(tp(E.orb_high_ticks))+"  Low: "+fmtP(tp(E.orb_low_ticks))],
     ["Break","Bar #"+(ann.break_candle_index!=null?ann.break_candle_index:"—")],
@@ -738,7 +781,7 @@ function renderTradeChart(E,idx){
     ["Confirmation","Bar #"+(ann.confirmation_candle_index!=null?ann.confirmation_candle_index:"—")],
     ["Entry",fmtP(tp(ann.entry_price_ticks))],
     ["Stop",fmtP(tp(ann.stop_price_ticks))],
-    ["Target 2R",fmtP(tp(ann.r2_price_ticks))],
+    ["Target",targetDisplay],
     ["Sequence",E.sequence_id||"—"],
     ["Wick Depth",(E.wick_depth_ticks!=null?E.wick_depth_ticks:"—")+" ticks"],
     ["Failed Retests",String(frs.length)],
