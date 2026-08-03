@@ -99,6 +99,7 @@ def validate_preset_params(params: dict) -> list[str]:
     for key, mn, mx in [
         ("orb_duration_minutes", 1, 60),
         ("consecutive_orb_closes", 1, 20),
+        ("min_displacement_bars", 1, 50),
         ("entry_buffer_ticks", 0, 100),
         ("stop_buffer_ticks", 0, 100),
     ]:
@@ -277,6 +278,7 @@ def preset_to_run_config(preset: dict) -> tuple[dict, dict]:
         "direction": p["direction"],
         "level_source": p["level_source"],
         "orb_duration_minutes": p["orb_duration_minutes"],
+        "min_displacement_bars": p.get("min_displacement_bars", 3),
         "consecutive_orb_closes": p["consecutive_orb_closes"],
         "entry_model": p["entry_model"],
         "entry_buffer_ticks": p["entry_buffer_ticks"],

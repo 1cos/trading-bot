@@ -39,6 +39,7 @@ def _valid_params(**overrides):
         "level_source": "ORB_HIGH",
         "orb_duration_minutes": 5,
         "consecutive_orb_closes": 2,
+        "min_displacement_bars": 3,
         "entry_model": "CONFIRMATION_CLOSE",
         "min_close_beyond_level_ticks": None,
         "entry_buffer_ticks": 0,

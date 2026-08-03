@@ -233,6 +233,24 @@ def find_displacement(
             "first_retest_contact_timestamp": candles[first_contact_index]["time_ms"],
         }
 
+    # ── Minimum displacement bars (configurable, default 1) ──────────────
+    min_bars = config.get("min_displacement_bars")
+    if min_bars is None:
+        min_bars = 1
+    if displacement_bar_count < min_bars:
+        return {
+            "status": "FAILED",
+            "failed_stage": "DISPLACEMENT_TOO_SHORT",
+            "reason": (
+                f"displacement has {displacement_bar_count} bar(s) completely "
+                f"outside the level, but min_displacement_bars requires {min_bars}"
+            ),
+            "date": orb["date"],
+            "break_candle_index": brk_idx,
+            "displacement_bar_count": displacement_bar_count,
+            "first_retest_contact_index": first_contact_index,
+        }
+
     # ── Build displacement window ────────────────────────────────────────
     displacement_window = candles[start_index:first_contact_index]
     displacement_end_index = first_contact_index - 1

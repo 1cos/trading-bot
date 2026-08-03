@@ -130,8 +130,8 @@ class TestApiRun:
 
 class TestFrozenDefaultRegression:
     def test_spy_long_frozen_default(self, client):
-        """SPY LONG with frozen defaults must produce exactly 3 VALID."""
+        """SPY LONG with frozen defaults (min_displacement_bars=3) must produce exactly 1 VALID."""
         data = client.post("/api/run", json=RUN_BODY).get_json()
-        assert data["metrics"]["total_detected"] == 3
+        assert data["metrics"]["total_detected"] == 1
         dates = sorted(t["date"] for t in data["trades"])
-        assert dates == ["2026-05-26", "2026-06-08", "2026-07-06"]
+        assert dates == ["2026-06-08"]
