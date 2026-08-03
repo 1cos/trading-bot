@@ -203,7 +203,11 @@ class TestValidation:
         assert validate_preset_params(_valid_params(direction="BOTH")) == []
 
     def test_both_level_source_valid(self):
-        assert validate_preset_params(_valid_params(level_source="BOTH")) == []
+        assert validate_preset_params(_valid_params(direction="BOTH", level_source="BOTH")) == []
+
+    def test_incoherent_level_source_rejected(self):
+        errs = validate_preset_params(_valid_params(direction="LONG", level_source="ORB_LOW"))
+        assert any("level_source" in e for e in errs)
 
     def test_invalid_direction(self):
         errs = validate_preset_params(_valid_params(direction="UP"))

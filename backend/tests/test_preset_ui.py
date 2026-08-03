@@ -96,11 +96,11 @@ class TestPresetList:
         assert data[0]["name"] == "Good"
 
     def test_summary_fields(self, client):
-        _create(client, "Full", symbol="QQQ", direction="SHORT", level_source="BOTH")
+        _create(client, "Full", symbol="QQQ", direction="BOTH", level_source="BOTH")
         data = client.get("/api/presets").get_json()
         p = data[0]
         assert p["symbol"] == "QQQ"
-        assert p["direction"] == "SHORT"
+        assert p["direction"] == "BOTH"
         assert p["level_source"] == "BOTH"
         assert "updated_at" in p
 

@@ -140,6 +140,22 @@ def validate_preset_params(params: dict) -> list[str]:
                     f"{key} must be a valid decimal string or null, got {v!r}"
                 )
 
+    # Direction/Level Source coherence — canonical BDRR mapping
+    dir_val = params.get("direction")
+    ls_val = params.get("level_source")
+    if dir_val and ls_val:
+        canonical = {
+            "LONG": {"ORB_HIGH"},
+            "SHORT": {"ORB_LOW"},
+            "BOTH": {"ORB_HIGH", "ORB_LOW", "BOTH"},
+        }
+        allowed = canonical.get(dir_val, set())
+        if ls_val not in allowed:
+            errors.append(
+                f"level_source '{ls_val}' is not valid for direction "
+                f"'{dir_val}'; LONG requires ORB_HIGH, SHORT requires ORB_LOW"
+            )
+
     return errors
 
 

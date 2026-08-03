@@ -196,14 +196,11 @@ tr.clickable{cursor:pointer}
     </div>
     <div class="param-row" id="levelSourceRow">
       <span class="param-label">Level Source</span>
-      <select class="param-select" id="pLevelSource">
-        <option value="ORB_HIGH">ORB_HIGH</option>
-        <option value="ORB_LOW">ORB_LOW</option>
-        <option value="BOTH">BOTH</option>
-      </select>
+      <span class="param-static" id="pLevelSourceDisplay">ORB_HIGH</span>
+      <input type="hidden" id="pLevelSource" value="ORB_HIGH">
     </div>
-    <div class="param-tooltip" id="levelSourceNote" style="display:none;color:var(--accent)">
-      Direction BOTH overrides Level Source. Level Source BOTH tests both ORB_HIGH and ORB_LOW.
+    <div class="param-tooltip" id="levelSourceNote">
+      Derived from Direction: LONG→ORB_HIGH, SHORT→ORB_LOW, BOTH→both.
     </div>
   </div>
 
@@ -514,15 +511,17 @@ window.loadPreset=async function(){
 
 window.onDirectionChange=function(){
   var dir=document.getElementById("pDirection").value;
-  var lsRow=document.getElementById("levelSourceRow");
-  var lsNote=document.getElementById("levelSourceNote");
-  lsRow.style.display="flex";
-  lsNote.style.display=(dir==="BOTH"||document.getElementById("pLevelSource").value==="BOTH")?"block":"none";
-  // Auto-set level source default when switching direction (but don't override BOTH)
-  var ls=document.getElementById("pLevelSource").value;
-  if(ls!=="BOTH"){
-    if(dir==="SHORT") document.getElementById("pLevelSource").value="ORB_LOW";
-    else if(dir==="LONG") document.getElementById("pLevelSource").value="ORB_HIGH";
+  var display=document.getElementById("pLevelSourceDisplay");
+  var hidden=document.getElementById("pLevelSource");
+  if(dir==="BOTH"){
+    display.textContent="ORB_HIGH + ORB_LOW";
+    hidden.value="BOTH";
+  }else if(dir==="SHORT"){
+    display.textContent="ORB_LOW";
+    hidden.value="ORB_LOW";
+  }else{
+    display.textContent="ORB_HIGH";
+    hidden.value="ORB_HIGH";
   }
 };
 

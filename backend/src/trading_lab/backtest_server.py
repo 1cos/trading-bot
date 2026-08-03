@@ -678,12 +678,17 @@ def api_run():
 
         tf_minutes = int(timeframe.replace("m", ""))
         direction = preset_overrides.get("direction", "LONG")
-        level_source = preset_overrides.get("level_source", "ORB_HIGH")
 
-        # Expand direction and level_source into concrete combinations
-        dirs = ["LONG", "SHORT"] if direction == "BOTH" else [direction]
-        levels = ["ORB_HIGH", "ORB_LOW"] if level_source == "BOTH" else [level_source]
-        directions = [(d, ls) for d in dirs for ls in levels]
+        # Canonical BDRR mapping: LONG→ORB_HIGH, SHORT→ORB_LOW
+        # Level source is always derived from direction, never independent.
+        if direction == "BOTH":
+            directions = [("LONG", "ORB_HIGH"), ("SHORT", "ORB_LOW")]
+        elif direction == "SHORT":
+            directions = [("SHORT", "ORB_LOW")]
+        else:
+            directions = [("LONG", "ORB_HIGH")]
+
+        level_source = "BOTH" if direction == "BOTH" else directions[0][1]
 
         # Build sessions from real data using timeframe aggregation
         all_sessions = []
