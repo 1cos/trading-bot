@@ -737,7 +737,7 @@ def api_run():
             "min_displacement_ticks": preset_overrides.get("min_displacement_ticks"),
             "min_penetration_ticks": preset_overrides.get("min_penetration_ticks"),
             "min_close_beyond_level_ticks": preset_overrides.get("min_close_beyond_level_ticks"),
-            "min_displacement_bars": preset_overrides.get("min_displacement_bars", 3),
+            "min_displacement_bars": 3,
             "consecutive_orb_closes": preset_overrides.get("consecutive_orb_closes", 2),
         }
 

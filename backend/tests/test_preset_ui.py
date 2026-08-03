@@ -31,7 +31,7 @@ def _valid_params(**overrides):
     base = {
         "symbol": "SPY", "timeframe": "5m", "direction": "LONG",
         "level_source": "ORB_HIGH", "orb_duration_minutes": 5,
-        "consecutive_orb_closes": 2, "min_displacement_bars": 3, "entry_model": "CONFIRMATION_CLOSE",
+        "consecutive_orb_closes": 2, "entry_model": "CONFIRMATION_CLOSE",
         "min_close_beyond_level_ticks": None, "entry_buffer_ticks": 0,
         "stop_buffer_ticks": 0, "exit_target_r": "2",
         "rejection_wick_ratio_min": "0.47", "body_ratio_max": "0.4",

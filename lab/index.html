@@ -210,18 +210,7 @@ tr.clickable{cursor:pointer}
     <div class="param-row">
       <span class="param-label">Duration (min)</span>
       <input class="param-input" type="number" id="pOrbDuration" value="5" min="1" max="30" style="width:70px">
-  document.getElementById("pMinDispBars").value="3";
     </div>
-  </div>
-
-  <!-- Displacement -->
-  <div class="param-group">
-    <div class="param-group-title">Displacement</div>
-    <div class="param-row">
-      <span class="param-label">Min bars outside</span>
-      <input class="param-input" type="number" id="pMinDispBars" value="3" min="1" max="20" style="width:70px">
-    </div>
-    <div class="param-tooltip">Minimum consecutive bars completely outside the ORB level after the break. Default: 3.</div>
   </div>
 
   <!-- Break Invalidation (was "Sequence Lifecycle") -->
@@ -381,7 +370,6 @@ function resetDefaults(){
   document.getElementById("pDirection").value="LONG";
   document.getElementById("pLevelSource").value="ORB_HIGH";
   document.getElementById("pOrbDuration").value="5";
-  document.getElementById("pMinDispBars").value="3";
   document.getElementById("pConsecOrbCloses").value="2";
   document.getElementById("pExitTargetR").value="2";
   document.getElementById("pEntryBuffer").value="0";
@@ -402,7 +390,6 @@ function clearActivePreset(){
 
 // Mark all strategy inputs to clear preset on change
 function _attachPresetClearListeners(){
-  var ids=["pSymbol","pTimeframe","pDirection","pLevelSource","pOrbDuration","pMinDispBars",
            "pConsecOrbCloses","pExitTargetR","pEntryBuffer","pStopBuffer",
            "pTickSize","pWickMin","pBodyMax"];
   ids.forEach(function(id){
@@ -445,8 +432,6 @@ window.savePreset=async function(){
     direction:document.getElementById("pDirection").value,
     level_source:document.getElementById("pLevelSource").value,
     orb_duration_minutes:parseInt(document.getElementById("pOrbDuration").value),
-      min_displacement_bars:parseInt(document.getElementById("pMinDispBars").value),
-    min_displacement_bars:parseInt(document.getElementById("pMinDispBars").value),
     consecutive_orb_closes:parseInt(document.getElementById("pConsecOrbCloses").value),
     entry_model:"CONFIRMATION_CLOSE",
     min_close_beyond_level_ticks:null,
@@ -503,8 +488,6 @@ window.loadPreset=async function(){
     document.getElementById("pDirection").value=p.direction||"LONG";
     document.getElementById("pLevelSource").value=p.level_source||"ORB_HIGH";
     document.getElementById("pOrbDuration").value=String(p.orb_duration_minutes||5);
-    document.getElementById("pMinDispBars").value=String(p.min_displacement_bars||3);
-  document.getElementById("pMinDispBars").value="3";
     document.getElementById("pConsecOrbCloses").value=String(p.consecutive_orb_closes||2);
     document.getElementById("pExitTargetR").value=p.exit_target_r||"2";
     document.getElementById("pEntryBuffer").value=String(p.entry_buffer_ticks||0);
@@ -602,7 +585,6 @@ window.runBacktest=async function(){
         level_source:document.getElementById("pLevelSource").value,
         orb_duration_minutes:parseInt(document.getElementById("pOrbDuration").value),
         consecutive_orb_closes:parseInt(document.getElementById("pConsecOrbCloses").value),
-        min_displacement_bars:parseInt(document.getElementById("pMinDispBars").value),
         entry_model:"CONFIRMATION_CLOSE",
         entry_buffer_ticks:parseInt(document.getElementById("pEntryBuffer").value),
         stop_buffer_ticks:parseInt(document.getElementById("pStopBuffer").value),
