@@ -44,10 +44,7 @@ DISP_MIN_CANDLES = 3
 # Max Entry Candle geometry (from BDRR frozen constants)
 REJECTION_WICK_RATIO_MIN = 0.47  # wick must be >= 47% of range
 BODY_RATIO_MAX = 0.40            # body must be <= 40% of range
-
-# How close the close must be to the level (as fraction of range)
-# Max said: "close just outside, not far"
-CLOSE_PROXIMITY_MAX = 0.50  # close within 50% of range from level
+FAVORABLE_CLOSE_MIN = 0.80       # close in top/bottom 80% of range
 
 
 # ─── Data Loading ────────────────────────────────────────────────
@@ -155,8 +152,12 @@ class MaxBotSession:
 
     def _is_max_entry_candle(self, candle, level_price, direction):
         """
-        Check Max Entry Candle geometry.
-        Uses frozen BDRR thresholds: wick >= 47%, body <= 40%.
+        Check Max Entry Candle geometry using frozen BDRR thresholds:
+          - rejection_wick_ratio >= 0.47
+          - body_ratio <= 0.40
+          - favorable_close_location >= 0.80
+          - wick must penetrate the level
+          - close must be on the correct side of the level
         """
         o, h, l, c = candle['open'], candle['high'], candle['low'], candle['close']
         rng = h - l
@@ -170,47 +171,47 @@ class MaxBotSession:
             return False
 
         if direction == 'LONG':
-            # For LONG: rejection wick is below the body
-            wick_into_level = min(o, c) - l  # lower wick
-            wick_ratio = wick_into_level / rng
+            # Rejection wick = lower wick (reaches into level from above)
+            rejection_wick = min(o, c) - l
+            wick_ratio = rejection_wick / rng
+
+            # Favorable close location = how high the close is in the range
+            # (close - low) / range: 1.0 = closed at the high, 0.0 = at the low
+            fav_close = (c - l) / rng
 
             if wick_ratio < REJECTION_WICK_RATIO_MIN:
+                return False
+            if fav_close < FAVORABLE_CLOSE_MIN:
                 return False
 
             # Must wick below or into the level
             if l >= level_price:
                 return False
-
             # Must close above the level
             if c <= level_price:
-                return False
-
-            # Close should be near the level (not too far above)
-            dist = c - level_price
-            if dist > rng * CLOSE_PROXIMITY_MAX:
                 return False
 
             return True
 
         elif direction == 'SHORT':
-            # For SHORT: rejection wick is above the body
-            wick_into_level = h - max(o, c)  # upper wick
-            wick_ratio = wick_into_level / rng
+            # Rejection wick = upper wick (reaches into level from below)
+            rejection_wick = h - max(o, c)
+            wick_ratio = rejection_wick / rng
+
+            # Favorable close location = how low the close is in the range
+            # (high - close) / range: 1.0 = closed at the low, 0.0 = at the high
+            fav_close = (h - c) / rng
 
             if wick_ratio < REJECTION_WICK_RATIO_MIN:
+                return False
+            if fav_close < FAVORABLE_CLOSE_MIN:
                 return False
 
             # Must wick above or into the level
             if h <= level_price:
                 return False
-
             # Must close below the level
             if c >= level_price:
-                return False
-
-            # Close should be near the level
-            dist = level_price - c
-            if dist > rng * CLOSE_PROXIMITY_MAX:
                 return False
 
             return True

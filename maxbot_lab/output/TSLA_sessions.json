@@ -69,63 +69,32 @@
     },
     "entries": [
       {
-        "time": "2026-07-27 10:37:00",
-        "level": "PDL",
-        "direction": "SHORT"
-      },
-      {
-        "time": "2026-07-27 10:38:00",
-        "level": "PDL",
-        "direction": "SHORT"
-      },
-      {
-        "time": "2026-07-27 14:28:00",
+        "time": "2026-07-27 14:46:00",
         "level": "PDL",
         "direction": "SHORT"
       }
     ],
     "trades": [
       {
-        "time": "2026-07-27 10:37:00",
+        "time": "2026-07-27 14:46:00",
         "direction": "SHORT",
         "level_name": "PDL",
         "level_price": 306.51,
         "level_family": "STRUCTURAL",
-        "entry_price": 306.225,
+        "entry_price": 306.29,
         "candle": {
-          "open": 306.26,
-          "high": 306.75,
-          "low": 305.92,
-          "close": 306.225
+          "open": 306.41,
+          "high": 306.59,
+          "low": 306.27,
+          "close": 306.29
         },
-        "stop_price": 306.75,
+        "stop_price": 306.59,
         "outcome": "LOSS",
-        "exit_price": 306.75,
-        "exit_time": "2026-07-27 10:38:00",
-        "target": 305.17500000000007,
-        "risk": 0.5249999999999773,
+        "exit_price": 306.59,
+        "exit_time": "2026-07-27 14:52:00",
+        "target": 305.6900000000001,
+        "risk": 0.2999999999999545,
         "rr": -1
-      },
-      {
-        "time": "2026-07-27 14:28:00",
-        "direction": "SHORT",
-        "level_name": "PDL",
-        "level_price": 306.51,
-        "level_family": "STRUCTURAL",
-        "entry_price": 306.4685,
-        "candle": {
-          "open": 306.34,
-          "high": 306.6999,
-          "low": 306.32,
-          "close": 306.4685
-        },
-        "stop_price": 306.6999,
-        "outcome": "WIN",
-        "exit_price": 306.0057,
-        "exit_time": "2026-07-27 14:32:00",
-        "target": 306.0057,
-        "risk": 0.23140000000000782,
-        "rr": 2
       }
     ],
     "events": [
@@ -155,14 +124,9 @@
         "detail": "SHORT after 3 candles"
       },
       {
-        "time": "2026-07-27 10:37:00",
+        "time": "2026-07-27 14:46:00",
         "type": "ENTRY",
-        "detail": "SHORT @PDL 306.23"
-      },
-      {
-        "time": "2026-07-27 14:28:00",
-        "type": "ENTRY",
-        "detail": "SHORT @PDL 306.47"
+        "detail": "SHORT @PDL 306.29"
       }
     ],
     "status": "TRADED"
@@ -190,13 +154,8 @@
         "direction": "SHORT"
       },
       {
-        "time": "2026-07-28 10:31:00",
+        "time": "2026-07-28 10:36:00",
         "level": "ORB_LOW",
-        "direction": "SHORT"
-      },
-      {
-        "time": "2026-07-28 10:43:00",
-        "level": "PML",
         "direction": "SHORT"
       }
     ],
@@ -223,24 +182,24 @@
         "rr": -1
       },
       {
-        "time": "2026-07-28 10:43:00",
+        "time": "2026-07-28 10:36:00",
         "direction": "SHORT",
-        "level_name": "PML",
-        "level_price": 302.89,
+        "level_name": "ORB_LOW",
+        "level_price": 302.6004,
         "level_family": "STRUCTURAL",
-        "entry_price": 302.865,
+        "entry_price": 302.305,
         "candle": {
-          "open": 302.7,
-          "high": 303.12,
-          "low": 302.61,
-          "close": 302.865
+          "open": 302.435,
+          "high": 302.74,
+          "low": 302.2201,
+          "close": 302.305
         },
-        "stop_price": 303.12,
+        "stop_price": 302.74,
         "outcome": "WIN",
-        "exit_price": 302.355,
-        "exit_time": "2026-07-28 10:45:00",
-        "target": 302.355,
-        "risk": 0.25499999999999545,
+        "exit_price": 301.435,
+        "exit_time": "2026-07-28 10:39:00",
+        "target": 301.435,
+        "risk": 0.4350000000000023,
         "rr": 2
       }
     ],
@@ -261,9 +220,9 @@
         "detail": "SHORT @ORB_LOW 302.36"
       },
       {
-        "time": "2026-07-28 10:43:00",
+        "time": "2026-07-28 10:36:00",
         "type": "ENTRY",
-        "detail": "SHORT @PML 302.87"
+        "detail": "SHORT @ORB_LOW 302.31"
       }
     ],
     "status": "TRADED"
@@ -286,58 +245,32 @@
     },
     "entries": [
       {
-        "time": "2026-07-29 12:21:00",
-        "level": "PDL",
-        "direction": "SHORT"
-      },
-      {
-        "time": "2026-07-29 12:55:00",
+        "time": "2026-07-29 12:00:00",
         "level": "PML",
         "direction": "SHORT"
       }
     ],
     "trades": [
       {
-        "time": "2026-07-29 12:21:00",
-        "direction": "SHORT",
-        "level_name": "PDL",
-        "level_price": 300.6901,
-        "level_family": "STRUCTURAL",
-        "entry_price": 300.625,
-        "candle": {
-          "open": 300.53,
-          "high": 300.77,
-          "low": 300.51,
-          "close": 300.625
-        },
-        "stop_price": 300.77,
-        "outcome": "LOSS",
-        "exit_price": 300.77,
-        "exit_time": "2026-07-29 12:23:00",
-        "target": 300.33500000000004,
-        "risk": 0.1449999999999818,
-        "rr": -1
-      },
-      {
-        "time": "2026-07-29 12:55:00",
+        "time": "2026-07-29 12:00:00",
         "direction": "SHORT",
         "level_name": "PML",
         "level_price": 301.77,
         "level_family": "STRUCTURAL",
-        "entry_price": 301.745,
+        "entry_price": 301.5,
         "candle": {
-          "open": 301.7,
-          "high": 301.8792,
-          "low": 301.64,
-          "close": 301.745
+          "open": 301.47,
+          "high": 301.89,
+          "low": 301.4301,
+          "close": 301.5
         },
-        "stop_price": 301.8792,
-        "outcome": "LOSS",
-        "exit_price": 301.8792,
-        "exit_time": "2026-07-29 12:56:00",
-        "target": 301.47659999999996,
-        "risk": 0.1342000000000212,
-        "rr": -1
+        "stop_price": 301.89,
+        "outcome": "WIN",
+        "exit_price": 300.72,
+        "exit_time": "2026-07-29 12:05:00",
+        "target": 300.72,
+        "risk": 0.38999999999998636,
+        "rr": 2
       }
     ],
     "events": [
@@ -372,14 +305,9 @@
         "detail": "SHORT after 3 candles"
       },
       {
-        "time": "2026-07-29 12:21:00",
+        "time": "2026-07-29 12:00:00",
         "type": "ENTRY",
-        "detail": "SHORT @PDL 300.62"
-      },
-      {
-        "time": "2026-07-29 12:55:00",
-        "type": "ENTRY",
-        "detail": "SHORT @PML 301.75"
+        "detail": "SHORT @PML 301.50"
       }
     ],
     "status": "TRADED"
@@ -402,32 +330,58 @@
     },
     "entries": [
       {
-        "time": "2026-07-30 12:41:00",
+        "time": "2026-07-30 09:48:00",
+        "level": "PMH",
+        "direction": "LONG"
+      },
+      {
+        "time": "2026-07-30 12:00:00",
         "level": "PMH",
         "direction": "LONG"
       }
     ],
     "trades": [
       {
-        "time": "2026-07-30 12:41:00",
+        "time": "2026-07-30 09:48:00",
         "direction": "LONG",
         "level_name": "PMH",
         "level_price": 305.08,
         "level_family": "STRUCTURAL",
-        "entry_price": 305.2409,
+        "entry_price": 305.685,
         "candle": {
-          "open": 305.32,
-          "high": 305.5,
-          "low": 304.8001,
-          "close": 305.2409
+          "open": 305.47,
+          "high": 305.8395,
+          "low": 304.8005,
+          "close": 305.685
         },
-        "stop_price": 304.8001,
-        "outcome": "LOSS",
-        "exit_price": 304.8001,
-        "exit_time": "2026-07-30 12:42:00",
-        "target": 306.12250000000006,
-        "risk": 0.4408000000000243,
-        "rr": -1
+        "stop_price": 304.8005,
+        "outcome": "WIN",
+        "exit_price": 307.454,
+        "exit_time": "2026-07-30 09:50:00",
+        "target": 307.454,
+        "risk": 0.8845000000000027,
+        "rr": 2
+      },
+      {
+        "time": "2026-07-30 12:00:00",
+        "direction": "LONG",
+        "level_name": "PMH",
+        "level_price": 305.08,
+        "level_family": "STRUCTURAL",
+        "entry_price": 305.43,
+        "candle": {
+          "open": 305.27,
+          "high": 305.49,
+          "low": 304.9,
+          "close": 305.43
+        },
+        "stop_price": 304.9,
+        "outcome": "WIN",
+        "exit_price": 306.49000000000007,
+        "exit_time": "2026-07-30 12:02:00",
+        "target": 306.49000000000007,
+        "risk": 0.5300000000000296,
+        "rr": 2
       }
     ],
     "events": [
@@ -442,9 +396,14 @@
         "detail": "LONG after 3 candles"
       },
       {
-        "time": "2026-07-30 12:41:00",
+        "time": "2026-07-30 09:48:00",
         "type": "ENTRY",
-        "detail": "LONG @PMH 305.24"
+        "detail": "LONG @PMH 305.69"
+      },
+      {
+        "time": "2026-07-30 12:00:00",
+        "type": "ENTRY",
+        "detail": "LONG @PMH 305.43"
       }
     ],
     "status": "TRADED"
@@ -467,38 +426,12 @@
     },
     "entries": [
       {
-        "time": "2026-07-31 11:05:00",
-        "level": "ORB_LOW",
-        "direction": "SHORT"
-      },
-      {
         "time": "2026-07-31 12:24:00",
         "level": "ORB_LOW",
         "direction": "SHORT"
       }
     ],
     "trades": [
-      {
-        "time": "2026-07-31 11:05:00",
-        "direction": "SHORT",
-        "level_name": "ORB_LOW",
-        "level_price": 308.5,
-        "level_family": "STRUCTURAL",
-        "entry_price": 308.055,
-        "candle": {
-          "open": 307.84,
-          "high": 308.83,
-          "low": 307.84,
-          "close": 308.055
-        },
-        "stop_price": 308.83,
-        "outcome": "LOSS",
-        "exit_price": 308.83,
-        "exit_time": "2026-07-31 11:15:00",
-        "target": 306.50500000000005,
-        "risk": 0.7749999999999773,
-        "rr": -1
-      },
       {
         "time": "2026-07-31 12:24:00",
         "direction": "SHORT",
@@ -531,11 +464,6 @@
         "time": "2026-07-31 09:48:00",
         "type": "DISPLACEMENT_CONFIRMED",
         "detail": "SHORT after 3 candles"
-      },
-      {
-        "time": "2026-07-31 11:05:00",
-        "type": "ENTRY",
-        "detail": "SHORT @ORB_LOW 308.06"
       },
       {
         "time": "2026-07-31 12:24:00",
