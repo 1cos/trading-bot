@@ -111,7 +111,8 @@ class TestOutputFields:
         _, orb = make_session_and_orb([candle(MS_0930)])
         assert set(orb.keys()) == {
             "status", "date", "orb_candle_index", "orb_candle",
-            "orb_high", "orb_low", "orb_low_active", "level_source",
+            "orb_high", "orb_low", "orb_high_ticks", "orb_low_ticks",
+            "orb_low_active", "level_source",
             "level_price", "level_price_ticks", "direction",
         }
 
@@ -208,13 +209,14 @@ class TestUnsupportedConfig:
         assert orb["failed_stage"] == "UNSUPPORTED_CONFIGURATION"
         assert "orb_start" in orb["reason"]
 
-    def test_multi_candle_orb(self):
+    def test_multi_candle_orb_insufficient_candles(self):
+        """With ORB=15m and TF=5m, need 3 bars but only 1 exists."""
         cfg = {**CONFIG, "orb_duration_minutes": 15}
         sc = build_session_context([candle(MS_0930)], cfg)
         orb = build_orb(sc["candles"], sc, cfg)
         assert orb["status"] == "FAILED"
-        assert orb["failed_stage"] == "UNSUPPORTED_CONFIGURATION"
-        assert "multi-candle" in orb["reason"]
+        assert orb["failed_stage"] == "LEVEL_NOT_FOUND"
+        assert "insufficient" in orb["reason"]
 
     def test_level_source_not_orb_high(self):
         cfg = {**CONFIG, "level_source": "PDH"}

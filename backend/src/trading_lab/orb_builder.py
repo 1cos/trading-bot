@@ -147,16 +147,30 @@ def build_orb(
             ),
         }
 
-    if config["orb_duration_minutes"] != config["timeframe_minutes"]:
+    orb_dur = config["orb_duration_minutes"]
+    tf_min = config["timeframe_minutes"]
+
+    if orb_dur <= 0 or tf_min <= 0:
         return {
             "status": "FAILED",
             "failed_stage": "UNSUPPORTED_CONFIGURATION",
             "reason": (
-                "multi-candle ORB windows are not implemented in this stage; "
-                f'orb_duration_minutes ({config["orb_duration_minutes"]}) must equal '
-                f'timeframe_minutes ({config["timeframe_minutes"]})'
+                f"orb_duration_minutes ({orb_dur}) and timeframe_minutes "
+                f"({tf_min}) must both be positive"
             ),
         }
+
+    if orb_dur % tf_min != 0:
+        return {
+            "status": "FAILED",
+            "failed_stage": "UNSUPPORTED_CONFIGURATION",
+            "reason": (
+                f"orb_duration_minutes ({orb_dur}) must be an exact "
+                f"multiple of timeframe_minutes ({tf_min})"
+            ),
+        }
+
+    orb_bar_count = orb_dur // tf_min
 
     if config["level_source"] not in ("ORB_HIGH", "ORB_LOW"):
         return {
@@ -203,19 +217,44 @@ def build_orb(
             ),
         }
 
-    orb_candle = source[orb_index]
-    orb_high = orb_candle["high"]
-    orb_low = orb_candle["low"]
+    # ── Build ORB from orb_bar_count candles ─────────────────────────────
+    orb_end_index = orb_index + orb_bar_count - 1
+    if orb_end_index >= len(source):
+        return {
+            "status": "FAILED",
+            "failed_stage": "LEVEL_NOT_FOUND",
+            "reason": (
+                f"insufficient candles for {orb_bar_count}-bar ORB window; "
+                f"need {orb_bar_count} bars from index {orb_index}, "
+                f"but session has only {len(source)} candles"
+            ),
+        }
+
+    orb_high = -float("inf")
+    orb_low = float("inf")
+    for i in range(orb_index, orb_end_index + 1):
+        c = source[i]
+        if c["high"] > orb_high:
+            orb_high = c["high"]
+        if c["low"] < orb_low:
+            orb_low = c["low"]
+
+    # orb_candle_index = last bar of the ORB window.
+    # Downstream stages scan from orb_candle_index + 1.
+    # orb_candle = the last candle (for cross-check compatibility).
+    orb_candle = source[orb_end_index]
     level_source = config["level_source"]
     level_price = orb_low if level_source == "ORB_LOW" else orb_high
 
     return {
         "status": "OK",
         "date": session_context["date"],
-        "orb_candle_index": orb_index,
+        "orb_candle_index": orb_end_index,
         "orb_candle": orb_candle,
         "orb_high": orb_high,
         "orb_low": orb_low,
+        "orb_high_ticks": price_to_ticks(orb_high, config["tick_size"]),
+        "orb_low_ticks": price_to_ticks(orb_low, config["tick_size"]),
         "orb_low_active": level_source == "ORB_LOW",
         "level_source": level_source,
         "level_price": level_price,
