@@ -447,6 +447,7 @@ def _build_trade_row(r: dict, idx: int, sessions_data: dict) -> dict:
         "symbol": r.get("symbol"),
         "date": r.get("session_date"),
         "direction": r.get("_direction", str(_g(dr, "direction", "?"))),
+        "level_source": r.get("_level_source", "ORB_HIGH"),
         "sequence_id": f"{r.get('_direction', 'L')[0]}-SEQ-{idx + 1:03d}",
         "break_time": _ms_to_time(_g(_g(dr, "break_bar"), "bar_utc_ms")),
         "confirmation_time": r.get("confirmation_timestamp"),
@@ -579,14 +580,12 @@ def api_run():
 
         tf_minutes = int(timeframe.replace("m", ""))
         direction = preset_overrides.get("direction", "LONG")
+        level_source = preset_overrides.get("level_source", "ORB_HIGH")
 
-        # Determine which directions to run
-        if direction == "BOTH":
-            directions = [("LONG", "ORB_HIGH"), ("SHORT", "ORB_LOW")]
-        elif direction == "SHORT":
-            directions = [("SHORT", preset_overrides.get("level_source", "ORB_LOW"))]
-        else:
-            directions = [("LONG", preset_overrides.get("level_source", "ORB_HIGH"))]
+        # Expand direction and level_source into concrete combinations
+        dirs = ["LONG", "SHORT"] if direction == "BOTH" else [direction]
+        levels = ["ORB_HIGH", "ORB_LOW"] if level_source == "BOTH" else [level_source]
+        directions = [(d, ls) for d in dirs for ls in levels]
 
         # Build sessions from real data using timeframe aggregation
         all_sessions = []
@@ -682,9 +681,9 @@ def api_run():
                 "level_source": level_src,
             }
             results = _runner(all_sessions, preset, config)
-            # Tag each result with direction
             for r in results:
                 r["_direction"] = dir_name
+                r["_level_source"] = level_src
             all_results.extend(results)
 
         elapsed = time.time() - t0
@@ -694,7 +693,12 @@ def api_run():
 
         # Build trade rows — sort chronologically for BOTH
         valid_results = [r for r in all_results if r["detection_status"] == "VALID"]
-        valid_results.sort(key=lambda r: r.get("session_date", ""))
+        valid_results.sort(key=lambda r: (
+            r.get("session_date", ""),
+            r.get("_direction", ""),
+            r.get("_level_source", ""),
+            r.get("run_record_id", ""),
+        ))
         trades = [_build_trade_row(r, i, sessions_data) for i, r in enumerate(valid_results)]
 
         # Build chart events for each trade
@@ -712,6 +716,7 @@ def api_run():
             dir_tag = r.get("_direction", "LONG")
             event["sequence_id"] = f"{dir_tag[0]}-SEQ-{i + 1:03d}"
             event["direction"] = dir_tag
+            event["level_source"] = r.get("_level_source", "ORB_HIGH")
 
             # v2 target fields for chart
             v2t = _extract_v2_target_fields(r)
@@ -723,13 +728,14 @@ def api_run():
 
             # Add sequence validation data
             candles = session["candles"]
+            ls_tag = r.get("_level_source", "ORB_HIGH")
             ec = {
                 "timeframe_minutes": tf_minutes,
                 "timezone": "America/New_York",
                 "session_open": "09:30",
                 "orb_start": "session_open",
                 "orb_duration_minutes": base_preset["orb_duration_minutes"],
-                "level_source": "ORB_HIGH" if dir_tag == "LONG" else "ORB_LOW",
+                "level_source": ls_tag,
                 "direction": dir_tag,
                 "tick_size": config["tick_size"],
                 "min_displacement_ticks": base_preset["min_displacement_ticks"],
@@ -801,6 +807,11 @@ def api_run():
             "end_date": end_date or all_sessions[-1]["date"],
             "timeframe": timeframe,
             "direction": direction,
+            "level_source": level_source,
+            "executed_combinations": [
+                {"direction": d, "level_source": ls}
+                for d, ls in directions
+            ],
             "preset": base_preset,
             "config": config,
             "provenance": provenance,
