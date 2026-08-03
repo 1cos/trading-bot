@@ -869,6 +869,10 @@ def api_run():
             try:
                 sc = build_session_context(candles, ec)
                 orb = build_orb(sc["candles"], sc, ec)
+                # Use canonical ORB high/low (max/min over entire window)
+                if orb["status"] == "OK":
+                    event["orb_high_ticks"] = orb["orb_high_ticks"]
+                    event["orb_low_ticks"] = orb["orb_low_ticks"]
                 brk = find_break(sc["candles"], orb, ec)
                 disp = find_displacement(sc["candles"], orb, brk, ec)
                 sv = validate_sequence(sc["candles"], orb, brk, disp, ec)

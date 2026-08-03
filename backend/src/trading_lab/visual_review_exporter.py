@@ -242,6 +242,9 @@ def _build_annotations(
 def export_visual_event(
     session_candles: list[dict],
     runner_result: dict,
+    *,
+    orb_high_ticks: int | None = None,
+    orb_low_ticks: int | None = None,
 ) -> dict:
     """Export a single visual review event payload.
 
@@ -251,6 +254,12 @@ def export_visual_event(
         Raw session candles (same list used by the Strategy Runner).
     runner_result : dict
         One result record from ``run_bdrr_strategy``.
+    orb_high_ticks : int | None
+        Canonical ORB High in ticks (max high across the entire ORB window).
+        When provided, overrides any value derived from level_bar.
+    orb_low_ticks : int | None
+        Canonical ORB Low in ticks (min low across the entire ORB window).
+        When provided, overrides any value derived from level_bar.
 
     Returns
     -------
@@ -274,18 +283,21 @@ def export_visual_event(
         lp = _get(dr, "level_price")
         level_price_ticks = _get_ticks(dr, "level_price")
 
-    # ORB High and Low from the level_bar (the ORB candle)
-    orb_high_ticks = None
-    orb_low_ticks = None
-    if dr is not None:
-        level_bar = _get(dr, "level_bar")
-        if level_bar is not None:
-            hb = _get(level_bar, "high")
-            if hb is not None:
-                orb_high_ticks = _get(hb, "ticks")
-            lb = _get(level_bar, "low")
-            if lb is not None:
-                orb_low_ticks = _get(lb, "ticks")
+    # ORB High and Low — prefer canonical values from ORB builder.
+    # Fall back to level_bar high/low only when canonical values are
+    # not provided (single-candle ORB where they happen to match).
+    if orb_high_ticks is None or orb_low_ticks is None:
+        if dr is not None:
+            level_bar = _get(dr, "level_bar")
+            if level_bar is not None:
+                if orb_high_ticks is None:
+                    hb = _get(level_bar, "high")
+                    if hb is not None:
+                        orb_high_ticks = _get(hb, "ticks")
+                if orb_low_ticks is None:
+                    lb = _get(level_bar, "low")
+                    if lb is not None:
+                        orb_low_ticks = _get(lb, "ticks")
 
     candles = [
         _serialize_candle(c, i) for i, c in enumerate(session_candles)
