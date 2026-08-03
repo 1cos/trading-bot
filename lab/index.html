@@ -668,21 +668,9 @@ function renderTradeChart(E,idx){
     tradeSeries.createPriceLine({price:sp,color:"#c62828",lineWidth:2,lineStyle:2,
       axisLabelVisible:true,title:"Stop "+fmtP(sp)});
   }
-  // ── Target line — use v2 configurable RR or fallback to r2 ──
-  var cfgEtr=state.result&&state.result.config?state.result.config.exit_target_r:null;
-  var rrLabel="2R";
-  var targetTicks=ann.r2_price_ticks;
-  if(cfgEtr&&typeof cfgEtr==="object"&&cfgEtr.decimal){
-    rrLabel=cfgEtr.decimal+"R";
-    // Compute v2 target from entry, stop, and RR
-    if(ann.entry_price_ticks!=null&&ann.stop_price_ticks!=null){
-      var risk=Math.abs(ann.entry_price_ticks-ann.stop_price_ticks);
-      var rrVal=cfgEtr.numerator/cfgEtr.denominator;
-      var offset=Math.round(risk*rrVal);
-      var dir=E.direction||"LONG";
-      targetTicks=dir==="SHORT"?ann.entry_price_ticks-offset:ann.entry_price_ticks+offset;
-    }
-  }
+  // ── Target line — use backend-provided target ──
+  var targetTicks=E.target_price_ticks!=null?E.target_price_ticks:ann.r2_price_ticks;
+  var rrLabel=E.target_label||"2R";
   if(targetTicks!=null){
     var tgtP=tp(targetTicks);
     tradeSeries.createPriceLine({price:tgtP,color:"#2e7d32",lineWidth:2,lineStyle:2,
@@ -759,15 +747,11 @@ function renderTradeChart(E,idx){
   var ex=document.getElementById("chartExplain");
   ex.innerHTML="";
 
-  // Determine requested and effective RR from response
-  var reqRRLabel=rrLabel;  // from target line computation above
-  var effRRLabel="";
-  var trow=state.result&&state.result.trades?state.result.trades[idx]:null;
-  var tOutcome=null;
-  // Access the trade_outcome from chart_events if available
-  if(trow&&trow.realized_r!=null){
-    effRRLabel=parseFloat(trow.realized_r).toFixed(4).replace(/0+$/,"").replace(/\.$/,"")+"R";
-  }
+  // Determine requested and effective RR from backend response
+  var reqRR=E.requested_target_r;
+  var effRR=E.effective_target_r;
+  var reqRRLabel=reqRR&&typeof reqRR==="object"&&reqRR.decimal?reqRR.decimal+"R":rrLabel;
+  var effRRLabel=effRR&&typeof effRR==="object"&&effRR.decimal?effRR.decimal+"R":"";
 
   var targetDisplay="Target "+reqRRLabel+": "+fmtP(targetTicks!=null?tp(targetTicks):null);
   if(effRRLabel&&effRRLabel!==reqRRLabel){

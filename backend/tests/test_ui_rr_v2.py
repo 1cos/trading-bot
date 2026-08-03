@@ -80,13 +80,34 @@ class TestTargetLabelNotHardcoded:
 
 
 class TestRRRequestedAndEffective:
-    def test_effective_rr_shown(self, html):
-        """The explain cards should show effective RR."""
-        assert 'effRRLabel' in html
+    def test_effective_rr_from_backend(self, html):
+        """The effective RR should come from E.effective_target_r."""
+        assert 'E.effective_target_r' in html
 
-    def test_requested_rr_from_config(self, html):
-        """The requested RR should come from config.exit_target_r.decimal."""
-        assert 'cfgEtr.decimal' in html
+    def test_requested_rr_from_backend(self, html):
+        """The requested RR should come from E.requested_target_r."""
+        assert 'E.requested_target_r' in html
+
+    def test_no_realized_r_as_effective(self, html):
+        """realized_r must not be used as effective target label."""
+        # The old pattern: effRRLabel from realized_r
+        assert 'realized_r' not in html.split('effRRLabel')[0].split('\n')[-1] \
+            if 'effRRLabel' in html else True
+
+
+class TestNoClientSideTargetCalc:
+    def test_no_math_round_for_target(self, html):
+        """UI must not use Math.round to compute target."""
+        # Math.round should not appear near target/offset/risk computation
+        assert 'Math.round(risk' not in html
+
+    def test_target_from_backend(self, html):
+        """Target ticks should come from E.target_price_ticks."""
+        assert 'E.target_price_ticks' in html
+
+    def test_no_numerator_denominator_division(self, html):
+        """UI must not divide numerator/denominator to compute target."""
+        assert 'cfgEtr.numerator/cfgEtr.denominator' not in html
 
 
 class TestFrontendValidation:
@@ -175,3 +196,53 @@ class TestEndpointIntegration:
         assert resp.status_code == 400
         data = resp.get_json()
         assert "error" in data
+
+    def test_v2_trade_has_target_fields(self, client):
+        """v2 trades must have requested/effective target R and target_price_ticks."""
+        resp = client.post("/api/run", json={
+            "symbols": ["SPY"], "timeframe": "5m",
+            "config": {"exit_target_r": "2.5"},
+        })
+        data = resp.get_json()
+        for t in data.get("trades", []):
+            assert "target_price_ticks" in t
+            assert "requested_target_r" in t
+            assert "effective_target_r" in t
+            assert "target_label" in t
+            # requested is a Rational dict
+            rtr = t["requested_target_r"]
+            assert isinstance(rtr, dict)
+            assert rtr["decimal"] == "2.5"
+            # effective is a Rational dict
+            etr = t["effective_target_r"]
+            assert isinstance(etr, dict)
+            assert "decimal" in etr
+            # target_price_ticks is int
+            assert isinstance(t["target_price_ticks"], int)
+
+    def test_v2_chart_events_have_target(self, client):
+        """v2 chart events must have target_price_ticks and target_label."""
+        resp = client.post("/api/run", json={
+            "symbols": ["SPY"], "timeframe": "5m",
+            "config": {"exit_target_r": "2.5"},
+        })
+        data = resp.get_json()
+        for ev in data.get("chart_events", []):
+            assert "target_price_ticks" in ev
+            assert "target_label" in ev
+            assert ev["target_label"] == "2.5R"
+
+    def test_losing_trade_has_positive_effective_r(self, client):
+        """A stopped trade must still have a positive effective_target_r."""
+        resp = client.post("/api/run", json={
+            "symbols": ["SPY"], "timeframe": "5m",
+            "config": {"exit_target_r": "2.5"},
+        })
+        data = resp.get_json()
+        for t in data.get("trades", []):
+            if t["outcome"] == "STOPPED":
+                etr = t["effective_target_r"]
+                assert isinstance(etr, dict)
+                assert etr["numerator"] > 0
+                # realized_r is negative but effective_target_r is positive
+                assert t["realized_r"] < 0

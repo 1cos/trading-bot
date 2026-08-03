@@ -30,6 +30,7 @@ from flask_cors import CORS
 from trading_lab.contracts.primitives import Rational
 from trading_lab.strategy_runner import run_bdrr_strategy
 from trading_lab.strategy_runner import run_bdrr_strategy_v2
+from trading_lab.trade_outcome_evaluator import _round_offset_ticks
 from trading_lab.trade_dataset import build_trade_dataset
 from trading_lab.visual_review_exporter import export_visual_event
 from trading_lab.sequence_validator import validate_sequence
@@ -352,6 +353,51 @@ def _compute_metrics(results: list[dict]) -> dict:
     }
 
 
+# ── v2 target extraction ────────────────────────────────────────────────────
+
+
+def _extract_v2_target_fields(r: dict) -> dict | None:
+    """Extract v2 target presentation fields from a runner result.
+
+    Returns dict with requested_target_r, effective_target_r,
+    target_price_ticks, target_label — or None if not a v2 result.
+    """
+    to = r.get("trade_outcome")
+    if to is None:
+        return None
+
+    sel_r = getattr(to, "selected_exit_target_r", None)
+    if not isinstance(sel_r, Rational):
+        return None
+
+    entry = getattr(to, "entry_price_ticks", None)
+    stop = getattr(to, "stop_price_ticks", None)
+    if entry is None or stop is None:
+        return None
+
+    risk = abs(entry - stop)
+    if risk == 0:
+        return None
+
+    offset = _round_offset_ticks(risk, sel_r)
+    effective_r = Rational(offset, risk)
+
+    direction = str(getattr(to, "direction", "LONG"))
+    if direction == "SHORT":
+        target_ticks = entry - offset
+    else:
+        target_ticks = entry + offset
+
+    label = getattr(to, "selected_exit_target_label", None)
+
+    return {
+        "requested_target_r": sel_r,
+        "effective_target_r": effective_r,
+        "target_price_ticks": target_ticks,
+        "target_label": label or "",
+    }
+
+
 # ── Trade detail builder ─────────────────────────────────────────────────────
 
 
@@ -392,6 +438,9 @@ def _build_trade_row(r: dict, idx: int, sessions_data: dict) -> dict:
     exit_ticks = r.get("exit_price_ticks")
     tick_size = 0.01
 
+    # v2 target fields
+    v2t = _extract_v2_target_fields(r)
+
     return {
         "trade_number": idx + 1,
         "run_record_id": r.get("run_record_id"),
@@ -405,15 +454,20 @@ def _build_trade_row(r: dict, idx: int, sessions_data: dict) -> dict:
         "exit_time": r.get("exit_timestamp"),
         "entry_price": round(entry_ticks * tick_size, 2) if entry_ticks else None,
         "stop_price": round(stop_ticks * tick_size, 2) if stop_ticks else None,
-        "target_price": round(r2_ticks * tick_size, 2) if r2_ticks else None,
+        "target_price": round((v2t["target_price_ticks"] if v2t else r2_ticks) * tick_size, 2)
+            if (v2t or r2_ticks) else None,
         "exit_price": round(exit_ticks * tick_size, 2) if exit_ticks else None,
         "outcome": str(r.get("outcome", "")),
         "realized_r": float(_rational_to_number(r.get("realized_r")))
             if r.get("realized_r") is not None else None,
-        "wick_depth_ticks": None,  # from rejection result
+        "wick_depth_ticks": None,
         "failed_retest_count": 0,
         "detection_status": r.get("detection_status"),
         "preset_id": r.get("preset_id"),
+        "requested_target_r": v2t["requested_target_r"] if v2t else None,
+        "effective_target_r": v2t["effective_target_r"] if v2t else None,
+        "target_price_ticks": v2t["target_price_ticks"] if v2t else r2_ticks,
+        "target_label": v2t["target_label"] if v2t else "2R",
     }
 
 
@@ -641,6 +695,14 @@ def api_run():
             dir_tag = r.get("_direction", "LONG")
             event["sequence_id"] = f"{dir_tag[0]}-SEQ-{i + 1:03d}"
             event["direction"] = dir_tag
+
+            # v2 target fields for chart
+            v2t = _extract_v2_target_fields(r)
+            if v2t:
+                event["target_price_ticks"] = v2t["target_price_ticks"]
+                event["requested_target_r"] = v2t["requested_target_r"]
+                event["effective_target_r"] = v2t["effective_target_r"]
+                event["target_label"] = v2t["target_label"]
 
             # Add sequence validation data
             candles = session["candles"]
