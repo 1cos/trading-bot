@@ -40,6 +40,7 @@ from trading_lab.contracts.scored_setup import ScoredSetup
 from trading_lab.contracts.session_metadata import SessionMetadata
 from trading_lab.contracts.setup_candidate import SetupCandidate
 from trading_lab.contracts.trade_outcome import TradeOutcome, TradeOutcomeStatus
+from trading_lab.contracts.trade_outcome_v2 import TradeOutcomeV2, rational_to_label
 from trading_lab.contracts.trade_plan import EntryModel, TradePlan
 
 __all__ = [
@@ -70,6 +71,8 @@ __all__ = [
     "Stage",
     "TradeOutcome",
     "TradeOutcomeStatus",
+    "TradeOutcomeV2",
     "TradePlan",
+    "rational_to_label",
     "ValueType",
 ]
