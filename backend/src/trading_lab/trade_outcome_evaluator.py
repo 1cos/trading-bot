@@ -24,7 +24,9 @@ import math
 from dataclasses import dataclass
 
 from trading_lab.contracts.enums import Direction
+from trading_lab.contracts.primitives import Rational
 from trading_lab.contracts.trade_outcome import TradeOutcome, TradeOutcomeStatus
+from trading_lab.contracts.trade_outcome_v2 import TradeOutcomeV2, rational_to_label
 from trading_lab.contracts.trade_plan import EntryModel
 
 
@@ -544,6 +546,303 @@ def evaluate_trade_outcome(
             if highest_target_idx >= 0
             else None
         ),
+        realized_r=realized_r,
+        r2_price_ticks=r2_ticks,
+        r3_price_ticks=r3_ticks,
+        r4_price_ticks=r4_ticks,
+    )
+
+    return {"status": "OK", "outcome": outcome}
+
+
+# ── v2 rounding ──────────────────────────────────────────────────────────────
+
+
+def _round_offset_ticks(risk_ticks: int, r: Rational) -> int:
+    """Compute risk_ticks × Rational, rounded to nearest tick.
+
+    Uses exact integer arithmetic only — no float.
+
+    Rounding rule: half-tick rounds away from entry (i.e. up for positive
+    offset), matching the project-wide convention in price_to_ticks.
+
+    Formula: floor((2 × risk × numerator + denominator) / (2 × denominator))
+
+    Examples:
+        53 × 21/10 = 111.3  → 111
+        53 × 5/2   = 132.5  → 133  (half-tick rounds up)
+        120 × 9/4  = 270.0  → 270
+    """
+    # 2 * risk * numerator + denominator
+    twice_num = 2 * risk_ticks * r.numerator + r.denominator
+    twice_den = 2 * r.denominator
+    return twice_num // twice_den
+
+
+# ── v2 config validation ────────────────────────────────────────────────────
+
+
+def _validate_config_v2(config: object) -> dict | None:
+    """Validate config for v2 evaluator.
+
+    Requires exit_target_r to be a Rational, strictly > 0.
+    """
+    if not _has_obj_shape(config):
+        return _fail("INVALID_CONFIG", "config must be a non-null object")
+    direction = _get(config, "direction")
+    direction_str = str(direction) if direction is not None else str(direction)
+    if direction_str not in ("LONG", "SHORT"):
+        return _fail(
+            "UNSUPPORTED_DIRECTION",
+            f'direction "{direction_str}" is not supported;'
+            f' only "LONG" and "SHORT" are implemented',
+        )
+    exit_r = _get(config, "exit_target_r")
+    if not isinstance(exit_r, Rational):
+        return _fail(
+            "INVALID_CONFIG",
+            f"config.exit_target_r must be a Rational;"
+            f" got {type(exit_r).__name__}",
+        )
+    if exit_r.numerator <= 0:
+        return _fail(
+            "INVALID_CONFIG",
+            f"config.exit_target_r must be strictly positive;"
+            f" got {exit_r.numerator}/{exit_r.denominator}",
+        )
+    return None
+
+
+# ── v2 evaluator ─────────────────────────────────────────────────────────────
+
+
+def evaluate_trade_outcome_v2(
+    detection_result: object,
+    trade_plan: object,
+    post_confirmation_bars: object,
+    config: object,
+) -> dict:
+    """Evaluate trade outcome with configurable Rational R/R target.
+
+    Produces TradeOutcome/v2.  Mirrors v1 bar-scanning logic exactly,
+    but uses a single computed target instead of the R2/R3/R4 ladder.
+
+    Args:
+        detection_result: DetectionResult/v1 (same as v1)
+        trade_plan: TradePlan/v1 (same as v1)
+        post_confirmation_bars: list of canonical bars (same as v1)
+        config: dict with:
+            direction: "LONG" | "SHORT"
+            exit_target_r: Rational (strictly > 0)
+    """
+    # ── Step 1: validate inputs ──────────────────────────────────────────
+
+    dr_err = _validate_detection_result(detection_result)
+    if dr_err:
+        return dr_err
+
+    tp_err = _validate_trade_plan(trade_plan)
+    if tp_err:
+        return tp_err
+
+    cfg_err = _validate_config_v2(config)
+    if cfg_err:
+        return cfg_err
+
+    tick_size = _get(trade_plan, "tick_size")
+
+    bars_err = _validate_bars(post_confirmation_bars, tick_size)
+    if bars_err:
+        return bars_err
+
+    # ── Step 2: extract trade plan values ────────────────────────────────
+
+    entry_ticks = _get(_get(trade_plan, "entry_price"), "ticks")
+    stop_ticks = _get(_get(trade_plan, "stop_price"), "ticks")
+    r2_ticks = _get(_get(trade_plan, "r2_price"), "ticks")
+    r3_ticks = _get(_get(trade_plan, "r3_price"), "ticks")
+    r4_ticks = _get(_get(trade_plan, "r4_price"), "ticks")
+    entry_model = _get(trade_plan, "entry_model")
+    entry_model_str = str(entry_model) if entry_model is not None else None
+
+    risk_ticks = abs(entry_ticks - stop_ticks)
+
+    # ── Step 2b: compute v2 target ───────────────────────────────────────
+
+    selected_r = _get(config, "exit_target_r")
+    selected_label = rational_to_label(selected_r)
+
+    rounded_offset = _round_offset_ticks(risk_ticks, selected_r)
+    effective_r = Rational(rounded_offset, risk_ticks)
+
+    direction_str = str(_get(config, "direction"))
+    is_short = direction_str == "SHORT"
+
+    if is_short:
+        target_ticks = entry_ticks - rounded_offset
+    else:
+        target_ticks = entry_ticks + rounded_offset
+
+    effective_label = rational_to_label(effective_r)
+
+    # ── Step 3: entry timestamp ──────────────────────────────────────────
+
+    is_cc = entry_model_str == "CONFIRMATION_CLOSE"
+
+    entry_triggered = is_cc
+    if is_cc:
+        conf_bar = _get(detection_result, "confirmation_bar")
+        entry_bar_utc_ms = (
+            _get(conf_bar, "bar_utc_ms") if conf_bar else None
+        )
+    else:
+        entry_bar_utc_ms = None
+
+    first_eval_bar_index = None
+    first_eval_bar_utc_ms = None
+    bosb_entry_bar_index = None
+
+    # ── Step 4: scan bars ────────────────────────────────────────────────
+
+    outcome_type = None
+    exit_bar_index = None
+    exit_bar_utc_ms = None
+    exit_price_ticks = None
+    target_was_hit = False
+
+    def _target_hit_v2(bar_hi, bar_lo):
+        if is_short:
+            return bar_lo <= target_ticks
+        return bar_hi >= target_ticks
+
+    def _stop_hit_v2(bar_hi, bar_lo):
+        if is_short:
+            return bar_hi >= stop_ticks
+        return bar_lo <= stop_ticks
+
+    def _entry_trigger_v2(bar_hi, bar_lo):
+        if is_short:
+            return bar_lo <= entry_ticks
+        return bar_hi >= entry_ticks
+
+    for i, bar in enumerate(post_confirmation_bars):
+        hi_ticks = _get(_get(bar, "high"), "ticks")
+        lo_ticks = _get(_get(bar, "low"), "ticks")
+
+        if i == 0:
+            first_eval_bar_index = 0
+            first_eval_bar_utc_ms = _get(bar, "bar_utc_ms")
+
+        # ── BOSB Phase A: wait for entry trigger ────────────────────
+        if not entry_triggered:
+            if _entry_trigger_v2(hi_ticks, lo_ticks):
+                entry_triggered = True
+                entry_bar_utc_ms = _get(bar, "bar_utc_ms")
+                bosb_entry_bar_index = i
+                first_eval_bar_index = i
+                first_eval_bar_utc_ms = _get(bar, "bar_utc_ms")
+
+                s_hit = _stop_hit_v2(hi_ticks, lo_ticks)
+                t_hit = _target_hit_v2(hi_ticks, lo_ticks)
+
+                if s_hit and t_hit:
+                    outcome_type = "AMBIGUOUS"
+                    exit_bar_index = i
+                    exit_bar_utc_ms = _get(bar, "bar_utc_ms")
+                    exit_price_ticks = None
+                    break
+                if s_hit:
+                    outcome_type = "STOPPED"
+                    exit_bar_index = i
+                    exit_bar_utc_ms = _get(bar, "bar_utc_ms")
+                    exit_price_ticks = stop_ticks
+                    break
+                if t_hit:
+                    outcome_type = "TARGET_HIT"
+                    exit_bar_index = i
+                    exit_bar_utc_ms = _get(bar, "bar_utc_ms")
+                    exit_price_ticks = target_ticks
+                    target_was_hit = True
+                    break
+            continue
+
+        # ── Phase B: entry active ───────────────────────────────────
+
+        s_hit = _stop_hit_v2(hi_ticks, lo_ticks)
+        t_hit = _target_hit_v2(hi_ticks, lo_ticks)
+
+        if s_hit and t_hit:
+            outcome_type = "AMBIGUOUS"
+            exit_bar_index = i
+            exit_bar_utc_ms = _get(bar, "bar_utc_ms")
+            exit_price_ticks = None
+            break
+
+        if s_hit:
+            outcome_type = "STOPPED"
+            exit_bar_index = i
+            exit_bar_utc_ms = _get(bar, "bar_utc_ms")
+            exit_price_ticks = stop_ticks
+            break
+
+        if t_hit:
+            outcome_type = "TARGET_HIT"
+            exit_bar_index = i
+            exit_bar_utc_ms = _get(bar, "bar_utc_ms")
+            exit_price_ticks = target_ticks
+            target_was_hit = True
+            break
+
+    # ── Step 5: resolve session-end outcome ──────────────────────────────
+
+    if not entry_triggered:
+        outcome_type = "ENTRY_NOT_TRIGGERED"
+    elif outcome_type is None:
+        outcome_type = "OPEN"
+
+    # ── Step 6: realized_r ───────────────────────────────────────────────
+
+    realized_r = None
+    if outcome_type == "STOPPED":
+        realized_r = Rational(-1, 1)
+    if outcome_type == "TARGET_HIT":
+        realized_r = effective_r
+
+    # ── Step 7: assemble TradeOutcome/v2 ─────────────────────────────────
+
+    ts_str = _tick_size_to_str(tick_size)
+
+    try:
+        em = EntryModel(entry_model_str)
+    except (ValueError, KeyError):
+        em = (
+            EntryModel.BREAK_OF_SIGNAL_BAR
+            if not is_cc
+            else EntryModel.CONFIRMATION_CLOSE
+        )
+
+    outcome = TradeOutcomeV2(
+        schema_version="TradeOutcome/v2",
+        direction=Direction.SHORT if is_short else Direction.LONG,
+        entry_model=em,
+        entry_price_ticks=entry_ticks,
+        stop_price_ticks=stop_ticks,
+        tick_size=ts_str,
+        selected_exit_target_r=selected_r,
+        selected_exit_target_label=selected_label,
+        entry_triggered=entry_triggered,
+        entry_bar_utc_ms=entry_bar_utc_ms,
+        bosb_entry_bar_index=bosb_entry_bar_index,
+        first_eval_bar_index=first_eval_bar_index,
+        first_eval_bar_utc_ms=first_eval_bar_utc_ms,
+        outcome=TradeOutcomeStatus(outcome_type),
+        exit_bar_index=exit_bar_index,
+        exit_bar_utc_ms=exit_bar_utc_ms,
+        exit_price_ticks=exit_price_ticks,
+        exit_target_label=effective_label if target_was_hit else None,
+        exit_target_r=effective_r if target_was_hit else None,
+        highest_target_achieved=effective_label if target_was_hit else None,
+        highest_target_r=effective_r if target_was_hit else None,
         realized_r=realized_r,
         r2_price_ticks=r2_ticks,
         r3_price_ticks=r3_ticks,
