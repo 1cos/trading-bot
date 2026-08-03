@@ -93,24 +93,55 @@ def _flush_bucket(bucket: list[dict]) -> dict:
 
 
 def parse_csv_candles(filepath: str | Path) -> list[dict]:
-    """Parse a TradingView/yfinance CSV into candle dicts."""
+    """Parse a CSV into candle dicts. Auto-detects format.
+
+    Supports:
+    - TradingView/yfinance: 3 header rows, columns Price,Close,High,Low,Open,Volume
+    - Simple 1m: 1 header row, columns time_et,open,high,low,close,volume
+    """
     candles = []
     with open(filepath) as f:
         reader = csv.reader(f)
-        for i, row in enumerate(reader):
-            if i < 3:
-                continue
-            if not row[0].strip():
-                continue
-            dt = datetime.fromisoformat(row[0])
-            candles.append({
-                "time_ms": int(dt.timestamp() * 1000),
-                "open": float(row[4]),
-                "high": float(row[2]),
-                "low": float(row[3]),
-                "close": float(row[1]),
-                "volume": int(float(row[5])),
-            })
+        header = next(reader, [])
+
+        # Detect format by first header cell
+        if header and header[0].strip().lower() == "time_et":
+            # Simple 1m format: time_et,open,high,low,close,volume
+            for row in reader:
+                if not row[0].strip():
+                    continue
+                # Naive ET timestamp — append timezone
+                ts_str = row[0].strip()
+                if "+" not in ts_str and "-" not in ts_str[-6:]:
+                    ts_str += "-04:00"  # ET (approximate; DST handled below)
+                try:
+                    dt = datetime.fromisoformat(ts_str)
+                except ValueError:
+                    continue
+                candles.append({
+                    "time_ms": int(dt.timestamp() * 1000),
+                    "open": float(row[1]),
+                    "high": float(row[2]),
+                    "low": float(row[3]),
+                    "close": float(row[4]),
+                    "volume": int(float(row[5])) if len(row) > 5 else 0,
+                })
+        else:
+            # TradingView format: skip 2 more header rows
+            next(reader, None)  # Ticker row
+            next(reader, None)  # empty row
+            for row in reader:
+                if not row[0].strip():
+                    continue
+                dt = datetime.fromisoformat(row[0])
+                candles.append({
+                    "time_ms": int(dt.timestamp() * 1000),
+                    "open": float(row[4]),
+                    "high": float(row[2]),
+                    "low": float(row[3]),
+                    "close": float(row[1]),
+                    "volume": int(float(row[5])),
+                })
     return candles
 
 
@@ -131,7 +162,7 @@ def available_timeframes(dati_dir: str | Path, symbol: str) -> list[dict]:
     dati = Path(dati_dir)
     result = []
 
-    has_1m = (dati / f"{symbol}_1m.csv").exists()
+    has_1m = (dati / f"{symbol}_1m.csv").exists() or (dati / "1m" / f"{symbol}_1m.csv").exists()
     has_5m = (dati / f"{symbol}_5m.csv").exists()
 
     for tf_min, label in [(1, "1m"), (2, "2m"), (3, "3m"), (5, "5m"), (10, "10m")]:
@@ -177,6 +208,8 @@ def load_candles_for_timeframe(
     # Try direct file first
     direct_file = dati / f"{symbol}_{timeframe_minutes}m.csv"
     file_1m = dati / f"{symbol}_1m.csv"
+    if not file_1m.exists():
+        file_1m = dati / "1m" / f"{symbol}_1m.csv"
 
     source_tf = None
     aggregation = "none"

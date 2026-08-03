@@ -224,35 +224,40 @@ def _load_symbol_data(symbol: str, timeframe: str = "5m") -> dict:
 
 
 def _available_symbols() -> list[dict]:
-    """Scan dati/ for available symbol files."""
+    """Scan dati/ and dati/1m/ for available symbol files."""
     symbols = []
     seen = set()
-    for f in sorted(DATI_DIR.iterdir()):
-        if f.suffix != ".csv":
-            continue
-        # Extract symbol from filename like SPY_5m.csv or SPY_1m.csv
-        parts = f.stem.rsplit("_", 1)
-        if len(parts) != 2:
-            continue
-        sym, tf = parts
-        if tf not in ("1m", "5m"):
-            continue
-        if sym in seen:
-            continue
-        # Use 5m data for date range info (or 1m if only 1m exists)
-        data = _load_symbol_data(sym, "5m")
-        if not data.get("dates"):
-            data = _load_symbol_data(sym, "1m")
-        if not data.get("dates"):
-            continue
-        seen.add(sym)
-        symbols.append({
-            "symbol": sym,
-            "timeframes": available_timeframes(DATI_DIR, sym),
-            "earliest": data["earliest"],
-            "latest": data["latest"],
-            "session_count": data["session_count"],
-        })
+    # Scan both dati/ and dati/1m/
+    scan_dirs = [DATI_DIR]
+    subdir_1m = DATI_DIR / "1m"
+    if subdir_1m.is_dir():
+        scan_dirs.append(subdir_1m)
+    for scan_dir in scan_dirs:
+        for f in sorted(scan_dir.iterdir()):
+            if f.suffix != ".csv":
+                continue
+            parts = f.stem.rsplit("_", 1)
+            if len(parts) != 2:
+                continue
+            sym, tf = parts
+            if tf not in ("1m", "5m"):
+                continue
+            if sym in seen:
+                continue
+            # Use 5m data for date range info (or 1m if only 1m exists)
+            data = _load_symbol_data(sym, "5m")
+            if not data.get("dates"):
+                data = _load_symbol_data(sym, "1m")
+            if not data.get("dates"):
+                continue
+            seen.add(sym)
+            symbols.append({
+                "symbol": sym,
+                "timeframes": available_timeframes(DATI_DIR, sym),
+                "earliest": data["earliest"],
+                "latest": data["latest"],
+                "session_count": data["session_count"],
+            })
     return symbols
 
 
