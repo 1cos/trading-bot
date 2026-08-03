@@ -24,6 +24,7 @@ import csv
 import math
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 
 def aggregate_candles(
@@ -107,19 +108,20 @@ def parse_csv_candles(filepath: str | Path) -> list[dict]:
         # Detect format by first header cell
         if header and header[0].strip().lower() == "time_et":
             # Simple 1m format: time_et,open,high,low,close,volume
+            # Timestamps are naive Eastern Time — interpret with America/New_York
+            # which handles EST (-05:00) and EDT (-04:00) automatically.
+            et = ZoneInfo("America/New_York")
             for row in reader:
                 if not row[0].strip():
                     continue
-                # Naive ET timestamp — append timezone
                 ts_str = row[0].strip()
-                if "+" not in ts_str and "-" not in ts_str[-6:]:
-                    ts_str += "-04:00"  # ET (approximate; DST handled below)
                 try:
-                    dt = datetime.fromisoformat(ts_str)
+                    naive = datetime.fromisoformat(ts_str)
+                    aware = naive.replace(tzinfo=et)
                 except ValueError:
                     continue
                 candles.append({
-                    "time_ms": int(dt.timestamp() * 1000),
+                    "time_ms": int(aware.timestamp() * 1000),
                     "open": float(row[1]),
                     "high": float(row[2]),
                     "low": float(row[3]),
