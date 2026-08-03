@@ -246,3 +246,53 @@ class TestEndpointIntegration:
                 assert etr["numerator"] > 0
                 # realized_r is negative but effective_target_r is positive
                 assert t["realized_r"] < 0
+
+# ── Dark theme tests ─────────────────────────────────────────────────────────
+
+
+class TestDarkTheme:
+    def test_dark_background(self, html):
+        """Root CSS should use dark background."""
+        assert "--bg:#0f0f0f" in html or "--bg: #0f0f0f" in html
+
+    def test_light_text(self, html):
+        """Root CSS should use light text color."""
+        assert "--text:#f0f0f0" in html or "--text: #f0f0f0" in html
+
+    def test_dark_surface(self, html):
+        """Surface should be dark."""
+        assert "--surface:#1a1a1a" in html or "--surface: #1a1a1a" in html
+
+    def test_no_white_chart_background(self, html):
+        """Chart backgrounds should not be white."""
+        assert 'color:"#fff"' not in html
+
+    def test_chart_has_dark_bg(self, html):
+        """Chart should use dark background color."""
+        assert 'color:"#1a1a1a"' in html
+
+
+class TestFunctionalIdsPreserved:
+    def test_critical_ids(self, html):
+        """All functional HTML IDs must still be present."""
+        for id_name in [
+            "pExitTargetR", "pSymbol", "pDirection", "pLevelSource",
+            "pOrbDuration", "pConsecOrbCloses", "pEntryBuffer",
+            "pStopBuffer", "pTickSize", "pStartDate", "pEndDate",
+            "pTimeframe", "btnRun", "runStatus", "metricsGrid",
+            "equityChartWrap", "tradeTableWrap", "tradeChart",
+            "chartOrbZone", "chartExplain", "chartTitle",
+        ]:
+            assert f'id="{id_name}"' in html, f"Missing ID: {id_name}"
+
+    def test_rr_decimal_input_preserved(self, html):
+        """The RR decimal input must still exist."""
+        assert 'type="number"' in html
+        assert 'id="pExitTargetR"' in html
+        assert 'step="0.1"' in html
+
+    def test_no_old_strategy_scripts(self, html):
+        """Old dashboard strategy functions must not be present."""
+        for fn in ["strategyPDHPDL", "strategyORB", "strategyOB",
+                    "strategyCombined", "checkWick", "checkEng"]:
+            assert fn not in html, f"Old strategy function found: {fn}"
