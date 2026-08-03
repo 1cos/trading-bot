@@ -19,12 +19,17 @@ import os
 import time
 import uuid
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
+from fractions import Fraction
 from pathlib import Path
 
+import flask
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
+from trading_lab.contracts.primitives import Rational
 from trading_lab.strategy_runner import run_bdrr_strategy
+from trading_lab.strategy_runner import run_bdrr_strategy_v2
 from trading_lab.trade_dataset import build_trade_dataset
 from trading_lab.visual_review_exporter import export_visual_event
 from trading_lab.sequence_validator import validate_sequence
@@ -40,9 +45,107 @@ from trading_lab.rejection_finder import find_rejection
 from trading_lab.session_context import build_session_context
 
 
+# ── RR parser ────────────────────────────────────────────────────────────────
+
+
+def parse_exit_target_r(value):
+    """Parse a request value into (exit_target_r, is_v2).
+
+    v1 path: int 2, 3, or 4 → (int, False)
+    v2 path: string like "2.5" → (Rational, True)
+
+    Raises ValueError for invalid input.
+    """
+    # Reject non-scalar types
+    if isinstance(value, (bool, list, dict)):
+        raise ValueError(
+            f"exit_target_r must be an integer or decimal string, "
+            f"got {type(value).__name__}"
+        )
+
+    # v1: plain int 2, 3, 4
+    if isinstance(value, int) and value in (2, 3, 4):
+        return value, False
+
+    # v2: string decimal
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            raise ValueError("exit_target_r string must not be empty")
+
+        try:
+            d = Decimal(s)
+        except InvalidOperation:
+            raise ValueError(
+                f"exit_target_r is not a valid decimal: {value!r}"
+            )
+
+        if d.is_nan() or d.is_infinite():
+            raise ValueError(
+                f"exit_target_r must be a finite number, got: {value!r}"
+            )
+        if d <= 0:
+            raise ValueError(
+                f"exit_target_r must be strictly positive, got: {value!r}"
+            )
+
+        # Convert Decimal to Rational via Fraction (exact, no float)
+        frac = Fraction(d)
+        return Rational(frac.numerator, frac.denominator), True
+
+    # v1 int outside {2,3,4} or float → reject
+    if isinstance(value, (int, float)):
+        raise ValueError(
+            f"exit_target_r must be 2, 3, or 4 (v1) "
+            f"or a decimal string (v2), got: {value!r}"
+        )
+
+    raise ValueError(
+        f"exit_target_r: unsupported type {type(value).__name__}"
+    )
+
+
+def _rational_to_number(r):
+    """Convert a Rational or int to a Decimal for exact arithmetic.
+
+    Used in metrics computation to avoid float until JSON boundary.
+    """
+    if isinstance(r, Rational):
+        return Decimal(r.numerator) / Decimal(r.denominator)
+    if isinstance(r, (int, float)):
+        return Decimal(str(r))
+    return Decimal(str(r))
+
+
+class _RationalEncoder(json.JSONEncoder):
+    """JSON encoder that handles Rational and Decimal types."""
+
+    def default(self, obj):
+        if isinstance(obj, Rational):
+            d = Decimal(obj.numerator) / Decimal(obj.denominator)
+            return float(d)
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super().default(obj)
+
+
+class _RationalJSONProvider(flask.json.provider.DefaultJSONProvider):
+    """Flask 3.x JSON provider that handles Rational and Decimal."""
+
+    def default(self, obj):
+        if isinstance(obj, Rational):
+            d = Decimal(obj.numerator) / Decimal(obj.denominator)
+            return float(d)
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super().default(obj)
+
+
 # ── App setup ────────────────────────────────────────────────────────────────
 
 app = Flask(__name__, static_folder=None)
+app.json_provider_class = _RationalJSONProvider
+app.json = _RationalJSONProvider(app)
 CORS(app)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -150,15 +253,15 @@ def _compute_metrics(results: list[dict]) -> dict:
     n_losses = len(losses)
     n_open = len(open_trades)
 
-    win_rate = n_wins / n_trades if n_trades > 0 else 0
-    loss_rate = n_losses / n_trades if n_trades > 0 else 0
+    win_rate = Decimal(n_wins) / Decimal(n_trades) if n_trades > 0 else Decimal(0)
+    loss_rate = Decimal(n_losses) / Decimal(n_trades) if n_trades > 0 else Decimal(0)
 
     # R values
     r_values = []
     for r in valid:
         rr = r.get("realized_r")
         if rr is not None:
-            r_values.append(float(rr))
+            r_values.append(_rational_to_number(rr))
 
     net_r = sum(r_values)
     avg_r = net_r / len(r_values) if r_values else 0
@@ -174,14 +277,14 @@ def _compute_metrics(results: list[dict]) -> dict:
     gross_profit = sum(win_rs)
     gross_loss = abs(sum(loss_rs))
     profit_factor = gross_profit / gross_loss if gross_loss > 0 else (
-        float("inf") if gross_profit > 0 else 0
+        "Inf" if gross_profit > 0 else Decimal(0)
     )
 
     # Equity curve + drawdown
     equity_curve = []
-    cumulative = 0
-    peak = 0
-    max_dd = 0
+    cumulative = Decimal(0)
+    peak = Decimal(0)
+    max_dd = Decimal(0)
     drawdown_curve = []
     for rv in r_values:
         cumulative += rv
@@ -223,7 +326,7 @@ def _compute_metrics(results: list[dict]) -> dict:
         "net_r": round(net_r, 4),
         "avg_r": round(avg_r, 4),
         "expectancy": round(expectancy, 4),
-        "profit_factor": round(profit_factor, 4) if profit_factor != float("inf") else "Inf",
+        "profit_factor": round(profit_factor, 4) if isinstance(profit_factor, Decimal) else "Inf",
         "max_drawdown": round(max_dd, 4),
         "max_consecutive_wins": max_consec_wins,
         "max_consecutive_losses": max_consec_losses,
@@ -465,11 +568,21 @@ def api_run():
             "consecutive_orb_closes": preset_overrides.get("consecutive_orb_closes", 2),
         }
 
+        # Parse exit_target_r: v1 (int 2/3/4) or v2 (Rational from string)
+        raw_etr = config_overrides.get("exit_target_r", 2)
+        try:
+            exit_target_r, is_v2 = parse_exit_target_r(raw_etr)
+        except ValueError as ve:
+            return jsonify({"error": str(ve)}), 400
+
         config = {
             "tick_size": config_overrides.get("tick_size", 0.01),
-            "exit_target_r": config_overrides.get("exit_target_r", 2),
+            "exit_target_r": exit_target_r,
             "engine_version": "1.0.0",
         }
+
+        # Select runner: v1 for int {2,3,4}, v2 for Rational
+        _runner = run_bdrr_strategy_v2 if is_v2 else run_bdrr_strategy
 
         # Run detector for each direction
         run_id = str(uuid.uuid4())
@@ -481,7 +594,7 @@ def api_run():
                 "direction": dir_name,
                 "level_source": level_src,
             }
-            results = run_bdrr_strategy(all_sessions, preset, config)
+            results = _runner(all_sessions, preset, config)
             # Tag each result with direction
             for r in results:
                 r["_direction"] = dir_name
