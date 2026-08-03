@@ -526,13 +526,7 @@ def api_defaults():
             "exit_target_r": 2,
             "engine_version": "1.0.0",
         },
-        "available_timeframes": [
-            {"value": "5m", "label": "5 minutes", "available": True},
-            {"value": "2m", "label": "2 minutes", "available": False,
-             "reason": "Requires genuine 1-minute source data"},
-            {"value": "1m", "label": "1 minute", "available": False,
-             "reason": "No 1-minute CSV files in dati/"},
-        ],
+        "available_timeframes": "see /api/symbols for per-symbol timeframe availability",
         "parameter_schema": {
             "orb": [
                 {"key": "orb_duration_minutes", "label": "ORB Duration (minutes)",

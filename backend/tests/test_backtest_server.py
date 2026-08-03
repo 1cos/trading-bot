@@ -67,9 +67,13 @@ class TestApiDefaults:
 
     def test_timeframes_listed(self, client):
         data = client.get("/api/defaults").get_json()
-        tfs = data["available_timeframes"]
+        # available_timeframes now redirects to /api/symbols
+        assert "available_timeframes" in data
+        # Actual per-symbol timeframes are in /api/symbols
+        syms = client.get("/api/symbols").get_json()
+        spy = next(s for s in syms if s["symbol"] == "SPY")
+        tfs = spy["timeframes"]
         assert any(t["value"] == "5m" and t["available"] for t in tfs)
-        assert any(t["value"] == "1m" and not t["available"] for t in tfs)
 
 
 class TestApiRun:

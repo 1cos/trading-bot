@@ -189,7 +189,12 @@ def split_into_sessions(candles: list[dict]) -> dict[str, list[dict]]:
 
 
 def available_timeframes(dati_dir: str | Path, symbol: str) -> list[dict]:
-    """Check which timeframes are available for a symbol."""
+    """Check which timeframes are available for a symbol.
+
+    Each entry includes earliest_date, latest_date, and session_count
+    when the timeframe is available, so the UI can set date pickers
+    per-timeframe without a separate call.
+    """
     dati = Path(dati_dir)
     result = []
 
@@ -213,13 +218,25 @@ def available_timeframes(dati_dir: str | Path, symbol: str) -> list[dict]:
             available = False
             reason = "Unsupported"
 
-        result.append({
+        entry = {
             "value": label,
             "minutes": tf_min,
             "label": f"{tf_min} minute{'s' if tf_min > 1 else ''}",
             "available": available,
             "reason": reason,
-        })
+            "earliest_date": None,
+            "latest_date": None,
+            "session_count": 0,
+        }
+
+        if available:
+            tf_data = load_candles_for_timeframe(dati, symbol, tf_min)
+            if "error" not in tf_data and tf_data.get("dates"):
+                entry["earliest_date"] = tf_data["dates"][0]
+                entry["latest_date"] = tf_data["dates"][-1]
+                entry["session_count"] = len(tf_data["dates"])
+
+        result.append(entry)
 
     return result
 

@@ -356,6 +356,7 @@ async function init(){
 }
 
 function updateDateRange(s){
+  // Legacy: use symbol-level earliest/latest as initial fallback
   document.getElementById("pStartDate").value=s.earliest;
   document.getElementById("pStartDate").min=s.earliest;
   document.getElementById("pStartDate").max=s.latest;
@@ -364,6 +365,28 @@ function updateDateRange(s){
   document.getElementById("pEndDate").max=s.latest;
   document.getElementById("dateInfo").textContent=
     s.session_count+" sessions  ·  "+s.earliest+" → "+s.latest;
+}
+
+function updateDateRangeForTimeframe(){
+  var sym=document.getElementById("pSymbol").value;
+  var tf=document.getElementById("pTimeframe").value;
+  var s=state.symbols.find(function(x){return x.symbol===sym;});
+  if(!s||!s.timeframes) return;
+  var tfInfo=s.timeframes.find(function(t){return t.value===tf;});
+  if(!tfInfo||!tfInfo.available||!tfInfo.earliest_date){
+    document.getElementById("pStartDate").value="";
+    document.getElementById("pEndDate").value="";
+    document.getElementById("dateInfo").textContent="No data for "+tf;
+    return;
+  }
+  document.getElementById("pStartDate").value=tfInfo.earliest_date;
+  document.getElementById("pStartDate").min=tfInfo.earliest_date;
+  document.getElementById("pStartDate").max=tfInfo.latest_date;
+  document.getElementById("pEndDate").value=tfInfo.latest_date;
+  document.getElementById("pEndDate").min=tfInfo.earliest_date;
+  document.getElementById("pEndDate").max=tfInfo.latest_date;
+  document.getElementById("dateInfo").textContent=
+    tfInfo.session_count+" sessions  ·  "+tfInfo.earliest_date+" → "+tfInfo.latest_date;
 }
 
 function resetDefaults(){
@@ -390,6 +413,7 @@ function clearActivePreset(){
 
 // Mark all strategy inputs to clear preset on change
 function _attachPresetClearListeners(){
+  var ids=["pSymbol","pTimeframe","pDirection","pOrbDuration",
            "pConsecOrbCloses","pExitTargetR","pEntryBuffer","pStopBuffer",
            "pTickSize","pWickMin","pBodyMax"];
   ids.forEach(function(id){
@@ -397,6 +421,9 @@ function _attachPresetClearListeners(){
     if(el) el.addEventListener("input",clearActivePreset);
     if(el) el.addEventListener("change",clearActivePreset);
   });
+  // Timeframe change also updates date range
+  var tfEl=document.getElementById("pTimeframe");
+  if(tfEl) tfEl.addEventListener("change",updateDateRangeForTimeframe);
 }
 
 // ── Preset list ──
@@ -500,6 +527,7 @@ window.loadPreset=async function(){
       String(Math.round(parseFloat(p.body_ratio_max)*100)):"40";
 
     onDirectionChange();
+    updateDateRangeForTimeframe();
     state.activePreset=preset;
     document.getElementById("presetName").textContent="Active: "+preset.name;
     document.getElementById("presetStatus").textContent="Loaded ✓";
@@ -539,6 +567,7 @@ function updateTimeframes(sym){
   });
   // Select 5m by default
   sel.value="5m";
+  updateDateRangeForTimeframe();
 }
 
 // ── Run Backtest ──
@@ -562,6 +591,25 @@ window.runBacktest=async function(){
   if(rrNum<=0){
     status.textContent="Error: Exit Target (R) must be greater than zero";
     btn.disabled=false;return;
+  }
+
+  // Validate dates against timeframe range
+  if(!state.activePreset){
+    var _sym=document.getElementById("pSymbol").value;
+    var _tf=document.getElementById("pTimeframe").value;
+    var _si=state.symbols.find(function(x){return x.symbol===_sym;});
+    if(_si&&_si.timeframes){
+      var _ti=_si.timeframes.find(function(t){return t.value===_tf;});
+      if(_ti&&_ti.available&&_ti.earliest_date){
+        var _sd=document.getElementById("pStartDate").value;
+        var _ed=document.getElementById("pEndDate").value;
+        if(_sd&&_sd>_ti.latest_date||_ed&&_ed<_ti.earliest_date){
+          status.textContent="Error: dates outside "+_tf+" range ("+
+            _ti.earliest_date+" → "+_ti.latest_date+")";
+          btn.disabled=false;return;
+        }
+      }
+    }
   }
 
   var body;
