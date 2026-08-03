@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Max Bot Lab</title>
+<script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#131722; color:#d1d4dc; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+
+#toolbar { padding:8px 12px; border-bottom:1px solid #2a2e39; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+#toolbar h1 { font-size:14px; font-weight:600; color:#fff; margin-right:12px; }
+#toolbar select, #toolbar button { background:#1e222d; color:#d1d4dc; border:1px solid #2a2e39; padding:6px 10px; border-radius:4px; font-size:12px; cursor:pointer; }
+#toolbar select:hover, #toolbar button:hover { border-color:#4c525e; }
+#toolbar button.active { background:#2962ff; border-color:#2962ff; color:#fff; }
+
+#info-bar { padding:6px 12px; border-bottom:1px solid #2a2e39; display:flex; gap:16px; flex-wrap:wrap; font-size:11px; }
+.info-item { display:flex; gap:4px; }
+.info-label { color:#787b86; }
+.info-value { color:#d1d4dc; font-weight:500; }
+.info-value.long { color:#26a69a; }
+.info-value.short { color:#ef5350; }
+.info-value.win { color:#26a69a; }
+.info-value.loss { color:#ef5350; }
+.info-value.no-trade { color:#787b86; }
+
+#chart-container { width:100%; height:calc(100vh - 200px); min-height:400px; }
+
+#trades-panel { padding:8px 12px; border-top:1px solid #2a2e39; max-height:120px; overflow-y:auto; }
+#trades-panel h3 { font-size:11px; color:#787b86; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px; }
+.trade-row { font-size:11px; padding:3px 0; border-bottom:1px solid #1e222d; display:flex; gap:12px; }
+.trade-row .t-time { color:#787b86; width:90px; }
+.trade-row .t-dir { width:50px; font-weight:600; }
+.trade-row .t-level { color:#d1d4dc; width:80px; }
+.trade-row .t-entry { width:80px; }
+.trade-row .t-stop { width:80px; color:#ef5350; }
+.trade-row .t-target { width:80px; color:#26a69a; }
+.trade-row .t-outcome { width:60px; font-weight:600; }
+
+#legend { padding:6px 12px; display:flex; flex-wrap:wrap; gap:10px; font-size:10px; border-top:1px solid #2a2e39; }
+.leg { display:flex; align-items:center; gap:4px; }
+.leg-line { width:16px; height:2px; }
+.leg-dash { width:16px; height:0; border-top:2px dashed; }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <h1>Max Bot Lab</h1>
+  <select id="sym-select"></select>
+  <select id="date-select"></select>
+  <button id="prev-btn">← Prev</button>
+  <button id="next-btn">Next →</button>
+</div>
+
+<div id="info-bar">
+  <div class="info-item"><span class="info-label">Status:</span><span class="info-value" id="i-status">—</span></div>
+  <div class="info-item"><span class="info-label">Break:</span><span class="info-value" id="i-break">—</span></div>
+  <div class="info-item"><span class="info-label">Break@:</span><span class="info-value" id="i-break-time">—</span></div>
+  <div class="info-item"><span class="info-label">Disp@:</span><span class="info-value" id="i-disp-time">—</span></div>
+  <div class="info-item"><span class="info-label">Entries:</span><span class="info-value" id="i-entries">—</span></div>
+  <div class="info-item"><span class="info-label">Trades:</span><span class="info-value" id="i-trades">—</span></div>
+  <div class="info-item"><span class="info-label">Result:</span><span class="info-value" id="i-result">—</span></div>
+</div>
+
+<div id="chart-container"></div>
+
+<div id="trades-panel">
+  <h3>Trades</h3>
+  <div id="trades-list"></div>
+</div>
+
+<div id="legend">
+  <div class="leg"><div class="leg-line" style="background:#FF9800"></div>ORB High</div>
+  <div class="leg"><div class="leg-line" style="background:#9C27B0"></div>ORB Low</div>
+  <div class="leg"><div class="leg-line" style="background:#4CAF50"></div>PDH</div>
+  <div class="leg"><div class="leg-dash" style="border-color:#4CAF50"></div>PDL</div>
+  <div class="leg"><div class="leg-line" style="background:#2196F3"></div>PMH</div>
+  <div class="leg"><div class="leg-dash" style="border-color:#2196F3"></div>PML</div>
+</div>
+
+<script>
+let DATA = null;
+let chart = null;
+let candleSeries = null;
+let levelSeries = [];
+
+async function loadData() {
+  const resp = await fetch('output/all_data.json');
+  DATA = await resp.json();
+  initUI();
+}
+
+function initUI() {
+  const symSel = document.getElementById('sym-select');
+  Object.keys(DATA.sessions).forEach(sym => {
+    const opt = document.createElement('option');
+    opt.value = sym; opt.textContent = sym;
+    symSel.appendChild(opt);
+  });
+  symSel.addEventListener('change', () => updateDates());
+  document.getElementById('prev-btn').addEventListener('click', () => navDate(-1));
+  document.getElementById('next-btn').addEventListener('click', () => navDate(1));
+  document.getElementById('date-select').addEventListener('change', () => renderSession());
+  updateDates();
+}
+
+function updateDates() {
+  const sym = document.getElementById('sym-select').value;
+  const dateSel = document.getElementById('date-select');
+  dateSel.innerHTML = '';
+  const sessions = DATA.sessions[sym] || [];
+  sessions.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.date; opt.textContent = s.date;
+    dateSel.appendChild(opt);
+  });
+  renderSession();
+}
+
+function navDate(delta) {
+  const sel = document.getElementById('date-select');
+  const newIdx = sel.selectedIndex + delta;
+  if (newIdx >= 0 && newIdx < sel.options.length) {
+    sel.selectedIndex = newIdx;
+    renderSession();
+  }
+}
+
+function renderSession() {
+  const sym = document.getElementById('sym-select').value;
+  const date = document.getElementById('date-select').value;
+  if (!date) return;
+
+  const session = (DATA.sessions[sym] || []).find(s => s.date === date);
+  const candles = (DATA.candles[sym] || {})[date] || [];
+  if (!session || !candles.length) return;
+
+  // Update info bar
+  const brk = session.orb_break;
+  document.getElementById('i-status').textContent = session.status;
+  document.getElementById('i-status').className = 'info-value ' + (session.status === 'TRADED' ? '' : 'no-trade');
+
+  if (brk) {
+    const brkEl = document.getElementById('i-break');
+    brkEl.textContent = brk.direction;
+    brkEl.className = 'info-value ' + brk.direction.toLowerCase();
+    document.getElementById('i-break-time').textContent = brk.break_time.substring(11, 16);
+    document.getElementById('i-disp-time').textContent = brk.displacement_time.substring(11, 16);
+  } else {
+    document.getElementById('i-break').textContent = 'NONE';
+    document.getElementById('i-break-time').textContent = '—';
+    document.getElementById('i-disp-time').textContent = '—';
+  }
+
+  document.getElementById('i-entries').textContent = session.entries.length;
+  document.getElementById('i-trades').textContent = session.trades.length;
+
+  const wins = session.trades.filter(t => t.outcome === 'WIN').length;
+  const losses = session.trades.filter(t => t.outcome === 'LOSS').length;
+  const resEl = document.getElementById('i-result');
+  if (session.trades.length === 0) {
+    resEl.textContent = 'No trades';
+    resEl.className = 'info-value no-trade';
+  } else {
+    resEl.textContent = `${wins}W ${losses}L`;
+    resEl.className = 'info-value ' + (wins > losses ? 'win' : losses > wins ? 'loss' : '');
+  }
+
+  // Render trades panel
+  const tradesList = document.getElementById('trades-list');
+  tradesList.innerHTML = '';
+  session.trades.forEach(t => {
+    const row = document.createElement('div');
+    row.className = 'trade-row';
+    const dirClass = t.direction === 'LONG' ? 'long' : 'short';
+    const outcomeClass = t.outcome === 'WIN' ? 'win' : t.outcome === 'LOSS' ? 'loss' : '';
+    row.innerHTML = `
+      <span class="t-time">${t.time.substring(11,16)} ET</span>
+      <span class="t-dir info-value ${dirClass}">${t.direction}</span>
+      <span class="t-level">${t.level_name}</span>
+      <span class="t-entry">E: ${t.entry_price.toFixed(2)}</span>
+      <span class="t-stop">S: ${t.stop_price.toFixed(2)}</span>
+      <span class="t-target">T: ${(t.target||0).toFixed(2)}</span>
+      <span class="t-outcome info-value ${outcomeClass}">${t.outcome}</span>
+    `;
+    tradesList.appendChild(row);
+  });
+
+  // Render chart
+  renderChart(candles, session);
+}
+
+function renderChart(candles, session) {
+  const container = document.getElementById('chart-container');
+
+  // Clear previous
+  if (chart) { chart.remove(); chart = null; }
+  levelSeries = [];
+
+  chart = LightweightCharts.createChart(container, {
+    layout: { background: { color: '#131722' }, textColor: '#d1d4dc' },
+    grid: { vertLines: { color: '#1e222d' }, horzLines: { color: '#1e222d' } },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#2a2e39' },
+    rightPriceScale: { borderColor: '#2a2e39' },
+  });
+
+  // Candle data
+  const chartData = candles.map(c => {
+    const dt = new Date(c.time.replace(' ', 'T'));
+    return { time: Math.floor(dt.getTime() / 1000), open: c.open, high: c.high, low: c.low, close: c.close };
+  });
+
+  candleSeries = chart.addCandlestickSeries({
+    upColor: '#26a69a', downColor: '#ef5350',
+    borderUpColor: '#26a69a', borderDownColor: '#ef5350',
+    wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+  });
+  candleSeries.setData(chartData);
+
+  // Levels
+  const lvl = session.levels;
+  const addLevel = (price, color, style, width) => {
+    if (price == null) return;
+    const s = chart.addLineSeries({
+      color, lineWidth: width || 2, lineStyle: style || 0,
+      priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false
+    });
+    s.setData(chartData.map(c => ({ time: c.time, value: price })));
+    levelSeries.push(s);
+  };
+
+  addLevel(lvl.orb_high, '#FF9800', 0, 2);  // ORB High - orange solid
+  addLevel(lvl.orb_low, '#9C27B0', 0, 2);   // ORB Low - purple solid
+  addLevel(lvl.pdh, '#4CAF50', 0, 1);        // PDH - green solid
+  addLevel(lvl.pdl, '#4CAF50', 2, 1);        // PDL - green dashed
+  addLevel(lvl.pmh, '#2196F3', 0, 1);        // PMH - blue solid
+  addLevel(lvl.pml, '#2196F3', 2, 1);        // PML - blue dashed
+
+  // Markers
+  const markers = [];
+
+  // ORB break marker
+  if (session.orb_break) {
+    const brk = session.orb_break;
+    const brkDt = new Date(brk.break_time.replace(' ', 'T'));
+    markers.push({
+      time: Math.floor(brkDt.getTime() / 1000),
+      position: brk.direction === 'LONG' ? 'aboveBar' : 'belowBar',
+      color: brk.direction === 'LONG' ? '#26a69a' : '#ef5350',
+      shape: brk.direction === 'LONG' ? 'arrowUp' : 'arrowDown',
+      text: 'Break',
+    });
+  }
+
+  // Trade markers
+  session.trades.forEach(t => {
+    const entryDt = new Date(t.time.replace(' ', 'T'));
+    markers.push({
+      time: Math.floor(entryDt.getTime() / 1000),
+      position: t.direction === 'LONG' ? 'belowBar' : 'aboveBar',
+      color: '#FFD700',
+      shape: t.direction === 'LONG' ? 'arrowUp' : 'arrowDown',
+      text: `${t.direction} @${t.level_name}`,
+    });
+
+    if (t.exit_time) {
+      const exitDt = new Date(t.exit_time.replace(' ', 'T'));
+      markers.push({
+        time: Math.floor(exitDt.getTime() / 1000),
+        position: 'aboveBar',
+        color: t.outcome === 'WIN' ? '#26a69a' : '#ef5350',
+        shape: 'circle',
+        text: t.outcome,
+      });
+    }
+  });
+
+  markers.sort((a, b) => a.time - b.time);
+  if (markers.length) candleSeries.setMarkers(markers);
+
+  chart.timeScale().fitContent();
+}
+
+// Handle resize
+window.addEventListener('resize', () => {
+  if (chart) chart.applyOptions({ width: document.getElementById('chart-container').clientWidth });
+});
+
+// Boot
+loadData();
+</script>
+</body>
+</html>

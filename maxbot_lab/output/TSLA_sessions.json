@@ -1,0 +1,511 @@
+[
+  {
+    "symbol": "TSLA",
+    "date": "2026-07-24",
+    "levels": {
+      "pdh": null,
+      "pdl": null,
+      "pmh": 325.288,
+      "pml": 319.69,
+      "orb_high": 322.2,
+      "orb_low": 317.5
+    },
+    "orb_break": {
+      "direction": "SHORT",
+      "break_time": "2026-07-24 09:50:00",
+      "displacement_time": "2026-07-24 09:51:00",
+      "break_price": 316.9665
+    },
+    "entries": [],
+    "trades": [],
+    "status": "NO_ENTRY"
+  },
+  {
+    "symbol": "TSLA",
+    "date": "2026-07-27",
+    "levels": {
+      "pdh": 322.96,
+      "pdl": 306.51,
+      "pmh": 318.4,
+      "pml": 312.85,
+      "orb_high": 315.22,
+      "orb_low": 310.898
+    },
+    "orb_break": {
+      "direction": "LONG",
+      "break_time": "2026-07-27 09:36:00",
+      "displacement_time": "2026-07-27 09:37:00",
+      "break_price": 316.17
+    },
+    "entries": [],
+    "trades": [],
+    "status": "NO_ENTRY"
+  },
+  {
+    "symbol": "TSLA",
+    "date": "2026-07-28",
+    "levels": {
+      "pdh": 317.0,
+      "pdl": 304.28,
+      "pmh": 309.22,
+      "pml": 302.89,
+      "orb_high": 307.19,
+      "orb_low": 302.6004
+    },
+    "orb_break": {
+      "direction": "SHORT",
+      "break_time": "2026-07-28 10:07:00",
+      "displacement_time": "2026-07-28 10:08:00",
+      "break_price": 302.4505
+    },
+    "entries": [
+      {
+        "time": "2026-07-28 10:09:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-28 10:30:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-28 10:30:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-28 10:31:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-28 10:36:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-28 10:42:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-28 10:43:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-28 10:45:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-28 10:59:00",
+        "level": "PDL",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-28 11:05:00",
+        "level": "PDL",
+        "direction": "SHORT"
+      }
+    ],
+    "trades": [
+      {
+        "time": "2026-07-28 10:09:00",
+        "direction": "SHORT",
+        "level_name": "ORB_LOW",
+        "level_price": 302.6004,
+        "level_family": "STRUCTURAL",
+        "entry_price": 302.35,
+        "candle": {
+          "open": 302.1999,
+          "high": 302.8799,
+          "low": 302.1309,
+          "close": 302.35
+        },
+        "stop_price": 302.8799,
+        "outcome": "LOSS",
+        "exit_price": 302.8799,
+        "exit_time": "2026-07-28 10:10:00",
+        "target": 301.2902,
+        "risk": 0.5298999999999978,
+        "rr": -1
+      },
+      {
+        "time": "2026-07-28 10:30:00",
+        "direction": "SHORT",
+        "level_name": "ORB_LOW",
+        "level_price": 302.6004,
+        "level_family": "STRUCTURAL",
+        "entry_price": 302.36,
+        "candle": {
+          "open": 302.606,
+          "high": 303.22,
+          "low": 302.1805,
+          "close": 302.36
+        },
+        "stop_price": 303.22,
+        "outcome": "LOSS",
+        "exit_price": 303.22,
+        "exit_time": "2026-07-28 10:47:00",
+        "target": 300.64,
+        "risk": 0.8600000000000136,
+        "rr": -1
+      }
+    ],
+    "status": "TRADED"
+  },
+  {
+    "symbol": "TSLA",
+    "date": "2026-07-29",
+    "levels": {
+      "pdh": 311.15,
+      "pdl": 300.6901,
+      "pmh": 309.2,
+      "pml": 301.77,
+      "orb_high": 309.045,
+      "orb_low": 304.57
+    },
+    "orb_break": {
+      "direction": "SHORT",
+      "break_time": "2026-07-29 09:56:00",
+      "displacement_time": "2026-07-29 09:57:00",
+      "break_price": 303.97
+    },
+    "entries": [
+      {
+        "time": "2026-07-29 10:24:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-29 12:00:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-29 12:10:00",
+        "level": "PDL",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-29 12:21:00",
+        "level": "PDL",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-29 12:51:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-29 12:54:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-29 12:55:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-29 14:02:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-29 14:13:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-29 14:41:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-29 14:44:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      }
+    ],
+    "trades": [
+      {
+        "time": "2026-07-29 10:24:00",
+        "direction": "SHORT",
+        "level_name": "ORB_LOW",
+        "level_price": 304.57,
+        "level_family": "STRUCTURAL",
+        "entry_price": 304.47,
+        "candle": {
+          "open": 304.645,
+          "high": 304.6559,
+          "low": 304.11,
+          "close": 304.47
+        },
+        "stop_price": 304.6559,
+        "outcome": "WIN",
+        "exit_price": 304.09820000000013,
+        "exit_time": "2026-07-29 10:25:00",
+        "target": 304.09820000000013,
+        "risk": 0.18589999999994689,
+        "rr": 2
+      }
+    ],
+    "status": "TRADED"
+  },
+  {
+    "symbol": "TSLA",
+    "date": "2026-07-30",
+    "levels": {
+      "pdh": 309.045,
+      "pdl": 297.38,
+      "pmh": 305.08,
+      "pml": 297.0468,
+      "orb_high": 304.2299,
+      "orb_low": 301.35
+    },
+    "orb_break": {
+      "direction": "LONG",
+      "break_time": "2026-07-30 09:35:00",
+      "displacement_time": "2026-07-30 09:36:00",
+      "break_price": 306.02
+    },
+    "entries": [
+      {
+        "time": "2026-07-30 09:41:00",
+        "level": "ORB_HIGH",
+        "direction": "LONG"
+      },
+      {
+        "time": "2026-07-30 09:48:00",
+        "level": "PMH",
+        "direction": "LONG"
+      },
+      {
+        "time": "2026-07-30 09:48:00",
+        "level": "PMH",
+        "direction": "LONG"
+      },
+      {
+        "time": "2026-07-30 11:17:00",
+        "level": "ORB_HIGH",
+        "direction": "LONG"
+      },
+      {
+        "time": "2026-07-30 11:34:00",
+        "level": "PMH",
+        "direction": "LONG"
+      },
+      {
+        "time": "2026-07-30 11:34:00",
+        "level": "PMH",
+        "direction": "LONG"
+      },
+      {
+        "time": "2026-07-30 12:00:00",
+        "level": "PMH",
+        "direction": "LONG"
+      },
+      {
+        "time": "2026-07-30 12:00:00",
+        "level": "PMH",
+        "direction": "LONG"
+      },
+      {
+        "time": "2026-07-30 12:41:00",
+        "level": "PMH",
+        "direction": "LONG"
+      },
+      {
+        "time": "2026-07-30 12:41:00",
+        "level": "PMH",
+        "direction": "LONG"
+      }
+    ],
+    "trades": [
+      {
+        "time": "2026-07-30 09:41:00",
+        "direction": "LONG",
+        "level_name": "ORB_HIGH",
+        "level_price": 304.2299,
+        "level_family": "STRUCTURAL",
+        "entry_price": 304.27,
+        "candle": {
+          "open": 303.74,
+          "high": 304.6014,
+          "low": 303.59,
+          "close": 304.27
+        },
+        "stop_price": 303.59,
+        "outcome": "WIN",
+        "exit_price": 305.63,
+        "exit_time": "2026-07-30 09:44:00",
+        "target": 305.63,
+        "risk": 0.6800000000000068,
+        "rr": 2
+      }
+    ],
+    "status": "TRADED"
+  },
+  {
+    "symbol": "TSLA",
+    "date": "2026-07-31",
+    "levels": {
+      "pdh": 310.87,
+      "pdl": 301.35,
+      "pmh": 317.3088,
+      "pml": 308.85,
+      "orb_high": 315.2,
+      "orb_low": 308.5
+    },
+    "orb_break": {
+      "direction": "SHORT",
+      "break_time": "2026-07-31 09:46:00",
+      "displacement_time": "2026-07-31 09:47:00",
+      "break_price": 307.2606
+    },
+    "entries": [
+      {
+        "time": "2026-07-31 11:05:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-31 11:06:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-31 11:15:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-31 11:15:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-31 12:24:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-31 12:27:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      }
+    ],
+    "trades": [
+      {
+        "time": "2026-07-31 11:05:00",
+        "direction": "SHORT",
+        "level_name": "ORB_LOW",
+        "level_price": 308.5,
+        "level_family": "STRUCTURAL",
+        "entry_price": 308.055,
+        "candle": {
+          "open": 307.84,
+          "high": 308.83,
+          "low": 307.84,
+          "close": 308.055
+        },
+        "stop_price": 308.83,
+        "outcome": "LOSS",
+        "exit_price": 308.83,
+        "exit_time": "2026-07-31 11:15:00",
+        "target": 306.50500000000005,
+        "risk": 0.7749999999999773,
+        "rr": -1
+      },
+      {
+        "time": "2026-07-31 11:15:00",
+        "direction": "SHORT",
+        "level_name": "ORB_LOW",
+        "level_price": 308.5,
+        "level_family": "STRUCTURAL",
+        "entry_price": 308.485,
+        "candle": {
+          "open": 307.695,
+          "high": 309.16,
+          "low": 307.6,
+          "close": 308.485
+        },
+        "stop_price": 309.16,
+        "outcome": "WIN",
+        "exit_price": 307.135,
+        "exit_time": "2026-07-31 11:17:00",
+        "target": 307.135,
+        "risk": 0.6750000000000114,
+        "rr": 2
+      }
+    ],
+    "status": "TRADED"
+  },
+  {
+    "symbol": "TSLA",
+    "date": "2026-08-03",
+    "levels": {
+      "pdh": 315.5,
+      "pdl": 301.97,
+      "pmh": 316.0605,
+      "pml": 309.38,
+      "orb_high": 314.6,
+      "orb_low": 310.425
+    },
+    "orb_break": {
+      "direction": "LONG",
+      "break_time": "2026-08-03 09:35:00",
+      "displacement_time": "2026-08-03 09:36:00",
+      "break_price": 314.88
+    },
+    "entries": [
+      {
+        "time": "2026-08-03 09:51:00",
+        "level": "PMH",
+        "direction": "LONG"
+      },
+      {
+        "time": "2026-08-03 09:51:00",
+        "level": "PMH",
+        "direction": "LONG"
+      },
+      {
+        "time": "2026-08-03 09:52:00",
+        "level": "PMH",
+        "direction": "LONG"
+      },
+      {
+        "time": "2026-08-03 09:52:00",
+        "level": "PMH",
+        "direction": "LONG"
+      }
+    ],
+    "trades": [
+      {
+        "time": "2026-08-03 09:51:00",
+        "direction": "LONG",
+        "level_name": "PMH",
+        "level_price": 316.0605,
+        "level_family": "STRUCTURAL",
+        "entry_price": 316.08,
+        "candle": {
+          "open": 315.64,
+          "high": 316.15,
+          "low": 315.25,
+          "close": 316.08
+        },
+        "stop_price": 315.25,
+        "outcome": "WIN",
+        "exit_price": 317.73999999999995,
+        "exit_time": "2026-08-03 09:55:00",
+        "target": 317.73999999999995,
+        "risk": 0.8299999999999841,
+        "rr": 2
+      }
+    ],
+    "status": "TRADED"
+  }
+]

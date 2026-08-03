@@ -1,0 +1,639 @@
+[
+  {
+    "symbol": "QQQ",
+    "date": "2026-07-24",
+    "levels": {
+      "pdh": null,
+      "pdl": null,
+      "pmh": 694.48,
+      "pml": 688.7792,
+      "orb_high": 692.05,
+      "orb_low": 689.52
+    },
+    "orb_break": {
+      "direction": "SHORT",
+      "break_time": "2026-07-24 09:40:00",
+      "displacement_time": "2026-07-24 09:41:00",
+      "break_price": 689.38
+    },
+    "entries": [
+      {
+        "time": "2026-07-24 09:45:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-24 09:46:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-24 09:47:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-24 09:48:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-24 11:11:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-24 11:18:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-24 11:19:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-24 11:22:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-24 11:33:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-24 11:47:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-24 12:53:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-24 12:58:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-24 12:59:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-24 13:06:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-24 13:23:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-24 13:42:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-24 13:47:00",
+        "level": "PML",
+        "direction": "SHORT"
+      }
+    ],
+    "trades": [
+      {
+        "time": "2026-07-24 09:45:00",
+        "direction": "SHORT",
+        "level_name": "PML",
+        "level_price": 688.7792,
+        "level_family": "STRUCTURAL",
+        "entry_price": 688.77,
+        "candle": {
+          "open": 689.18,
+          "high": 689.44,
+          "low": 688.645,
+          "close": 688.77
+        },
+        "stop_price": 689.44,
+        "outcome": "LOSS",
+        "exit_price": 689.44,
+        "exit_time": "2026-07-24 09:49:00",
+        "target": 687.4299999999998,
+        "risk": 0.6700000000000728,
+        "rr": -1
+      },
+      {
+        "time": "2026-07-24 11:11:00",
+        "direction": "SHORT",
+        "level_name": "PML",
+        "level_price": 688.7792,
+        "level_family": "STRUCTURAL",
+        "entry_price": 687.825,
+        "candle": {
+          "open": 687.45,
+          "high": 689.15,
+          "low": 687.41,
+          "close": 687.825
+        },
+        "stop_price": 689.15,
+        "outcome": "LOSS",
+        "exit_price": 689.15,
+        "exit_time": "2026-07-24 11:14:00",
+        "target": 685.1750000000002,
+        "risk": 1.3249999999999318,
+        "rr": -1
+      }
+    ],
+    "status": "TRADED"
+  },
+  {
+    "symbol": "QQQ",
+    "date": "2026-07-27",
+    "levels": {
+      "pdh": 692.63,
+      "pdl": 682.48,
+      "pmh": 695.89,
+      "pml": 683.717,
+      "orb_high": 692.26,
+      "orb_low": 689.19
+    },
+    "orb_break": {
+      "direction": "SHORT",
+      "break_time": "2026-07-27 09:42:00",
+      "displacement_time": "2026-07-27 09:43:00",
+      "break_price": 688.48
+    },
+    "entries": [
+      {
+        "time": "2026-07-27 09:50:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-27 09:52:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-27 10:11:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-27 10:13:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-27 10:14:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-27 10:19:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-27 10:23:00",
+        "level": "PDL",
+        "direction": "SHORT"
+      }
+    ],
+    "trades": [
+      {
+        "time": "2026-07-27 09:50:00",
+        "direction": "SHORT",
+        "level_name": "ORB_LOW",
+        "level_price": 689.19,
+        "level_family": "STRUCTURAL",
+        "entry_price": 689.13,
+        "candle": {
+          "open": 688.5999,
+          "high": 689.26,
+          "low": 688.25,
+          "close": 689.13
+        },
+        "stop_price": 689.26,
+        "outcome": "LOSS",
+        "exit_price": 689.26,
+        "exit_time": "2026-07-27 09:51:00",
+        "target": 688.87,
+        "risk": 0.12999999999999545,
+        "rr": -1
+      },
+      {
+        "time": "2026-07-27 10:11:00",
+        "direction": "SHORT",
+        "level_name": "PML",
+        "level_price": 683.717,
+        "level_family": "STRUCTURAL",
+        "entry_price": 683.48,
+        "candle": {
+          "open": 683.91,
+          "high": 683.96,
+          "low": 682.97,
+          "close": 683.48
+        },
+        "stop_price": 683.96,
+        "outcome": "LOSS",
+        "exit_price": 683.96,
+        "exit_time": "2026-07-27 10:12:00",
+        "target": 682.52,
+        "risk": 0.4800000000000182,
+        "rr": -1
+      }
+    ],
+    "status": "TRADED"
+  },
+  {
+    "symbol": "QQQ",
+    "date": "2026-07-28",
+    "levels": {
+      "pdh": 692.26,
+      "pdl": 675.945,
+      "pmh": 682.631,
+      "pml": 673.72,
+      "orb_high": 677.3,
+      "orb_low": 674.35
+    },
+    "orb_break": {
+      "direction": "SHORT",
+      "break_time": "2026-07-28 09:36:00",
+      "displacement_time": "2026-07-28 09:37:00",
+      "break_price": 674.06
+    },
+    "entries": [
+      {
+        "time": "2026-07-28 10:50:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-28 10:55:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-28 11:10:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-28 11:16:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-28 13:55:00",
+        "level": "PDL",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-28 14:13:00",
+        "level": "PDL",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-28 14:30:00",
+        "level": "PDL",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-28 14:44:00",
+        "level": "PDL",
+        "direction": "SHORT"
+      }
+    ],
+    "trades": [
+      {
+        "time": "2026-07-28 10:50:00",
+        "direction": "SHORT",
+        "level_name": "ORB_LOW",
+        "level_price": 674.35,
+        "level_family": "STRUCTURAL",
+        "entry_price": 674.14,
+        "candle": {
+          "open": 673.82,
+          "high": 674.5125,
+          "low": 673.815,
+          "close": 674.14
+        },
+        "stop_price": 674.5125,
+        "outcome": "LOSS",
+        "exit_price": 674.5125,
+        "exit_time": "2026-07-28 10:51:00",
+        "target": 673.3949999999999,
+        "risk": 0.3725000000000591,
+        "rr": -1
+      },
+      {
+        "time": "2026-07-28 10:55:00",
+        "direction": "SHORT",
+        "level_name": "ORB_LOW",
+        "level_price": 674.35,
+        "level_family": "STRUCTURAL",
+        "entry_price": 674.085,
+        "candle": {
+          "open": 673.95,
+          "high": 674.499,
+          "low": 673.59,
+          "close": 674.085
+        },
+        "stop_price": 674.499,
+        "outcome": "WIN",
+        "exit_price": 673.2570000000001,
+        "exit_time": "2026-07-28 10:57:00",
+        "target": 673.2570000000001,
+        "risk": 0.41399999999998727,
+        "rr": 2
+      }
+    ],
+    "status": "TRADED"
+  },
+  {
+    "symbol": "QQQ",
+    "date": "2026-07-29",
+    "levels": {
+      "pdh": 679.4,
+      "pdl": 667.88,
+      "pmh": 678.89,
+      "pml": 668.9967,
+      "orb_high": 677.16,
+      "orb_low": 673.62
+    },
+    "orb_break": {
+      "direction": "SHORT",
+      "break_time": "2026-07-29 09:50:00",
+      "displacement_time": "2026-07-29 09:51:00",
+      "break_price": 672.73
+    },
+    "entries": [
+      {
+        "time": "2026-07-29 10:33:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-29 11:00:00",
+        "level": "PDL",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-29 11:03:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-29 11:08:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-29 11:12:00",
+        "level": "PDL",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-29 11:13:00",
+        "level": "PDL",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-29 11:26:00",
+        "level": "PDL",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-29 14:03:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-29 14:13:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-29 14:15:00",
+        "level": "ORB_LOW",
+        "direction": "SHORT"
+      }
+    ],
+    "trades": [
+      {
+        "time": "2026-07-29 10:33:00",
+        "direction": "SHORT",
+        "level_name": "PML",
+        "level_price": 668.9967,
+        "level_family": "STRUCTURAL",
+        "entry_price": 668.65,
+        "candle": {
+          "open": 668.7801,
+          "high": 669.2,
+          "low": 668.565,
+          "close": 668.65
+        },
+        "stop_price": 669.2,
+        "outcome": "WIN",
+        "exit_price": 667.5499999999998,
+        "exit_time": "2026-07-29 10:38:00",
+        "target": 667.5499999999998,
+        "risk": 0.5500000000000682,
+        "rr": 2
+      }
+    ],
+    "status": "TRADED"
+  },
+  {
+    "symbol": "QQQ",
+    "date": "2026-07-30",
+    "levels": {
+      "pdh": 680.05,
+      "pdl": 661.145,
+      "pmh": 674.87,
+      "pml": 661.73,
+      "orb_high": 675.18,
+      "orb_low": 673.3
+    },
+    "orb_break": {
+      "direction": "LONG",
+      "break_time": "2026-07-30 09:42:00",
+      "displacement_time": "2026-07-30 09:43:00",
+      "break_price": 676.2
+    },
+    "entries": [
+      {
+        "time": "2026-07-30 10:18:00",
+        "level": "PDH",
+        "direction": "LONG"
+      },
+      {
+        "time": "2026-07-30 11:04:00",
+        "level": "PDH",
+        "direction": "LONG"
+      },
+      {
+        "time": "2026-07-30 11:51:00",
+        "level": "PDH",
+        "direction": "LONG"
+      }
+    ],
+    "trades": [
+      {
+        "time": "2026-07-30 10:18:00",
+        "direction": "LONG",
+        "level_name": "PDH",
+        "level_price": 680.05,
+        "level_family": "STRUCTURAL",
+        "entry_price": 680.45,
+        "candle": {
+          "open": 680.62,
+          "high": 680.7,
+          "low": 679.75,
+          "close": 680.45
+        },
+        "stop_price": 679.75,
+        "outcome": "WIN",
+        "exit_price": 681.8500000000001,
+        "exit_time": "2026-07-30 10:23:00",
+        "target": 681.8500000000001,
+        "risk": 0.7000000000000455,
+        "rr": 2
+      }
+    ],
+    "status": "TRADED"
+  },
+  {
+    "symbol": "QQQ",
+    "date": "2026-07-31",
+    "levels": {
+      "pdh": 685.12,
+      "pdl": 673.3,
+      "pmh": 693.62,
+      "pml": 683.55,
+      "orb_high": 695.3399,
+      "orb_low": 691.33
+    },
+    "orb_break": {
+      "direction": "SHORT",
+      "break_time": "2026-07-31 09:40:00",
+      "displacement_time": "2026-07-31 09:41:00",
+      "break_price": 691.135
+    },
+    "entries": [
+      {
+        "time": "2026-07-31 10:21:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-31 11:22:00",
+        "level": "PML",
+        "direction": "SHORT"
+      },
+      {
+        "time": "2026-07-31 11:45:00",
+        "level": "PML",
+        "direction": "SHORT"
+      }
+    ],
+    "trades": [
+      {
+        "time": "2026-07-31 10:21:00",
+        "direction": "SHORT",
+        "level_name": "PML",
+        "level_price": 683.55,
+        "level_family": "STRUCTURAL",
+        "entry_price": 683.08,
+        "candle": {
+          "open": 683.5,
+          "high": 683.8,
+          "low": 682.4,
+          "close": 683.08
+        },
+        "stop_price": 683.8,
+        "outcome": "LOSS",
+        "exit_price": 683.8,
+        "exit_time": "2026-07-31 10:22:00",
+        "target": 681.6400000000002,
+        "risk": 0.7199999999999136,
+        "rr": -1
+      },
+      {
+        "time": "2026-07-31 11:22:00",
+        "direction": "SHORT",
+        "level_name": "PML",
+        "level_price": 683.55,
+        "level_family": "STRUCTURAL",
+        "entry_price": 683.37,
+        "candle": {
+          "open": 683.5,
+          "high": 683.88,
+          "low": 683.17,
+          "close": 683.37
+        },
+        "stop_price": 683.88,
+        "outcome": "WIN",
+        "exit_price": 682.35,
+        "exit_time": "2026-07-31 11:25:00",
+        "target": 682.35,
+        "risk": 0.5099999999999909,
+        "rr": 2
+      }
+    ],
+    "status": "TRADED"
+  },
+  {
+    "symbol": "QQQ",
+    "date": "2026-08-03",
+    "levels": {
+      "pdh": 695.77,
+      "pdl": 680.0512,
+      "pmh": 694.8077,
+      "pml": 687.475,
+      "orb_high": 687.97,
+      "orb_low": 685.82
+    },
+    "orb_break": {
+      "direction": "LONG",
+      "break_time": "2026-08-03 09:35:00",
+      "displacement_time": "2026-08-03 09:36:00",
+      "break_price": 689.12
+    },
+    "entries": [
+      {
+        "time": "2026-08-03 10:47:00",
+        "level": "PDH",
+        "direction": "LONG"
+      }
+    ],
+    "trades": [
+      {
+        "time": "2026-08-03 10:47:00",
+        "direction": "LONG",
+        "level_name": "PDH",
+        "level_price": 695.77,
+        "level_family": "STRUCTURAL",
+        "entry_price": 695.8,
+        "candle": {
+          "open": 695.82,
+          "high": 695.94,
+          "low": 695.52,
+          "close": 695.8
+        },
+        "stop_price": 695.52,
+        "outcome": "WIN",
+        "exit_price": 696.3599999999999,
+        "exit_time": "2026-08-03 10:51:00",
+        "target": 696.3599999999999,
+        "risk": 0.2799999999999727,
+        "rr": 2
+      }
+    ],
+    "status": "TRADED"
+  }
+]
