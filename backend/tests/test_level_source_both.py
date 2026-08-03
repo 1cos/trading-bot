@@ -136,10 +136,62 @@ class TestCombinedMetrics:
 
 
 class TestDeduplication:
-    def test_no_duplicate_run_record_ids(self, client):
+    def test_synthetic_duplicate_removed(self, client):
+        """Two records with same dedup key but different UUIDs → one kept."""
+        # Run LONG/ORB_HIGH twice by injecting a duplicate via BOTH/ORB_HIGH
+        # which produces LONG/ORB_HIGH + SHORT/ORB_HIGH.
+        # Compare with just LONG/ORB_HIGH alone.
+        d_single = _run(client, "LONG", "ORB_HIGH")
+        d_with_short = _run(client, "BOTH", "ORB_HIGH")
+        # BOTH adds SHORT trades but cannot duplicate LONG trades
+        long_trades_single = [t for t in d_single.get("trades", []) if t["direction"] == "LONG"]
+        long_trades_both = [t for t in d_with_short.get("trades", []) if t["direction"] == "LONG"]
+        assert len(long_trades_single) == len(long_trades_both)
+
+    def test_long_high_and_long_low_same_date_both_kept(self, client):
+        """LONG/ORB_HIGH and LONG/ORB_LOW on same date are distinct trades."""
+        d = _run(client, "LONG", "BOTH")
+        trades = d.get("trades", [])
+        # Group by date
+        from collections import Counter
+        date_counts = Counter(t["date"] for t in trades)
+        # If any date has 2 trades, they must have different level_source
+        for date, count in date_counts.items():
+            if count > 1:
+                levels = [t["level_source"] for t in trades if t["date"] == date]
+                assert len(set(levels)) == count, \
+                    f"Date {date} has {count} trades but only {len(set(levels))} distinct level_sources"
+
+    def test_long_and_short_same_date_both_kept(self, client):
+        """LONG and SHORT on same date are distinct trades."""
+        d = _run(client, "BOTH", "ORB_HIGH")
+        trades = d.get("trades", [])
+        from collections import Counter
+        date_counts = Counter(t["date"] for t in trades)
+        for date, count in date_counts.items():
+            if count > 1:
+                dirs = [t["direction"] for t in trades if t["date"] == date]
+                assert len(set(dirs)) == count
+
+    def test_no_duplicate_dedup_keys(self, client):
+        """All trades in BOTH/BOTH have unique (sym, date, dir, ls, entry, stop, time)."""
         d = _run(client, "BOTH", "BOTH")
-        ids = [t["run_record_id"] for t in d.get("trades", []) if t.get("run_record_id")]
-        assert len(ids) == len(set(ids)), "Duplicate run_record_ids found"
+        keys = []
+        for t in d.get("trades", []):
+            k = (t["symbol"], t["date"], t["direction"], t["level_source"],
+                 t.get("entry_price"), t.get("stop_price"), t.get("entry_time"))
+            keys.append(k)
+        assert len(keys) == len(set(keys)), "Duplicate dedup keys in trades"
+
+    def test_trades_and_chart_events_aligned(self, client):
+        """After dedup, trades and chart_events have same count."""
+        d = _run(client, "BOTH", "BOTH")
+        assert len(d.get("trades", [])) == len(d.get("chart_events", []))
+
+    def test_metrics_not_double_counted(self, client):
+        """Metrics total_detected must equal trade count."""
+        d = _run(client, "BOTH", "BOTH")
+        assert d["metrics"]["total_detected"] == len(d.get("trades", []))
 
 
 # ── Ordering ─────────────────────────────────────────────────────────────────

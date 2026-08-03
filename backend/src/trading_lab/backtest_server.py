@@ -688,10 +688,35 @@ def api_run():
 
         elapsed = time.time() - t0
 
-        # Compute metrics
+        # ── Deduplicate results ────────────────────────────────────────────
+        # Two records from different (direction, level_source) expansions
+        # could theoretically describe the same economic trade.
+        # Dedup key: the fields that identify a unique trade setup.
+        def _dedup_key(r):
+            return (
+                r.get("symbol", ""),
+                r.get("session_date", ""),
+                r.get("_direction", ""),
+                r.get("_level_source", ""),
+                r.get("entry_price_ticks"),
+                r.get("stop_price_ticks"),
+                r.get("entry_timestamp"),
+            )
+
+        seen = set()
+        deduped = []
+        for r in all_results:
+            k = _dedup_key(r)
+            if k in seen:
+                continue
+            seen.add(k)
+            deduped.append(r)
+        all_results = deduped
+
+        # Compute metrics on deduped results
         metrics = _compute_metrics(all_results)
 
-        # Build trade rows — sort chronologically for BOTH
+        # Build trade rows — sort chronologically
         valid_results = [r for r in all_results if r["detection_status"] == "VALID"]
         valid_results.sort(key=lambda r: (
             r.get("session_date", ""),
