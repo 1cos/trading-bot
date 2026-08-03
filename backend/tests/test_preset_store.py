@@ -199,15 +199,40 @@ class TestValidation:
     def test_valid_params(self):
         assert validate_preset_params(_valid_params()) == []
 
-    def test_both_direction_valid(self):
-        assert validate_preset_params(_valid_params(direction="BOTH")) == []
+    # Canonical pairs — exactly 3 valid
+    def test_long_orb_high_valid(self):
+        assert validate_preset_params(_valid_params(direction="LONG", level_source="ORB_HIGH")) == []
 
-    def test_both_level_source_valid(self):
+    def test_short_orb_low_valid(self):
+        assert validate_preset_params(_valid_params(direction="SHORT", level_source="ORB_LOW")) == []
+
+    def test_both_both_valid(self):
         assert validate_preset_params(_valid_params(direction="BOTH", level_source="BOTH")) == []
 
-    def test_incoherent_level_source_rejected(self):
+    # Non-canonical pairs — all 6 must be rejected
+    def test_long_orb_low_rejected(self):
         errs = validate_preset_params(_valid_params(direction="LONG", level_source="ORB_LOW"))
-        assert any("level_source" in e for e in errs)
+        assert any("canonical" in e.lower() or "level_source" in e for e in errs)
+
+    def test_long_both_rejected(self):
+        errs = validate_preset_params(_valid_params(direction="LONG", level_source="BOTH"))
+        assert any("canonical" in e.lower() or "level_source" in e for e in errs)
+
+    def test_short_orb_high_rejected(self):
+        errs = validate_preset_params(_valid_params(direction="SHORT", level_source="ORB_HIGH"))
+        assert any("canonical" in e.lower() or "level_source" in e for e in errs)
+
+    def test_short_both_rejected(self):
+        errs = validate_preset_params(_valid_params(direction="SHORT", level_source="BOTH"))
+        assert any("canonical" in e.lower() or "level_source" in e for e in errs)
+
+    def test_both_orb_high_rejected(self):
+        errs = validate_preset_params(_valid_params(direction="BOTH", level_source="ORB_HIGH"))
+        assert any("canonical" in e.lower() or "level_source" in e for e in errs)
+
+    def test_both_orb_low_rejected(self):
+        errs = validate_preset_params(_valid_params(direction="BOTH", level_source="ORB_LOW"))
+        assert any("canonical" in e.lower() or "level_source" in e for e in errs)
 
     def test_invalid_direction(self):
         errs = validate_preset_params(_valid_params(direction="UP"))
