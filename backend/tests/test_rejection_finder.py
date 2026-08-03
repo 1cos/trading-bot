@@ -34,6 +34,7 @@ CONFIG = {
     "min_penetration_ticks": None,
     "min_close_beyond_level_ticks": 1,
     "min_displacement_bars": 1,
+    "confirmation_wick_penetration_pct_min": 0,
 }
 
 TICK_SIZE = 0.01
@@ -574,6 +575,7 @@ class TestGeometryFields:
             "favorable_close_location", "opposite_wick_ratio",
             "penetration_through_level_ticks", "penetration_through_level_points",
             "close_beyond_level_ticks", "close_beyond_level_points",
+            "body_outside_orb", "wick_penetration_pct",
         }
         assert set(g.keys()) == expected_keys
 

@@ -264,14 +264,30 @@ tr.clickable{cursor:pointer}
       <span class="param-static">Classic Confirmation</span>
     </div>
     <div class="param-row">
-      <span class="param-label">Minimum Wick %</span>
+      <span class="param-label">Min Rejection Wick %</span>
       <input class="param-input" type="number" id="pWickMin" value="47" min="0" max="100" step="1" style="width:70px">
     </div>
+    <div class="param-tooltip">Lower wick (LONG) or upper wick (SHORT) as % of candle range.</div>
     <div class="param-row">
       <span class="param-label">Maximum Body %</span>
       <input class="param-input" type="number" id="pBodyMax" value="40" min="0" max="100" step="1" style="width:70px">
     </div>
-    <div class="param-tooltip">Rejection candle wick must be ≥ Wick % of range. Body must be ≤ Body % of range.</div>
+    <div class="param-tooltip">Body size as % of candle range. Smaller = more wick-dominated.</div>
+    <div class="param-row">
+      <span class="param-label">Min Wick Inside ORB %</span>
+      <select class="param-select" id="pWickPenPct" style="width:90px">
+        <option value="0">0%</option>
+        <option value="10">10%</option>
+        <option value="15">15%</option>
+        <option value="20" selected>20%</option>
+        <option value="30">30%</option>
+        <option value="40">40%</option>
+        <option value="50">50%</option>
+        <option value="60">60%</option>
+        <option value="70">70%</option>
+      </select>
+    </div>
+    <div class="param-tooltip">How much of the rejection wick must enter inside the ORB zone. Body must be completely outside.</div>
   </div>
 
   <!-- Run -->
@@ -411,6 +427,7 @@ function resetDefaults(){
   document.getElementById("pTickSize").value="0.01";
   document.getElementById("pWickMin").value="47";
   document.getElementById("pBodyMax").value="40";
+  document.getElementById("pWickPenPct").value="20";
   document.getElementById("presetName").textContent="Unsaved configuration";
   state.activePreset=null;
   onDirectionChange();
@@ -426,7 +443,7 @@ function clearActivePreset(){
 function _attachPresetClearListeners(){
   var ids=["pSymbol","pTimeframe","pDirection","pOrbDuration",
            "pConsecOrbCloses","pExitTargetR","pEntryBuffer","pStopBuffer",
-           "pTickSize","pWickMin","pBodyMax"];
+           "pTickSize","pWickMin","pBodyMax","pWickPenPct"];
   ids.forEach(function(id){
     var el=document.getElementById(id);
     if(el) el.addEventListener("input",clearActivePreset);
@@ -478,6 +495,7 @@ window.savePreset=async function(){
     exit_target_r:document.getElementById("pExitTargetR").value,
     rejection_wick_ratio_min:String(parseFloat(document.getElementById("pWickMin").value)/100),
     body_ratio_max:String(parseFloat(document.getElementById("pBodyMax").value)/100),
+    confirmation_wick_penetration_pct_min:String(parseFloat(document.getElementById("pWickPenPct").value)/100),
     tick_size:document.getElementById("pTickSize").value,
   };
   try{
@@ -536,6 +554,8 @@ window.loadPreset=async function(){
       String(Math.round(parseFloat(p.rejection_wick_ratio_min)*100)):"47";
     document.getElementById("pBodyMax").value=p.body_ratio_max?
       String(Math.round(parseFloat(p.body_ratio_max)*100)):"40";
+    document.getElementById("pWickPenPct").value=p.confirmation_wick_penetration_pct_min?
+      String(Math.round(parseFloat(p.confirmation_wick_penetration_pct_min)*100)):"20";
 
     onDirectionChange();
     updateDateRangeForTimeframe();
@@ -649,6 +669,7 @@ window.runBacktest=async function(){
         stop_buffer_ticks:parseInt(document.getElementById("pStopBuffer").value),
         rejection_wick_ratio_min:parseFloat(document.getElementById("pWickMin").value)/100,
         body_ratio_max:parseFloat(document.getElementById("pBodyMax").value)/100,
+        confirmation_wick_penetration_pct_min:parseFloat(document.getElementById("pWickPenPct").value)/100,
       },
       config:{
         exit_target_r:document.getElementById("pExitTargetR").value,
@@ -1058,6 +1079,8 @@ function renderTradeChart(E,idx){
     ["Close Distance", ann.close_distance_ticks!=null?(ann.close_distance_ticks>0?"+":"")+ann.close_distance_ticks+" ticks":"—"],
     ["Wick Ratio", ann.confirmation_wick_ratio!=null?(ann.confirmation_wick_ratio*100).toFixed(1)+"%":"—"],
     ["Body Ratio", ann.confirmation_body_ratio!=null?(ann.confirmation_body_ratio*100).toFixed(1)+"%":"—"],
+    ["Wick Inside ORB", E.wick_penetration_pct!=null?(E.wick_penetration_pct*100).toFixed(1)+"%":"—"],
+    ["Body Outside ORB", E.body_outside_orb!=null?(E.body_outside_orb?"YES":"NO"):"—"],
     ["",""],
     ["ORB High", fmtP(tp(E.orb_high_ticks))],
     ["ORB Low", fmtP(tp(E.orb_low_ticks))],

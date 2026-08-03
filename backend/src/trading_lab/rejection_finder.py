@@ -164,6 +164,23 @@ def find_rejection(
     if body_max is None:
         body_max = BODY_RATIO_MAX
 
+    # Wick penetration percentage: how much of the rejection wick must
+    # enter inside the ORB zone.  Default 0.20 (20%).
+    wick_pen_min = config.get("confirmation_wick_penetration_pct_min")
+    if wick_pen_min is None:
+        wick_pen_min = 0.20
+    else:
+        wick_pen_min = float(wick_pen_min)
+    if not (0 <= wick_pen_min <= 1):
+        return {
+            "status": "FAILED",
+            "failed_stage": "UNSUPPORTED_CONFIGURATION",
+            "reason": (
+                f"confirmation_wick_penetration_pct_min must be between "
+                f"0 and 1; got {wick_pen_min}"
+            ),
+        }
+
     # ── Input validation ─────────────────────────────────────────────────
     if not isinstance(candles, list):
         raise TypeError("candles must be a list")
@@ -289,6 +306,38 @@ def find_rejection(
             if close_beyond_level_ticks < min_close_beyond:
                 failed_rules.append("CLOSE_BEYOND_LEVEL_TOO_LOW")
 
+        # ── Body-outside-ORB gate ────────────────────────────────────────
+        # LONG: both open and close must be >= level (open allowed on level)
+        # SHORT: both open and close must be <= level (open allowed on level)
+        if is_short:
+            body_outside = (open_ticks <= level_ticks and close_ticks < level_ticks)
+        else:
+            body_outside = (open_ticks >= level_ticks and close_ticks > level_ticks)
+
+        # ── Wick penetration percentage gate ─────────────────────────────
+        # Measures what fraction of the rejection wick is inside the ORB.
+        if is_short:
+            wick_pen_ticks = max(0, high_ticks - level_ticks)
+            rej_wick_for_pen = rejection_wick_ticks
+        else:
+            wick_pen_ticks = max(0, level_ticks - low_ticks)
+            rej_wick_for_pen = rejection_wick_ticks
+
+        if rej_wick_for_pen > 0 and wick_pen_ticks > 0:
+            wick_penetration_pct = wick_pen_ticks / rej_wick_for_pen
+        else:
+            wick_penetration_pct = 0.0
+
+        if wick_pen_min > 0:
+            if not body_outside:
+                failed_rules.append("BODY_INSIDE_ORB")
+            if rej_wick_for_pen <= 0:
+                failed_rules.append("NO_REJECTION_WICK")
+            elif wick_pen_ticks <= 0:
+                failed_rules.append("WICK_NO_PENETRATION")
+            elif wick_penetration_pct < wick_pen_min:
+                failed_rules.append("WICK_PENETRATION_PCT_TOO_LOW")
+
         return {
             "geometry": {
                 "range_ticks": range_ticks,
@@ -307,6 +356,8 @@ def find_rejection(
                 "close_beyond_level_points": ticks_to_points(
                     close_beyond_level_ticks, tick_size
                 ),
+                "body_outside_orb": body_outside,
+                "wick_penetration_pct": round(wick_penetration_pct, 4),
             },
             "failed_rules": failed_rules,
             "qualifies": len(failed_rules) == 0,

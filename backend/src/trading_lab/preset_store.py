@@ -128,7 +128,8 @@ def validate_preset_params(params: dict) -> list[str]:
             errors.append(f"{key} must be a valid decimal string, got {v!r}")
 
     # Ratio fields: 0-1 inclusive, decimal string
-    for key in ("rejection_wick_ratio_min", "body_ratio_max"):
+    for key in ("rejection_wick_ratio_min", "body_ratio_max",
+                "confirmation_wick_penetration_pct_min"):
         v = params.get(key)
         if v is not None:
             try:
@@ -288,8 +289,9 @@ def preset_to_run_config(preset: dict) -> tuple[dict, dict]:
     if mcb is not None:
         preset_overrides["min_close_beyond_level_ticks"] = mcb
 
-    # Decimal string → float for wick/body (server expects float)
-    for key in ("rejection_wick_ratio_min", "body_ratio_max"):
+    # Decimal string → float for wick/body/penetration (server expects float)
+    for key in ("rejection_wick_ratio_min", "body_ratio_max",
+                "confirmation_wick_penetration_pct_min"):
         v = p.get(key)
         if v is not None:
             preset_overrides[key] = float(_parse_decimal_str(v))

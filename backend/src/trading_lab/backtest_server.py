@@ -735,10 +735,11 @@ def api_run():
             "consecutive_orb_closes": preset_overrides.get("consecutive_orb_closes", 2),
         }
 
-        # Parse optional wick/body ratio overrides
+        # Parse optional ratio overrides (wick, body, penetration pct)
         for key, default in [
             ("rejection_wick_ratio_min", None),
             ("body_ratio_max", None),
+            ("confirmation_wick_penetration_pct_min", None),
         ]:
             raw = preset_overrides.get(key)
             if raw is not None:
@@ -898,6 +899,10 @@ def api_run():
                 if rt["status"] == "OK":
                     rej = find_rejection(sc["candles"], orb, brk, disp, rt, rc)
                     event["wick_depth_ticks"] = rej.get("wick_depth_ticks")
+                    # Geometry inspection fields
+                    geom = rej.get("geometry", {})
+                    event["body_outside_orb"] = geom.get("body_outside_orb")
+                    event["wick_penetration_pct"] = geom.get("wick_penetration_pct")
                     # Failed retests
                     frs = rej.get("failed_retests", [])
                     event["all_retest_candidates"] = [

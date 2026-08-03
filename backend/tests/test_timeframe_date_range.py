@@ -110,6 +110,7 @@ class TestRunWithCorrectDates:
                 "entry_model": "CONFIRMATION_CLOSE",
                 "entry_buffer_ticks": 0, "stop_buffer_ticks": 0,
                 "rejection_wick_ratio_min": 0.47, "body_ratio_max": 0.40,
+                "confirmation_wick_penetration_pct_min": 0,
             },
             "config": {"exit_target_r": "2", "tick_size": 0.01},
         }

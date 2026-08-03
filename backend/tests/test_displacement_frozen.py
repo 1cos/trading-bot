@@ -198,7 +198,7 @@ class TestQQQVerification:
         """QQQ 2026-05-13 (6 disp bars) must remain valid."""
         resp = client.post("/api/run", json={
             "symbols": ["QQQ"], "timeframe": "5m",
-            "preset": {"direction": "LONG"},
+            "preset": {"direction": "LONG", "confirmation_wick_penetration_pct_min": 0},
             "config": {"exit_target_r": "2"},
         })
         data = resp.get_json()

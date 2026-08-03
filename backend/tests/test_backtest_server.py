@@ -30,7 +30,8 @@ RUN_BODY = {
     "start_date": "2026-04-24",
     "end_date": "2026-07-21",
     "timeframe": "5m",
-    "preset": {"direction": "LONG", "consecutive_orb_closes": 2},
+    "preset": {"direction": "LONG", "consecutive_orb_closes": 2,
+               "confirmation_wick_penetration_pct_min": 0},
     "config": {"exit_target_r": 2, "tick_size": 0.01},
 }
 
@@ -100,8 +101,10 @@ class TestApiRun:
         assert len(data["trades"]) == len(data["chart_events"])
 
     def test_changing_consecutive_orb_closes(self, client):
-        body1 = {**RUN_BODY, "preset": {"direction": "LONG", "consecutive_orb_closes": 2}}
-        body2 = {**RUN_BODY, "preset": {"direction": "LONG", "consecutive_orb_closes": 5}}
+        body1 = {**RUN_BODY, "preset": {"direction": "LONG", "consecutive_orb_closes": 2,
+                                         "confirmation_wick_penetration_pct_min": 0}}
+        body2 = {**RUN_BODY, "preset": {"direction": "LONG", "consecutive_orb_closes": 5,
+                                         "confirmation_wick_penetration_pct_min": 0}}
         r1 = client.post("/api/run", json=body1).get_json()
         r2 = client.post("/api/run", json=body2).get_json()
         # Different parameter must produce different result

@@ -450,6 +450,7 @@ def run_bdrr_strategy(sessions, preset, config, *, id_factory=None):
         "consecutive_orb_closes": preset.get("consecutive_orb_closes", 2),
         "rejection_wick_ratio_min": preset.get("rejection_wick_ratio_min"),
         "body_ratio_max": preset.get("body_ratio_max"),
+        "confirmation_wick_penetration_pct_min": preset.get("confirmation_wick_penetration_pct_min"),
     }
 
     tp_config = {
@@ -533,6 +534,7 @@ def run_bdrr_strategy_v2(sessions, preset, config, *, id_factory=None):
         "consecutive_orb_closes": preset.get("consecutive_orb_closes", 2),
         "rejection_wick_ratio_min": preset.get("rejection_wick_ratio_min"),
         "body_ratio_max": preset.get("body_ratio_max"),
+        "confirmation_wick_penetration_pct_min": preset.get("confirmation_wick_penetration_pct_min"),
     }
 
     tp_config = {

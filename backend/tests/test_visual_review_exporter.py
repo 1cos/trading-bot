@@ -84,6 +84,7 @@ LONG_PRESET = {
     "min_penetration_ticks": None,
     "min_close_beyond_level_ticks": None,
     "min_displacement_bars": 1,
+    "confirmation_wick_penetration_pct_min": 0,
 }
 
 CONFIG = {

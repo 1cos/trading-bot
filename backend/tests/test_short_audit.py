@@ -59,6 +59,7 @@ PRESET_SHORT = {
     "min_close_beyond_level_ticks": None,
     "consecutive_orb_closes": 2,
     "min_displacement_bars": 1,
+    "confirmation_wick_penetration_pct_min": 0,
 }
 CONFIG = {"tick_size": 0.01, "exit_target_r": 2, "engine_version": "1.0.0"}
 

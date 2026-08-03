@@ -26,6 +26,7 @@ def _run(client, sym, tf, start=None, end=None):
             "orb_duration_minutes": 5, "consecutive_orb_closes": 2,
             "entry_model": "CONFIRMATION_CLOSE",
             "entry_buffer_ticks": 0, "stop_buffer_ticks": 0,
+            "confirmation_wick_penetration_pct_min": 0,
         },
         "config": {"exit_target_r": "2", "tick_size": 0.01},
     }
