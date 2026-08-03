@@ -138,6 +138,65 @@ def _build_annotations(
         ann["confirmation_candle_index"] = _find_candle_index(
             candles, conf_ms)
 
+        # ── Inspection fields ────────────────────────────────────────────
+        # These fields let the UI show exact engine values for each trade.
+        if conf_bar is not None:
+            ann["confirmation_open_ticks"] = _get_ticks(conf_bar, "open")
+            ann["confirmation_high_ticks"] = _get_ticks(conf_bar, "high")
+            ann["confirmation_low_ticks"] = _get_ticks(conf_bar, "low")
+            ann["confirmation_close_ticks"] = _get_ticks(conf_bar, "close")
+
+            level_price = _get(dr, "level_price")
+            level_ticks = _get(level_price, "ticks") if level_price else None
+            direction = str(_get(dr, "direction")) if _get(dr, "direction") else None
+
+            if level_ticks is not None and direction:
+                c_high = _get_ticks(conf_bar, "high")
+                c_low = _get_ticks(conf_bar, "low")
+                c_close = _get_ticks(conf_bar, "close")
+                if direction == "LONG" and c_low is not None:
+                    ann["penetration_ticks"] = level_ticks - c_low
+                elif direction == "SHORT" and c_high is not None:
+                    ann["penetration_ticks"] = c_high - level_ticks
+                else:
+                    ann["penetration_ticks"] = None
+                if c_close is not None:
+                    ann["close_distance_ticks"] = c_close - level_ticks
+                else:
+                    ann["close_distance_ticks"] = None
+            else:
+                ann["penetration_ticks"] = None
+                ann["close_distance_ticks"] = None
+
+            # Wick and body ratios (from the confirmation candle itself)
+            c_o = _get_ticks(conf_bar, "open")
+            c_h = _get_ticks(conf_bar, "high")
+            c_l = _get_ticks(conf_bar, "low")
+            c_c = _get_ticks(conf_bar, "close")
+            if c_h is not None and c_l is not None and c_h != c_l:
+                bar_range = c_h - c_l
+                body_size = abs(c_c - c_o) if c_o is not None and c_c is not None else 0
+                if direction == "LONG":
+                    wick_size = level_ticks - c_l if level_ticks and c_l else 0
+                elif direction == "SHORT":
+                    wick_size = c_h - level_ticks if level_ticks and c_h else 0
+                else:
+                    wick_size = 0
+                ann["confirmation_wick_ratio"] = round(wick_size / bar_range, 4) if bar_range > 0 else None
+                ann["confirmation_body_ratio"] = round(body_size / bar_range, 4) if bar_range > 0 else None
+            else:
+                ann["confirmation_wick_ratio"] = None
+                ann["confirmation_body_ratio"] = None
+        else:
+            ann["confirmation_open_ticks"] = None
+            ann["confirmation_high_ticks"] = None
+            ann["confirmation_low_ticks"] = None
+            ann["confirmation_close_ticks"] = None
+            ann["penetration_ticks"] = None
+            ann["close_distance_ticks"] = None
+            ann["confirmation_wick_ratio"] = None
+            ann["confirmation_body_ratio"] = None
+
     # ── Trade plan ───────────────────────────────────────────────────────
     if tp is not None:
         ann["entry_price_ticks"] = _get_ticks(tp, "entry_price")

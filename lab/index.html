@@ -117,6 +117,17 @@ tr.clickable{cursor:pointer}
 .explain-card-title{font-size:10px;font-weight:700;color:var(--accent);
   text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px}
 
+/* ── Inspection panel ── */
+.inspection-panel{background:var(--surface2);border:1px solid var(--border);border-radius:4px;
+  padding:12px 16px;font-size:12px;grid-column:1/-1;margin-top:4px}
+.inspection-title{font-size:11px;font-weight:700;color:#00e676;
+  text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;
+  border-bottom:1px solid var(--border);padding-bottom:6px}
+.inspection-row{display:flex;justify-content:space-between;padding:2px 0}
+.inspection-label{color:#999;font-size:11px}
+.inspection-value{color:#eee;font-weight:600;font-size:11px;font-family:monospace}
+.inspection-sep{height:1px;background:var(--border);margin:6px 0}
+
 /* ── Empty state ── */
 .empty-state{flex:1;display:flex;align-items:center;justify-content:center;
   color:var(--muted);font-size:16px;text-align:center;padding:40px}
@@ -916,13 +927,21 @@ function renderTradeChart(E,idx){
   if(E.invalidation_index!=null&&ts(E.invalidation_index)!=null)
     markers.push({time:ts(E.invalidation_index),position:"aboveBar",color:"#c62828",shape:"square",text:"✗ INVALID",size:1});
 
-  // Break
-  if(ann.break_candle_index!=null&&ts(ann.break_candle_index)!=null)
-    markers.push({time:ts(ann.break_candle_index),position:"aboveBar",color:"#1565c0",shape:"arrowDown",text:"Break",size:1});
+  // Break — direction-aware arrow
+  if(ann.break_candle_index!=null&&ts(ann.break_candle_index)!=null){
+    var bDir=E.direction||"LONG";
+    markers.push({time:ts(ann.break_candle_index),
+      position:bDir==="SHORT"?"aboveBar":"aboveBar",
+      color:"#1565c0",shape:bDir==="SHORT"?"arrowDown":"arrowDown",text:"Break",size:1});
+  }
 
-  // Confirmation
-  if(ann.confirmation_candle_index!=null&&ts(ann.confirmation_candle_index)!=null)
-    markers.push({time:ts(ann.confirmation_candle_index),position:"belowBar",color:"#2e7d32",shape:"arrowUp",text:"Confirm",size:1});
+  // Confirmation — large highlighted marker
+  if(ann.confirmation_candle_index!=null&&ts(ann.confirmation_candle_index)!=null){
+    var cDir=E.direction||"LONG";
+    markers.push({time:ts(ann.confirmation_candle_index),
+      position:cDir==="LONG"?"belowBar":"aboveBar",
+      color:"#00e676",shape:cDir==="LONG"?"arrowUp":"arrowDown",text:"Confirm",size:2});
+  }
 
   // Exit
   if(ann.exit_candle_index!=null&&ts(ann.exit_candle_index)!=null)
@@ -932,20 +951,46 @@ function renderTradeChart(E,idx){
   if(markers.length>0) tradeSeries.setMarkers(markers);
   tradeChart.timeScale().fitContent();
 
-  // ── ORB zone overlay ──
-  setTimeout(function(){
-    var zone=document.getElementById("chartOrbZone");
-    if(E.orb_high_ticks==null||E.orb_low_ticks==null){zone.style.display="none";return;}
-    var yH=tradeSeries.priceToCoordinate(tp(E.orb_high_ticks));
-    var yL=tradeSeries.priceToCoordinate(tp(E.orb_low_ticks));
-    if(yH==null||yL==null){zone.style.display="none";return;}
-    var top=Math.min(yH,yL),height=Math.abs(yL-yH);
-    if(height<2)height=2;
-    zone.style.display="block";zone.style.top=top+"px";zone.style.height=height+"px";
-    zone.style.background="rgba(255,152,0,0.12)";
-    zone.style.borderTop="1px solid rgba(230,81,0,0.5)";
-    zone.style.borderBottom="1px solid rgba(123,31,162,0.5)";
-  },150);
+  // ── ORB zone — price-anchored area series ──
+  (function(){
+    if(E.orb_high_ticks==null||E.orb_low_ticks==null) return;
+    var ohP=tp(E.orb_high_ticks), olP=tp(E.orb_low_ticks);
+    if(ohP==null||olP==null) return;
+    // Use two line series to fill the ORB zone between high and low
+    var orbTop=tradeChart.addLineSeries({
+      color:"rgba(0,0,0,0)",lineWidth:0,
+      priceScaleId:"right",lastValueVisible:false,priceLineVisible:false,
+    });
+    var orbBot=tradeChart.addLineSeries({
+      color:"rgba(0,0,0,0)",lineWidth:0,
+      priceScaleId:"right",lastValueVisible:false,priceLineVisible:false,
+    });
+    // Fill all candle times with constant price
+    var orbData=candles.map(function(c){return{time:c.time};});
+    orbTop.setData(orbData.map(function(d){return{time:d.time,value:ohP};}));
+    orbBot.setData(orbData.map(function(d){return{time:d.time,value:olP};}));
+
+    // Use a visible area series for the shaded zone
+    var orbArea=tradeChart.addAreaSeries({
+      topColor:"rgba(255,152,0,0.15)",bottomColor:"rgba(255,152,0,0.05)",
+      lineColor:"rgba(255,152,0,0.3)",lineWidth:1,
+      priceScaleId:"right",lastValueVisible:false,priceLineVisible:false,
+      crosshairMarkerVisible:false,
+    });
+    orbArea.setData(orbData.map(function(d){return{time:d.time,value:ohP};}));
+    // Create a second area for the bottom bound
+    var orbAreaBot=tradeChart.addAreaSeries({
+      topColor:"rgba(26,26,26,1)",bottomColor:"rgba(26,26,26,0)",
+      lineColor:"rgba(255,152,0,0.3)",lineWidth:1,
+      priceScaleId:"right",lastValueVisible:false,priceLineVisible:false,
+      crosshairMarkerVisible:false,
+    });
+    orbAreaBot.setData(orbData.map(function(d){return{time:d.time,value:olP};}));
+  })();
+
+  // Hide legacy div zone
+  var legacyZone=document.getElementById("chartOrbZone");
+  if(legacyZone) legacyZone.style.display="none";
 
   // ── Title ──
   var oc=ann.outcome||"";
@@ -972,25 +1017,65 @@ function renderTradeChart(E,idx){
   }
 
   var ecards=[
-    ["ORB","High: "+fmtP(tp(E.orb_high_ticks))+"  Low: "+fmtP(tp(E.orb_low_ticks))],
-    ["Break","Bar #"+(ann.break_candle_index!=null?ann.break_candle_index:"—")],
-    ["Displacement",(ann.displacement_start_index!=null?ann.displacement_start_index:"—")+" → "+(ann.displacement_end_index!=null?ann.displacement_end_index:"—")],
-    ["Confirmation","Bar #"+(ann.confirmation_candle_index!=null?ann.confirmation_candle_index:"—")],
-    ["Entry",fmtP(tp(ann.entry_price_ticks))],
-    ["Stop",fmtP(tp(ann.stop_price_ticks))],
-    ["Target",targetDisplay],
-    ["Sequence",E.sequence_id||"—"],
-    ["Wick Depth",(E.wick_depth_ticks!=null?E.wick_depth_ticks:"—")+" ticks"],
-    ["Failed Retests",String(frs.length)],
-    ["Invalidation",E.invalidation_index!=null?"Bar #"+E.invalidation_index:"None"],
-    ["Outcome",oc||"—"],
-    ["Result",rrStr||"—"],
+    ["TARGET",targetDisplay],
+    ["SEQUENCE",E.sequence_id||"—"],
+    ["WICK DEPTH",(E.wick_depth_ticks!=null?E.wick_depth_ticks:"—")+" ticks"],
+    ["FAILED RETESTS",String(frs.length)],
+    ["INVALIDATION",E.invalidation_index!=null?"Bar #"+E.invalidation_index:"None"],
+    ["OUTCOME",oc||"—"],
+    ["RESULT",rrStr||"—"],
   ];
   ecards.forEach(function(c){
     var d=document.createElement("div");d.className="explain-card";
     d.innerHTML='<div class="explain-card-title">'+c[0]+'</div>'+c[1];
     ex.appendChild(d);
   });
+
+  // ── Inspection Panel ──
+  var insp=document.createElement("div");
+  insp.className="inspection-panel";
+  insp.innerHTML='<div class="inspection-title">INSPECTION — Engine Values</div>';
+
+  var levelLabel=E.level_source||"—";
+  var levelP=tp(E.level_price_ticks);
+  var confIdx=ann.confirmation_candle_index;
+  var confMs=ann.confirmation_candle_time_ms;
+  var confTimeStr=confMs?new Date(confMs).toISOString().slice(11,19):"—";
+
+  var rows=[
+    ["Detection Level", levelLabel],
+    ["Level Price", fmtP(levelP)],
+    ["Direction", E.direction||"—"],
+    ["",""],
+    ["Confirm Bar #", confIdx!=null?String(confIdx):"—"],
+    ["Confirm Time", confTimeStr],
+    ["Confirm Open", fmtP(tp(ann.confirmation_open_ticks))],
+    ["Confirm High", fmtP(tp(ann.confirmation_high_ticks))],
+    ["Confirm Low", fmtP(tp(ann.confirmation_low_ticks))],
+    ["Confirm Close", fmtP(tp(ann.confirmation_close_ticks))],
+    ["",""],
+    ["Penetration", ann.penetration_ticks!=null?ann.penetration_ticks+" ticks":"—"],
+    ["Close Distance", ann.close_distance_ticks!=null?(ann.close_distance_ticks>0?"+":"")+ann.close_distance_ticks+" ticks":"—"],
+    ["Wick Ratio", ann.confirmation_wick_ratio!=null?(ann.confirmation_wick_ratio*100).toFixed(1)+"%":"—"],
+    ["Body Ratio", ann.confirmation_body_ratio!=null?(ann.confirmation_body_ratio*100).toFixed(1)+"%":"—"],
+    ["",""],
+    ["ORB High", fmtP(tp(E.orb_high_ticks))],
+    ["ORB Low", fmtP(tp(E.orb_low_ticks))],
+    ["Entry", fmtP(tp(ann.entry_price_ticks))],
+    ["Stop", fmtP(tp(ann.stop_price_ticks))],
+    ["Break Bar #", ann.break_candle_index!=null?String(ann.break_candle_index):"—"],
+    ["Displacement", (ann.displacement_start_index!=null?ann.displacement_start_index:"—")+" → "+(ann.displacement_end_index!=null?ann.displacement_end_index:"—")],
+  ];
+  rows.forEach(function(r){
+    if(!r[0]&&!r[1]){
+      var sep=document.createElement("div");sep.className="inspection-sep";
+      insp.appendChild(sep);return;
+    }
+    var row=document.createElement("div");row.className="inspection-row";
+    row.innerHTML='<span class="inspection-label">'+r[0]+'</span><span class="inspection-value">'+r[1]+'</span>';
+    insp.appendChild(row);
+  });
+  ex.appendChild(insp);
 }
 
 // ── Resize handler ──
