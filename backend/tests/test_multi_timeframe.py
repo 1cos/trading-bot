@@ -15,6 +15,7 @@ import csv
 import json
 import hashlib
 from datetime import datetime, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -149,7 +150,8 @@ class TestBackwardCompatibility:
 
     def _load_spy_sessions(self, dates):
         sm = {}
-        with open("dati/SPY_5m.csv") as f:
+        dati_dir = Path(__file__).resolve().parent.parent.parent / "dati"
+        with open(dati_dir / "SPY_5m.csv") as f:
             for i, row in enumerate(csv.reader(f)):
                 if i < 3:
                     continue
