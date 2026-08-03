@@ -32,7 +32,9 @@ from trading_lab.rejection_finder import find_rejection
 from trading_lab.retest_window import find_retest_window
 from trading_lab.sequence_validator import validate_sequence
 from trading_lab.session_context import build_session_context
+from trading_lab.contracts.primitives import Rational
 from trading_lab.trade_outcome_evaluator import evaluate_trade_outcome
+from trading_lab.trade_outcome_evaluator import evaluate_trade_outcome_v2
 from trading_lab.trade_plan_builder import build_trade_plan
 
 
@@ -187,7 +189,7 @@ def _build_orb_from_override(override, session_context, engine_config):
     }
 
 
-def _process_one_session(session, preset, engine_config, tp_config, outcome_config, config, id_factory=None):
+def _process_one_session(session, preset, engine_config, tp_config, outcome_config, config, id_factory=None, *, _evaluator=None):
     run_record_id = _uuidv4()
     tick_size = config["tick_size"]
 
@@ -334,8 +336,9 @@ def _process_one_session(session, preset, engine_config, tp_config, outcome_conf
     for i in range(conf_idx + 1, len(sc_candles)):
         post_conf_bars.append(raw_candle_to_canonical_bar(sc_candles[i], tick_size))
 
-    # TradeOutcome/v1
-    to_build = evaluate_trade_outcome(
+    # TradeOutcome — dispatch to v1 or v2 evaluator
+    _eval_fn = _evaluator if _evaluator is not None else evaluate_trade_outcome
+    to_build = _eval_fn(
         detection_result, trade_plan, post_conf_bars, outcome_config,
     )
     if to_build.get("status") != "OK":
@@ -468,6 +471,87 @@ def run_bdrr_strategy(sessions, preset, config, *, id_factory=None):
         record = _process_one_session(
             session, preset, engine_config, tp_config, outcome_config, config,
             id_factory=id_factory,
+        )
+        results.append(record)
+
+    return results
+
+
+# ── v2 export: Rational R/R ──────────────────────────────────────────────────
+
+
+def run_bdrr_strategy_v2(sessions, preset, config, *, id_factory=None):
+    """Run the BDRR strategy with configurable Rational R/R target.
+
+    Produces TradeOutcome/v2.  All detection and trade plan logic
+    is identical to v1; only the outcome evaluation uses the v2 path.
+
+    config.exit_target_r must be a Rational (strictly > 0).
+    """
+    if not isinstance(sessions, list):
+        raise TypeError("sessions must be an array")
+    if not isinstance(preset, dict):
+        raise TypeError("preset must be a non-null object")
+    if not isinstance(config, dict):
+        raise TypeError("config must be a non-null object")
+
+    exit_r = config.get("exit_target_r")
+    if not isinstance(exit_r, Rational):
+        raise TypeError(
+            f"config.exit_target_r must be a Rational;"
+            f" got {type(exit_r).__name__}"
+        )
+    if exit_r.numerator <= 0:
+        raise TypeError(
+            f"config.exit_target_r must be strictly positive;"
+            f" got {exit_r.numerator}/{exit_r.denominator}"
+        )
+
+    ts = config.get("tick_size")
+    if isinstance(ts, bool) or not isinstance(ts, (int, float)):
+        raise TypeError("config.tick_size must be a positive finite number")
+    if not math.isfinite(ts) or ts <= 0:
+        raise TypeError("config.tick_size must be a positive finite number")
+    ev = config.get("engine_version")
+    if not isinstance(ev, str) or len(ev) == 0:
+        raise TypeError("config.engine_version must be a non-empty string")
+
+    tick_size = config["tick_size"]
+
+    engine_config = {
+        "timeframe_minutes": preset.get("timeframe_minutes") or 5,
+        "timezone": preset.get("timezone") or "America/New_York",
+        "session_open": preset.get("session_open") or "09:30",
+        "orb_start": preset.get("orb_start") or "session_open",
+        "orb_duration_minutes": preset.get("orb_duration_minutes") or 5,
+        "level_source": preset.get("level_source") or "ORB_HIGH",
+        "direction": preset.get("direction") or "LONG",
+        "tick_size": tick_size,
+        "min_displacement_ticks": preset.get("min_displacement_ticks"),
+        "min_penetration_ticks": preset.get("min_penetration_ticks"),
+        "min_close_beyond_level_ticks": preset.get("min_close_beyond_level_ticks"),
+        "consecutive_orb_closes": preset.get("consecutive_orb_closes", 2),
+    }
+
+    tp_config = {
+        "direction": preset.get("direction") or "LONG",
+        "entry_model": preset.get("entry_model") or "CONFIRMATION_CLOSE",
+        "entry_buffer_ticks": preset["entry_buffer_ticks"] if preset.get("entry_buffer_ticks") is not None else 0,
+        "stop_buffer_ticks": preset["stop_buffer_ticks"] if preset.get("stop_buffer_ticks") is not None else 0,
+        "tick_size": tick_size,
+    }
+
+    outcome_config = {
+        "direction": preset.get("direction") or "LONG",
+        "exit_target_r": config["exit_target_r"],
+    }
+
+    results = []
+    for session in sessions:
+        record = _process_one_session(
+            session, preset, engine_config, tp_config, outcome_config, config,
+            id_factory=id_factory,
+            _evaluator=evaluate_trade_outcome_v2,
         )
         results.append(record)
 
