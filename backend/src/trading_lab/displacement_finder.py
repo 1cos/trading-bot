@@ -233,10 +233,10 @@ def find_displacement(
             "first_retest_contact_timestamp": candles[first_contact_index]["time_ms"],
         }
 
-    # ── Minimum displacement bars (configurable, default 1) ──────────────
+    # ── Minimum displacement bars (canonical default 3) ────────────────
     min_bars = config.get("min_displacement_bars")
     if min_bars is None:
-        min_bars = 1
+        min_bars = 3
     if displacement_bar_count < min_bars:
         return {
             "status": "FAILED",

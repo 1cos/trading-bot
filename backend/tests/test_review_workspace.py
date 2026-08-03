@@ -111,6 +111,7 @@ PRESET = {
     "min_displacement_ticks": None,
     "min_penetration_ticks": None,
     "min_close_beyond_level_ticks": None,
+    "min_displacement_bars": 1,
 }
 
 CONFIG = {"tick_size": 0.01, "exit_target_r": 2, "engine_version": "1.0.0"}

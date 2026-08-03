@@ -67,6 +67,7 @@ SHORT_CONFIG = {
     "min_displacement_ticks": None,
     "min_penetration_ticks": None,
     "min_close_beyond_level_ticks": None,
+    "min_displacement_bars": 1,
 }
 
 LONG_CONFIG = {**SHORT_CONFIG, "direction": "LONG", "level_source": "ORB_HIGH"}
@@ -705,6 +706,7 @@ SHORT_PRESET = {
     "min_displacement_ticks": None,
     "min_penetration_ticks": None,
     "min_close_beyond_level_ticks": None,
+    "min_displacement_bars": 1,
 }
 
 RUNNER_CONFIG = {

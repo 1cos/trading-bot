@@ -33,6 +33,7 @@ CONFIG = {
     "min_displacement_ticks": None,
     "min_penetration_ticks": None,
     "min_close_beyond_level_ticks": 1,
+    "min_displacement_bars": 1,
 }
 
 TICK_SIZE = 0.01

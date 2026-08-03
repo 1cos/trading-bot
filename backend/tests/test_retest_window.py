@@ -27,6 +27,7 @@ CONFIG = {
     "direction": "LONG",
     "tick_size": 0.01,
     "min_displacement_ticks": None,
+    "min_displacement_bars": 1,
 }
 
 # 2026-07-01 EDT

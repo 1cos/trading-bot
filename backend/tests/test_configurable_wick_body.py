@@ -51,6 +51,7 @@ def _config(**overrides):
         "level_source": "ORB_HIGH",
         "direction": "LONG",
         "tick_size": TICK,
+        "min_displacement_bars": 1,
     }
     base.update(overrides)
     return base
@@ -143,6 +144,7 @@ def _cfg(**overrides):
         "direction": "LONG", "tick_size": 0.01,
         "min_displacement_ticks": None, "min_penetration_ticks": None,
         "min_close_beyond_level_ticks": 1,
+        "min_displacement_bars": 1,
     }
     base.update(overrides)
     return base

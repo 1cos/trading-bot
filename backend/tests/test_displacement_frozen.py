@@ -83,11 +83,15 @@ def _run_pipeline(candles, cfg):
 
 
 class TestDefaultIs3:
-    def test_finder_default_is_1(self):
-        """Displacement finder default is 1 (low-level, preserves test compat)."""
+    def test_finder_default_is_3(self):
+        """Displacement finder default is 3 (canonical production default)."""
         cfg = _cfg()
         assert "min_displacement_bars" not in cfg
+        # 1-bar displacement → rejected by default=3
         disp = _run_pipeline(_make_session(1), cfg)
+        assert disp["status"] == "FAILED"
+        # 3-bar displacement → accepted
+        disp = _run_pipeline(_make_session(3), cfg)
         assert disp["status"] == "OK"
 
     def test_finder_with_explicit_3(self):
@@ -99,8 +103,18 @@ class TestDefaultIs3:
         assert "3" in disp["reason"]
 
     def test_config_none_uses_finder_default(self):
-        """min_displacement_bars=None → finder uses its default (1)."""
+        """min_displacement_bars=None → finder uses canonical default (3)."""
         cfg = _cfg(min_displacement_bars=None)
+        # 1-bar → rejected
+        disp = _run_pipeline(_make_session(1), cfg)
+        assert disp["status"] == "FAILED"
+        # 3-bar → accepted
+        disp = _run_pipeline(_make_session(3), cfg)
+        assert disp["status"] == "OK"
+
+    def test_explicit_override_1_works(self):
+        """Explicit min_displacement_bars=1 overrides the canonical default."""
+        cfg = _cfg(min_displacement_bars=1)
         disp = _run_pipeline(_make_session(1), cfg)
         assert disp["status"] == "OK"
 
