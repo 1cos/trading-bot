@@ -31,6 +31,8 @@ import json
 import re
 from datetime import datetime, timezone
 
+from trading_lab.contracts.primitives import Rational
+
 # ── Constants ────────────────────────────────────────────────────────────────
 
 DATASET_SCHEMA_VERSION = "TradeDataset/v1"
@@ -159,11 +161,23 @@ def _validate_record(record, index):
             "reason": f"record[{index}].preset_id must be a non-empty string",
         }
 
-    if record["exit_target_r"] not in (2, 3, 4):
+    etr = record["exit_target_r"]
+    if isinstance(etr, Rational):
+        if etr.numerator <= 0:
+            return {
+                "valid": False,
+                "reason": (
+                    f"record[{index}].exit_target_r Rational must be "
+                    f"strictly positive, got: "
+                    f"{etr.numerator}/{etr.denominator}"
+                ),
+            }
+    elif etr not in (2, 3, 4):
         return {
             "valid": False,
             "reason": (
-                f"record[{index}].exit_target_r must be 2, 3, or 4, "
+                f"record[{index}].exit_target_r must be 2, 3, or 4 "
+                f"(v1) or a positive Rational (v2), "
                 f"got: {record['exit_target_r']}"
             ),
         }
@@ -437,12 +451,20 @@ def _derive_dataset_id(schema_version, engine_version, preset_id,
 
     Matches JS deriveDatasetId exactly.
     """
+    # Canonical exit_target_r string: int for v1, "numerator/denominator" for Rational
+    if isinstance(exit_target_r, Rational):
+        etr_str = f"{exit_target_r.numerator}/{exit_target_r.denominator}"
+    elif exit_target_r is not None:
+        etr_str = str(exit_target_r)
+    else:
+        etr_str = ""
+
     header_parts = [
         schema_version,
         engine_version if engine_version is not None else "",
         preset_id if preset_id is not None else "",
         symbol if symbol is not None else "",
-        str(exit_target_r) if exit_target_r is not None else "",
+        etr_str,
     ]
     header = "\n".join(header_parts)
 
