@@ -241,7 +241,15 @@ tr.clickable{cursor:pointer}
       <span class="param-label">Model</span>
       <span class="param-static">Classic Confirmation</span>
     </div>
-    <div class="param-static-note">Additional confirmation models will be added later.</div>
+    <div class="param-row">
+      <span class="param-label">Minimum Wick %</span>
+      <input class="param-input" type="number" id="pWickMin" value="47" min="0" max="100" step="1" style="width:70px">
+    </div>
+    <div class="param-row">
+      <span class="param-label">Maximum Body %</span>
+      <input class="param-input" type="number" id="pBodyMax" value="40" min="0" max="100" step="1" style="width:70px">
+    </div>
+    <div class="param-tooltip">Rejection candle wick must be ≥ Wick % of range. Body must be ≤ Body % of range.</div>
   </div>
 
   <!-- Run -->
@@ -356,6 +364,8 @@ function resetDefaults(){
   document.getElementById("pEntryBuffer").value="0";
   document.getElementById("pStopBuffer").value="0";
   document.getElementById("pTickSize").value="0.01";
+  document.getElementById("pWickMin").value="47";
+  document.getElementById("pBodyMax").value="40";
   document.getElementById("presetName").textContent="Frozen Default";
   onDirectionChange();
 }
@@ -429,6 +439,8 @@ window.runBacktest=async function(){
       entry_model:"CONFIRMATION_CLOSE",
       entry_buffer_ticks:parseInt(document.getElementById("pEntryBuffer").value),
       stop_buffer_ticks:parseInt(document.getElementById("pStopBuffer").value),
+      rejection_wick_ratio_min:parseFloat(document.getElementById("pWickMin").value)/100,
+      body_ratio_max:parseFloat(document.getElementById("pBodyMax").value)/100,
     },
     config:{
       exit_target_r:document.getElementById("pExitTargetR").value,

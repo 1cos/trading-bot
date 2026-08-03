@@ -451,6 +451,8 @@ def run_bdrr_strategy(sessions, preset, config, *, id_factory=None):
         "min_penetration_ticks": preset.get("min_penetration_ticks"),
         "min_close_beyond_level_ticks": preset.get("min_close_beyond_level_ticks"),
         "consecutive_orb_closes": preset.get("consecutive_orb_closes", 2),
+        "rejection_wick_ratio_min": preset.get("rejection_wick_ratio_min"),
+        "body_ratio_max": preset.get("body_ratio_max"),
     }
 
     tp_config = {
@@ -531,6 +533,8 @@ def run_bdrr_strategy_v2(sessions, preset, config, *, id_factory=None):
         "min_penetration_ticks": preset.get("min_penetration_ticks"),
         "min_close_beyond_level_ticks": preset.get("min_close_beyond_level_ticks"),
         "consecutive_orb_closes": preset.get("consecutive_orb_closes", 2),
+        "rejection_wick_ratio_min": preset.get("rejection_wick_ratio_min"),
+        "body_ratio_max": preset.get("body_ratio_max"),
     }
 
     tp_config = {

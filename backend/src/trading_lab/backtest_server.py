@@ -638,6 +638,23 @@ def api_run():
             "consecutive_orb_closes": preset_overrides.get("consecutive_orb_closes", 2),
         }
 
+        # Parse optional wick/body ratio overrides
+        for key, default in [
+            ("rejection_wick_ratio_min", None),
+            ("body_ratio_max", None),
+        ]:
+            raw = preset_overrides.get(key)
+            if raw is not None:
+                if isinstance(raw, bool):
+                    return jsonify({"error": f"{key} must be a number"}), 400
+                try:
+                    val = float(raw)
+                except (TypeError, ValueError):
+                    return jsonify({"error": f"{key} must be a number"}), 400
+                if val < 0 or val > 1:
+                    return jsonify({"error": f"{key} must be between 0 and 1"}), 400
+                base_preset[key] = val
+
         # Parse exit_target_r: v1 (int 2/3/4) or v2 (Rational from string)
         raw_etr = config_overrides.get("exit_target_r", 2)
         try:

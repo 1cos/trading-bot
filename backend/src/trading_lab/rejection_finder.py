@@ -156,6 +156,14 @@ def find_rejection(
                 ),
             }
 
+    # Configurable rejection thresholds (default to frozen constants)
+    wick_min = config.get("rejection_wick_ratio_min")
+    if wick_min is None:
+        wick_min = REJECTION_WICK_RATIO_MIN
+    body_max = config.get("body_ratio_max")
+    if body_max is None:
+        body_max = BODY_RATIO_MAX
+
     # ── Input validation ─────────────────────────────────────────────────
     if not isinstance(candles, list):
         raise TypeError("candles must be a list")
@@ -269,9 +277,9 @@ def find_rejection(
         opposite_wick_ratio = opposite_wick_ticks / range_ticks
 
         failed_rules: list[str] = []
-        if rejection_wick_ratio < REJECTION_WICK_RATIO_MIN:
+        if rejection_wick_ratio < wick_min:
             failed_rules.append("REJECTION_WICK_RATIO_TOO_LOW")
-        if body_ratio > BODY_RATIO_MAX:
+        if body_ratio > body_max:
             failed_rules.append("BODY_RATIO_TOO_HIGH")
         if favorable_close_location < FAVORABLE_CLOSE_LOCATION_MIN:
             failed_rules.append("FAVORABLE_CLOSE_LOCATION_TOO_LOW")
