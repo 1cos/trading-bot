@@ -28,6 +28,7 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
 from trading_lab.contracts.primitives import Rational
+from trading_lab.preset_store import PresetStore, preset_to_run_config
 from trading_lab.strategy_runner import run_bdrr_strategy
 from trading_lab.strategy_runner import run_bdrr_strategy_v2
 from trading_lab.trade_outcome_evaluator import _round_offset_ticks
@@ -167,6 +168,9 @@ CORS(app)
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 DATI_DIR = REPO_ROOT / "dati"
 LAB_DIR = REPO_ROOT / "lab"
+PRESETS_DIR = REPO_ROOT / "backend" / "runtime" / "presets"
+
+_preset_store = PresetStore(PRESETS_DIR)
 
 # ── Data loading ─────────────────────────────────────────────────────────────
 
@@ -563,17 +567,95 @@ def api_defaults():
     })
 
 
+# ── Preset endpoints ────────────────────────────────────────────────────────
+
+
+@app.route("/api/presets", methods=["POST"])
+def api_preset_create():
+    """Create and save a new persistent preset."""
+    try:
+        body = request.get_json()
+        if not body or not isinstance(body, dict):
+            return jsonify({"error": "Request body must be a JSON object"}), 400
+
+        name = body.get("name")
+        params = body.get("parameters")
+        if not isinstance(params, dict):
+            return jsonify({"error": "parameters must be a JSON object"}), 400
+
+        preset = _preset_store.create(name, params)
+        return jsonify(preset), 201
+
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/presets/<preset_id>")
+def api_preset_get(preset_id):
+    """Load a preset by ID."""
+    try:
+        from trading_lab.preset_store import is_safe_preset_id
+        if not is_safe_preset_id(preset_id):
+            return jsonify({"error": "Invalid preset_id format"}), 400
+        preset = _preset_store.get(preset_id)
+        if preset is None:
+            return jsonify({"error": f"Preset {preset_id} not found"}), 404
+        return jsonify(preset)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/run", methods=["POST"])
 def api_run():
     """Execute a backtest run with the real Python detector."""
     try:
         body = request.get_json()
-        symbols = body.get("symbols", ["SPY"])
-        start_date = body.get("start_date")
-        end_date = body.get("end_date")
-        timeframe = body.get("timeframe", "5m")
-        preset_overrides = body.get("preset", {})
-        config_overrides = body.get("config", {})
+
+        # ── Config source: persistent preset or inline ───────────────
+        loaded_preset = None
+        config_source = "inline"
+
+        if "preset_id" in body:
+            pid = body["preset_id"]
+            from trading_lab.preset_store import is_safe_preset_id
+            if not is_safe_preset_id(pid):
+                return jsonify({"error": "Invalid preset_id format"}), 400
+            loaded_preset = _preset_store.get(pid)
+            if loaded_preset is None:
+                return jsonify({"error": f"Preset {pid} not found"}), 404
+
+            # Reject strategic overrides when using preset_id
+            if body.get("preset"):
+                return jsonify({
+                    "error": "Cannot combine preset_id with inline preset overrides"
+                }), 400
+            if body.get("config", {}).get("exit_target_r"):
+                return jsonify({
+                    "error": "Cannot override exit_target_r when using preset_id"
+                }), 400
+            if body.get("config", {}).get("tick_size"):
+                return jsonify({
+                    "error": "Cannot override tick_size when using preset_id"
+                }), 400
+
+            preset_overrides, config_overrides = preset_to_run_config(loaded_preset)
+            p = loaded_preset["parameters"]
+            symbols = [p["symbol"]]
+            timeframe = p["timeframe"]
+            config_source = "persistent_preset"
+
+            # Allow execution-only params from body
+            start_date = body.get("start_date") or body.get("config", {}).get("start_date")
+            end_date = body.get("end_date") or body.get("config", {}).get("end_date")
+        else:
+            symbols = body.get("symbols", ["SPY"])
+            start_date = body.get("start_date")
+            end_date = body.get("end_date")
+            timeframe = body.get("timeframe", "5m")
+            preset_overrides = body.get("preset", {})
+            config_overrides = body.get("config", {})
 
         if timeframe not in ("1m", "2m", "3m", "5m", "10m"):
             return jsonify({"error": f"Invalid timeframe: {timeframe}"}), 400
@@ -823,8 +905,9 @@ def api_run():
 
             chart_events.append(event)
 
-        return jsonify({
+        response = {
             "run_id": run_id,
+            "config_source": config_source,
             "timestamp": datetime.now(tz=__import__('datetime').timezone.utc).isoformat(),
             "elapsed_seconds": round(elapsed, 3),
             "symbols": symbols,
@@ -844,7 +927,12 @@ def api_run():
             "trades": trades,
             "chart_events": chart_events,
             "total_sessions": len(all_sessions),
-        })
+        }
+        if loaded_preset:
+            response["preset_id"] = loaded_preset["preset_id"]
+            response["preset_schema_version"] = loaded_preset["schema_version"]
+            response["preset_name"] = loaded_preset["name"]
+        return jsonify(response)
 
     except Exception as e:
         import traceback

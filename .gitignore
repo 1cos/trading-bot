@@ -3,6 +3,9 @@
 
 # Python
 __pycache__/
+
+# Runtime state
+backend/runtime/
 *.pyc
 *.pyo
 *.pyd
