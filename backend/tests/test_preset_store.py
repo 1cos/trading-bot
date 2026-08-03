@@ -294,8 +294,10 @@ class TestRunByPreset:
         pid = self._create_preset(client)
         resp = client.post("/api/run", json={
             "preset_id": pid,
-            "start_date": "2026-06-01",
-            "end_date": "2026-07-01",
+            "config": {
+                "start_date": "2026-06-01",
+                "end_date": "2026-07-01",
+            },
         })
         assert resp.status_code == 200
         data = resp.get_json()

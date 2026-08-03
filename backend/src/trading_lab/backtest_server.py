@@ -640,13 +640,15 @@ def api_run():
                 return jsonify({
                     "error": "Cannot combine preset_id with inline preset overrides"
                 }), 400
-            if body.get("config", {}).get("exit_target_r"):
+
+            # Only start_date and end_date allowed in config for preset runs
+            run_config = body.get("config", {})
+            _ALLOWED_EXEC_KEYS = {"start_date", "end_date"}
+            strategic_keys = set(run_config.keys()) - _ALLOWED_EXEC_KEYS
+            if strategic_keys:
                 return jsonify({
-                    "error": "Cannot override exit_target_r when using preset_id"
-                }), 400
-            if body.get("config", {}).get("tick_size"):
-                return jsonify({
-                    "error": "Cannot override tick_size when using preset_id"
+                    "error": f"Cannot override strategic parameters when using "
+                             f"preset_id: {', '.join(sorted(strategic_keys))}"
                 }), 400
 
             preset_overrides, config_overrides = preset_to_run_config(loaded_preset)
@@ -655,9 +657,9 @@ def api_run():
             timeframe = p["timeframe"]
             config_source = "persistent_preset"
 
-            # Allow execution-only params from body
-            start_date = body.get("start_date") or body.get("config", {}).get("start_date")
-            end_date = body.get("end_date") or body.get("config", {}).get("end_date")
+            # Dates from config only
+            start_date = run_config.get("start_date")
+            end_date = run_config.get("end_date")
         else:
             symbols = body.get("symbols", ["SPY"])
             start_date = body.get("start_date")

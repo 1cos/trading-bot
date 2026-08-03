@@ -162,7 +162,7 @@ class TestRunWithPreset:
         p = _create(client, "Run Me", exit_target_r="2.5")
         resp = client.post("/api/run", json={
             "preset_id": p["preset_id"],
-            "start_date": "2026-06-01",
+            "config": {"start_date": "2026-06-01"},
         })
         assert resp.status_code == 200
         data = resp.get_json()
@@ -179,11 +179,48 @@ class TestRunWithPreset:
         assert resp.get_json()["config_source"] == "inline"
 
     def test_reset_clears_preset_not_backend(self, client):
-        """Reset in the UI clears activePreset state but doesn't delete the preset."""
         p = _create(client, "Keep Me")
-        # Preset still exists in backend after any number of resets
         resp = client.get(f"/api/presets/{p['preset_id']}")
         assert resp.status_code == 200
+
+    def test_dates_in_config(self, client):
+        """Dates must be in config, not top level."""
+        p = _create(client)
+        resp = client.post("/api/run", json={
+            "preset_id": p["preset_id"],
+            "config": {"start_date": "2026-06-01", "end_date": "2026-07-01"},
+        })
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["start_date"] == "2026-06-01"
+
+    def test_empty_dates_omitted(self, client):
+        """No config needed when dates are empty."""
+        p = _create(client)
+        resp = client.post("/api/run", json={"preset_id": p["preset_id"]})
+        assert resp.status_code == 200
+
+    def test_strategic_override_in_config_rejected(self, client):
+        """Strategic keys in config must be rejected."""
+        p = _create(client)
+        resp = client.post("/api/run", json={
+            "preset_id": p["preset_id"],
+            "config": {"exit_target_r": "3"},
+        })
+        assert resp.status_code == 400
+        assert "strategic" in resp.get_json()["error"].lower() or \
+               "exit_target_r" in resp.get_json()["error"]
+
+    def test_top_level_dates_ignored_in_preset_mode(self, client):
+        """Top level start_date should be ignored in preset mode."""
+        p = _create(client)
+        # Only config dates should be read
+        resp = client.post("/api/run", json={
+            "preset_id": p["preset_id"],
+            "config": {"start_date": "2026-07-01"},
+        })
+        assert resp.status_code == 200
+        assert resp.get_json()["start_date"] == "2026-07-01"
 
 
 # ── UI static checks ────────────────────────────────────────────────────────

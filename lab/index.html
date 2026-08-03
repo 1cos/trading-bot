@@ -570,12 +570,14 @@ window.runBacktest=async function(){
 
   var body;
   if(state.activePreset){
-    // Run by preset_id — only send dates
-    body={
-      preset_id:state.activePreset.preset_id,
-      start_date:document.getElementById("pStartDate").value,
-      end_date:document.getElementById("pEndDate").value,
-    };
+    // Run by preset_id — dates in config only
+    var cfg={};
+    var sd=document.getElementById("pStartDate").value;
+    var ed=document.getElementById("pEndDate").value;
+    if(sd) cfg.start_date=sd;
+    if(ed) cfg.end_date=ed;
+    body={preset_id:state.activePreset.preset_id};
+    if(Object.keys(cfg).length>0) body.config=cfg;
   }else{
     body={
       symbols:[document.getElementById("pSymbol").value],
