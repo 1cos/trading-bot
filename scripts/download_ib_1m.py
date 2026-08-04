@@ -99,24 +99,23 @@ def _last_date_in_csv(filepath: Path) -> str | None:
     return ts[:10]  # "2026-07-30"
 
 
-def _fetch_one_day(ib: IB, contract, date_str: str) -> list[dict]:
-    """Fetch 1m bars for one trading day from IB.
+def _fetch_chunk(ib: IB, contract, end_date_str: str, duration: str = "1 W") -> list[dict]:
+    """Fetch 1m bars for a time chunk (e.g. 1 week) from IB.
 
     Returns list of dicts: {time_et, open, high, low, close, volume}
     """
-    # IB wants endDateTime as "YYYYMMDD HH:MM:SS" in exchange timezone
-    end_dt = f"{date_str.replace('-', '')} 23:59:59"
+    end_dt = f"{end_date_str.replace('-', '')} 23:59:59"
 
     try:
         bars = ib.reqHistoricalData(
             contract,
             endDateTime=end_dt,
-            durationStr="1 D",
+            durationStr=duration,
             barSizeSetting="1 min",
             whatToShow="TRADES",
-            useRTH=False,  # include pre/post market
-            formatDate=1,  # dates as strings
-            timeout=30,
+            useRTH=False,
+            formatDate=1,
+            timeout=60,
         )
     except Exception as e:
         print(f"    Error fetching {date_str}: {e}")
