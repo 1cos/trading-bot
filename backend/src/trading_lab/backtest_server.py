@@ -707,6 +707,9 @@ def api_run():
                 "source_timeframe": tf_data["source_timeframe"],
                 "selected_timeframe": tf_data["selected_timeframe"],
                 "aggregation_method": tf_data["aggregation_method"],
+                "provider": tf_data.get("provider", "unknown"),
+                "source_file": tf_data.get("source_file"),
+                "duplicate_rows_removed": tf_data.get("duplicate_rows_removed", 0),
             }
             for date in tf_data["dates"]:
                 if start_date and date < start_date:

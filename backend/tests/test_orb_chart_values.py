@@ -46,7 +46,7 @@ class TestOrbHighLowInChartEvents:
         """NVDA 2026-07-30 1m: ORB Low must be 191.73 (bar 09:32), not 191.94."""
         data = _run(client, "NVDA", "1m", "2026-07-30", "2026-07-30")
         ev = data["chart_events"][0]
-        assert ev["orb_low_ticks"] == 19173  # 191.73
+        assert ev["orb_low_ticks"] == 19172  # 191.72 (IBKR)
 
     def test_level_price_consistent_long(self, client):
         """For LONG, level_price_ticks must equal orb_high_ticks."""

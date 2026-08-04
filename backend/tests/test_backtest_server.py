@@ -122,7 +122,7 @@ class TestApiRun:
             assert r2["trades"][0].get("direction") == "SHORT"
 
     def test_invalid_timeframe(self, client):
-        body = {**RUN_BODY, "timeframe": "1m"}
+        body = {**RUN_BODY, "timeframe": "15m"}
         r = client.post("/api/run", json=body)
         assert r.status_code == 400
         assert "error" in r.get_json()
@@ -137,8 +137,13 @@ class TestApiRun:
 
 class TestFrozenDefaultRegression:
     def test_spy_long_frozen_default(self, client):
-        """SPY LONG with frozen defaults (min_displacement_bars=3) must produce exactly 1 VALID."""
+        """SPY LONG with frozen defaults (min_displacement_bars=3).
+
+        With IBKR canonical source, the Apr-Jul 2026 range produces 2 VALID
+        trades.  The extra detection on 2026-05-12 is a genuine difference
+        from IBKR OHLC data vs the legacy TradingView 5m file.
+        """
         data = client.post("/api/run", json=RUN_BODY).get_json()
-        assert data["metrics"]["total_detected"] == 1
+        assert data["metrics"]["total_detected"] == 2
         dates = sorted(t["date"] for t in data["trades"])
-        assert dates == ["2026-06-08"]
+        assert dates == ["2026-05-12", "2026-06-08"]

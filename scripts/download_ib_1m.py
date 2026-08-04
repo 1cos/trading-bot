@@ -99,23 +99,23 @@ def _last_date_in_csv(filepath: Path) -> str | None:
     return ts[:10]  # "2026-07-30"
 
 
-def _fetch_chunk(ib: IB, contract, end_date_str: str, duration: str = "1 W") -> list[dict]:
-    """Fetch 1m bars for a time chunk (e.g. 1 week) from IB.
+def _fetch_one_day(ib: IB, contract, date_str: str) -> list[dict]:
+    """Fetch 1m bars for one trading day from IB.
 
     Returns list of dicts: {time_et, open, high, low, close, volume}
     """
-    end_dt = f"{end_date_str.replace('-', '')} 23:59:59"
+    end_dt = f"{date_str.replace('-', '')} 23:59:59"
 
     try:
         bars = ib.reqHistoricalData(
             contract,
             endDateTime=end_dt,
-            durationStr=duration,
+            durationStr="1 D",
             barSizeSetting="1 min",
             whatToShow="TRADES",
             useRTH=False,
             formatDate=1,
-            timeout=60,
+            timeout=30,
         )
     except Exception as e:
         print(f"    Error fetching {date_str}: {e}")
@@ -315,10 +315,55 @@ def main():
             # Sort by timestamp
             all_candles.sort(key=lambda c: c["time_et"])
 
-            # Write
+            # ── Idempotent dedup ─────────────────────────────────────
+            # Remove duplicate timestamps within the downloaded batch.
+            # IB returns previous-day data when queried for holidays,
+            # so pre-holiday sessions appear twice.
+            seen_ts = {}
+            deduped = []
+            conflicts = 0
+            for c in all_candles:
+                ts = c["time_et"]
+                if ts in seen_ts:
+                    prev = seen_ts[ts]
+                    same = (prev["open"] == c["open"]
+                            and prev["high"] == c["high"]
+                            and prev["low"] == c["low"]
+                            and prev["close"] == c["close"]
+                            and prev["volume"] == c["volume"])
+                    if same:
+                        continue  # identical duplicate, skip
+                    conflicts += 1
+                    print(f"    CONFLICT at {ts}: "
+                          f"prev=O{prev['open']} H{prev['high']} L{prev['low']} C{prev['close']} V{prev['volume']} "
+                          f"vs O{c['open']} H{c['high']} L{c['low']} C{c['close']} V{c['volume']}")
+                    continue  # keep first occurrence
+                seen_ts[ts] = c
+                deduped.append(c)
+
+            removed = len(all_candles) - len(deduped)
+            if removed:
+                print(f"    Deduped: {removed} identical duplicates removed")
+            if conflicts:
+                print(f"    WARNING: {conflicts} conflicting duplicates (kept first)")
+            all_candles = deduped
+
+            # If appending, also dedup against existing file
             if not args.full and filepath.exists():
-                _write_csv(filepath, all_candles, mode="a")
-                print(f"    Appended {len(all_candles)} bars to {filepath.name}")
+                existing_ts = set()
+                with open(filepath) as ef:
+                    reader = csv.DictReader(ef)
+                    for row in reader:
+                        existing_ts.add(row["time_et"])
+                new_only = [c for c in all_candles if c["time_et"] not in existing_ts]
+                skipped = len(all_candles) - len(new_only)
+                if skipped:
+                    print(f"    Skipped {skipped} bars already in file")
+                if new_only:
+                    _write_csv(filepath, new_only, mode="a")
+                    print(f"    Appended {len(new_only)} new bars to {filepath.name}")
+                else:
+                    print(f"    File already up to date")
             else:
                 _write_csv(filepath, all_candles, mode="w")
                 print(f"    Wrote {len(all_candles)} bars to {filepath.name}")

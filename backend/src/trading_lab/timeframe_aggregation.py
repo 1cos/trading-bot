@@ -21,11 +21,105 @@ Supported target timeframes: 1, 2, 3, 5, 10 minutes.
 from __future__ import annotations
 
 import csv
+import json
 import math
 import re
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
+
+# ── IBKR canonical equity symbols ────────────────────────────────────────────
+
+IBKR_EQUITY_SYMBOLS: frozenset[str] = frozenset([
+    "AAPL", "AMD", "AMZN", "GOOGL", "META",
+    "MSFT", "NVDA", "QQQ", "SPY", "TSLA",
+])
+
+
+def _load_ibkr_manifest(dati_dir: Path) -> frozenset[str]:
+    """Load IBKR symbol list from manifest, falling back to hardcoded set."""
+    manifest = dati_dir / "1m" / "ibkr_manifest.json"
+    if manifest.exists():
+        try:
+            data = json.loads(manifest.read_text())
+            return frozenset(data.get("symbols", []))
+        except (json.JSONDecodeError, KeyError):
+            pass
+    return IBKR_EQUITY_SYMBOLS
+
+
+def is_ibkr_equity(symbol: str, dati_dir: Path | None = None) -> bool:
+    """Return True if symbol is in the canonical IBKR equity set."""
+    if dati_dir is not None:
+        return symbol in _load_ibkr_manifest(dati_dir)
+    return symbol in IBKR_EQUITY_SYMBOLS
+
+
+# ── Deduplication ────────────────────────────────────────────────────────────
+
+class DuplicateConflictError(Exception):
+    """Raised when two rows share a timestamp but have different OHLCV."""
+    pass
+
+
+def dedup_candles(candles: list[dict]) -> tuple[list[dict], int]:
+    """Remove duplicate candles by time_ms.
+
+    If two candles share the same time_ms with identical OHLCV, one is
+    dropped silently.  If they differ, DuplicateConflictError is raised.
+
+    Returns (deduped_candles, duplicates_removed).
+    """
+    seen: dict[int, dict] = {}
+    result = []
+    removed = 0
+
+    for c in candles:
+        ts = c["time_ms"]
+        if ts in seen:
+            prev = seen[ts]
+            # Check if OHLCV is identical
+            if (prev["open"] == c["open"] and prev["high"] == c["high"]
+                    and prev["low"] == c["low"] and prev["close"] == c["close"]
+                    and prev.get("volume", 0) == c.get("volume", 0)):
+                removed += 1
+                continue
+            raise DuplicateConflictError(
+                f"Conflicting data at time_ms={ts}: "
+                f"prev=O{prev['open']} H{prev['high']} L{prev['low']} C{prev['close']} "
+                f"V{prev.get('volume',0)}, "
+                f"curr=O{c['open']} H{c['high']} L{c['low']} C{c['close']} "
+                f"V{c.get('volume',0)}"
+            )
+        seen[ts] = c
+        result.append(c)
+
+    return result, removed
+
+
+# ── RTH session filter ───────────────────────────────────────────────────────
+
+def filter_rth_sessions(
+    candles_by_date: dict[str, list[dict]],
+) -> dict[str, list[dict]]:
+    """Keep only dates that contain at least one RTH bar (09:30–15:59 ET).
+
+    This excludes holidays/weekends that only have extended-hours data.
+    """
+    et = ZoneInfo("America/New_York")
+    result = {}
+    for date_str, candles in candles_by_date.items():
+        has_rth = False
+        for c in candles:
+            dt = datetime.fromtimestamp(c["time_ms"] / 1000, tz=et)
+            h, m = dt.hour, dt.minute
+            if (h == 9 and m >= 30) or (10 <= h <= 14) or (h == 15):
+                has_rth = True
+                break
+        if has_rth:
+            result[date_str] = candles
+    return result
 
 
 # ── Canonical timeframe parser ───────────────────────────────────────────────
@@ -248,44 +342,74 @@ def load_candles_for_timeframe(
 ) -> dict:
     """Load candles at the requested timeframe, aggregating from 1m if needed.
 
-    Returns dict with keys: candles_by_date, source_timeframe, aggregation_method,
-    dates, earliest, latest, session_count.
+    Source selection policy:
+      - IBKR equity symbols: always use dati/1m/SYMBOL_1m.csv (deduped),
+        aggregating to higher timeframes.  Legacy dati/SYMBOL_5m.csv files
+        are never selected for these symbols.
+      - Other symbols: fall through to legacy direct-file logic.
+
+    Returns dict with keys: candles_by_date, source_timeframe,
+    selected_timeframe, aggregation_method, provider, source_file,
+    dates, earliest, latest, session_count, duplicate_rows_removed.
     """
     dati = Path(dati_dir)
 
-    # Try direct file first
-    direct_file = dati / f"{symbol}_{timeframe_minutes}m.csv"
+    # Locate 1m file
     file_1m = dati / f"{symbol}_1m.csv"
     if not file_1m.exists():
         file_1m = dati / "1m" / f"{symbol}_1m.csv"
 
+    ibkr = is_ibkr_equity(symbol, dati)
+
     source_tf = None
     aggregation = "none"
+    provider = "IBKR" if ibkr else "unknown"
+    source_file = None
     all_candles = []
+    dupes_removed = 0
 
-    if timeframe_minutes == 1 and file_1m.exists():
+    if ibkr and file_1m.exists():
+        # ── IBKR canonical path: always use 1m, never legacy 5m ──
         source_tf = "1m"
+        source_file = str(file_1m)
+        raw = parse_csv_candles(file_1m)
+        raw, dupes_removed = dedup_candles(raw)
+
+        if timeframe_minutes == 1:
+            all_candles = raw
+        else:
+            aggregation = f"1m_to_{timeframe_minutes}m"
+            sessions_1m = split_into_sessions(raw)
+            for date_key in sorted(sessions_1m.keys()):
+                agg = aggregate_candles(sessions_1m[date_key], timeframe_minutes)
+                all_candles.extend(agg)
+
+    elif timeframe_minutes == 1 and file_1m.exists():
+        source_tf = "1m"
+        source_file = str(file_1m)
         all_candles = parse_csv_candles(file_1m)
-    elif direct_file.exists() and timeframe_minutes in (5,):
+    elif (dati / f"{symbol}_{timeframe_minutes}m.csv").exists() and timeframe_minutes in (5,):
+        direct_file = dati / f"{symbol}_{timeframe_minutes}m.csv"
         source_tf = f"{timeframe_minutes}m"
+        source_file = str(direct_file)
         all_candles = parse_csv_candles(direct_file)
     elif file_1m.exists():
-        # Aggregate from 1m
         source_tf = "1m"
-        aggregation = f"aggregated from 1m to {timeframe_minutes}m"
+        source_file = str(file_1m)
+        aggregation = f"1m_to_{timeframe_minutes}m"
         raw_1m = parse_csv_candles(file_1m)
-        # Aggregate per session to respect session boundaries
         sessions_1m = split_into_sessions(raw_1m)
-        for date in sorted(sessions_1m.keys()):
-            agg = aggregate_candles(sessions_1m[date], timeframe_minutes)
+        for date_key in sorted(sessions_1m.keys()):
+            agg = aggregate_candles(sessions_1m[date_key], timeframe_minutes)
             all_candles.extend(agg)
     elif timeframe_minutes == 10 and (dati / f"{symbol}_5m.csv").exists():
         source_tf = "5m"
-        aggregation = "aggregated from 5m to 10m"
+        source_file = str(dati / f"{symbol}_5m.csv")
+        aggregation = "5m_to_10m"
         raw_5m = parse_csv_candles(dati / f"{symbol}_5m.csv")
         sessions_5m = split_into_sessions(raw_5m)
-        for date in sorted(sessions_5m.keys()):
-            agg = aggregate_candles(sessions_5m[date], 2)  # 2 × 5m bars
+        for date_key in sorted(sessions_5m.keys()):
+            agg = aggregate_candles(sessions_5m[date_key], 2)
             all_candles.extend(agg)
     else:
         return {
@@ -295,6 +419,11 @@ def load_candles_for_timeframe(
 
     # Split into sessions
     candles_by_date = split_into_sessions(all_candles)
+
+    # For IBKR equity, count only sessions with RTH bars
+    if ibkr:
+        candles_by_date = filter_rth_sessions(candles_by_date)
+
     dates = sorted(candles_by_date.keys())
 
     return {
@@ -302,10 +431,13 @@ def load_candles_for_timeframe(
         "source_timeframe": source_tf,
         "selected_timeframe": f"{timeframe_minutes}m",
         "aggregation_method": aggregation,
+        "provider": provider,
+        "source_file": source_file,
         "dates": dates,
         "earliest": dates[0] if dates else None,
         "latest": dates[-1] if dates else None,
         "session_count": len(dates),
+        "duplicate_rows_removed": dupes_removed,
     }
 
 def aggregate_post_orb(

@@ -309,6 +309,6 @@ class TestQQQ20260727:
         assert rej["status"] == "OK"
         g = rej["geometry"]
         assert g["rejection_wick_ticks"] == 55
-        assert g["penetration_through_level_ticks"] == 3
-        assert g["wick_penetration_pct"] == pytest.approx(3 / 55, abs=0.001)
+        assert g["penetration_through_level_ticks"] == 4  # IBKR data
+        assert g["wick_penetration_pct"] == pytest.approx(4 / 55, abs=0.001)
         assert g["body_outside_orb"] is True

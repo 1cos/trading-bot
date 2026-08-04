@@ -31,13 +31,15 @@ class TestPerTimeframeDateRanges:
         assert tf5m["latest_date"] is not None
         assert tf5m["session_count"] > 0
 
-    def test_spy_1m_5m_ranges_differ(self):
+    def test_spy_1m_5m_ranges_same_ibkr(self):
+        """With IBKR canonical source, 1m and 5m share the same date range."""
         tfs = available_timeframes("dati", "SPY")
         tf1m = next(t for t in tfs if t["value"] == "1m")
         tf5m = next(t for t in tfs if t["value"] == "5m")
-        # The datasets have different date ranges
-        assert tf1m["earliest_date"] != tf5m["earliest_date"] or \
-               tf1m["latest_date"] != tf5m["latest_date"]
+        # Both use IBKR 1m data — same range
+        assert tf1m["earliest_date"] == tf5m["earliest_date"]
+        assert tf1m["latest_date"] == tf5m["latest_date"]
+        assert tf1m["session_count"] == tf5m["session_count"]
 
     def test_qqq_1m_has_own_range(self):
         tfs = available_timeframes("dati", "QQQ")
@@ -135,24 +137,12 @@ class TestRunWithCorrectDates:
         assert data["total_sessions"] > 0
         assert data["metrics"]["total_detected"] >= 1
 
-    def test_5m_dates_on_1m_produces_error(self, client):
-        """Using 5m date range with 1m timeframe should find no sessions."""
+    def test_5m_dates_on_1m_same_range(self, client):
+        """With IBKR canonical source, 1m and 5m share the same date range."""
         tfs = available_timeframes("dati", "SPY")
+        tf1m = next(t for t in tfs if t["value"] == "1m")
         tf5m = next(t for t in tfs if t["value"] == "5m")
-        payload = {
-            "symbols": ["SPY"],
-            "start_date": tf5m["earliest_date"],
-            "end_date": tf5m["latest_date"],
-            "timeframe": "1m",
-            "preset": {
-                "direction": "BOTH", "level_source": "BOTH",
-                "orb_duration_minutes": 5, "consecutive_orb_closes": 2,
-                "entry_model": "CONFIRMATION_CLOSE",
-                "entry_buffer_ticks": 0, "stop_buffer_ticks": 0,
-            },
-            "config": {"exit_target_r": "2", "tick_size": 0.01},
-        }
-        resp = client.post("/api/run", json=payload)
-        data = resp.get_json()
-        assert "error" in data
-        assert "No sessions" in data["error"]
+        # Both timeframes now use IBKR 1m data, so dates must match
+        assert tf1m["earliest_date"] == tf5m["earliest_date"]
+        assert tf1m["latest_date"] == tf5m["latest_date"]
+        assert tf1m["session_count"] == tf5m["session_count"]

@@ -1,0 +1,25 @@
+{
+  "provider": "IBKR",
+  "data_type": "1m_bars",
+  "download_script": "scripts/download_ib_1m.py",
+  "format": "time_et,open,high,low,close,volume",
+  "timezone": "America/New_York",
+  "includes_extended_hours": true,
+  "symbols": [
+    "AAPL",
+    "AMD",
+    "AMZN",
+    "GOOGL",
+    "META",
+    "MSFT",
+    "NVDA",
+    "QQQ",
+    "SPY",
+    "TSLA"
+  ],
+  "excluded": {
+    "MES": "Yahoo Finance (MES=F), not IBKR qualified future",
+    "MNQ": "Yahoo Finance (MNQ=F), not IBKR qualified future"
+  },
+  "notes": "MES/MNQ are NOT IBKR equity data. Do not include in uniform equity backtests."
+}
