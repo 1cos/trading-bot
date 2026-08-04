@@ -44,6 +44,7 @@ _VALID_OUTCOMES = frozenset({
     "TARGET_HIT",
     "AMBIGUOUS",
     "OPEN",
+    "SESSION_CLOSE",
     "PIPELINE_FAILURE",
 })
 

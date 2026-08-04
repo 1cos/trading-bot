@@ -209,9 +209,9 @@ class TestLongTargetHit:
             _cfg_v2(r_num=9, r_den=4),
         )
         o = r["outcome"]
-        assert o.outcome == TradeOutcomeStatus.OPEN
-        assert o.exit_price_ticks is None
-        assert o.realized_r is None
+        assert o.outcome == TradeOutcomeStatus.SESSION_CLOSE
+        assert o.exit_price_ticks is not None  # forced close on last bar
+        assert o.realized_r is not None
 
     def test_stopped(self):
         """LONG stop hit."""

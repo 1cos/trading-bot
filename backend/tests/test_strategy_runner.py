@@ -345,10 +345,10 @@ class TestT7Open:
         r = run_bdrr_strategy(
             [_build_open_session("2026-07-07")], FROZEN_PRESET, BASE_CONFIG
         )
-        assert r[0]["outcome"] == Outcome.OPEN
-        assert r[0]["exit_timestamp"] is None
-        assert r[0]["exit_price_ticks"] is None
-        assert r[0]["realized_r"] is None
+        assert r[0]["outcome"] == Outcome.SESSION_CLOSE
+        assert r[0]["exit_timestamp"] is not None  # forced close on last bar
+        assert r[0]["exit_price_ticks"] is not None
+        assert r[0]["realized_r"] is not None
 
 
 # ── T8: Chronological ordering ──────────────────────────────────────────────

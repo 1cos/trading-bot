@@ -157,18 +157,18 @@ class TestOpen:
         _reset_ms()
         bars = [_bar(10150, 10060), _bar(10200, 10100)]
         r = evaluate_trade_outcome(_dr(), _tp(), bars, CONFIG4)
-        assert r["outcome"].outcome == TradeOutcomeStatus.OPEN
-        assert r["outcome"].realized_r is None
-        assert r["outcome"].exit_bar_index is None
+        assert r["outcome"].outcome == TradeOutcomeStatus.SESSION_CLOSE
+        assert r["outcome"].realized_r is not None
+        assert r["outcome"].exit_bar_index is not None
 
     def test_cc_empty_bars_open(self):
         r = evaluate_trade_outcome(_dr(), _tp(), [], CONFIG4)
         o = r["outcome"]
-        assert o.outcome == TradeOutcomeStatus.OPEN
+        assert o.outcome == TradeOutcomeStatus.SESSION_CLOSE
         assert o.entry_triggered is True
         assert o.entry_bar_utc_ms == CONF_BAR_UTC_MS
         assert o.first_eval_bar_index is None
-        assert o.realized_r is None
+        assert o.realized_r is None  # no bars to close on
 
 
 # ── 4. AMBIGUOUS ─────────────────────────────────────────────────────────────
@@ -205,17 +205,18 @@ class TestConfigurableExitTarget:
         bars = [_bar(10150, 10060), _bar(10350, 10110)]
         r = evaluate_trade_outcome(_dr(), _tp(), bars, CONFIG3)
         o = r["outcome"]
-        assert o.outcome == TradeOutcomeStatus.OPEN
+        assert o.outcome == TradeOutcomeStatus.SESSION_CLOSE
         assert o.highest_target_achieved == "2R"
-        assert o.realized_r is None
+        assert o.realized_r is not None  # SESSION_CLOSE computes R
 
     def test_r4_intermediate_open(self):
         _reset_ms()
         bars = [_bar(10150, 10060), _bar(10350, 10110)]
         r = evaluate_trade_outcome(_dr(), _tp(), bars, CONFIG4)
         o = r["outcome"]
-        assert o.outcome == TradeOutcomeStatus.OPEN
+        assert o.outcome == TradeOutcomeStatus.SESSION_CLOSE
         assert o.highest_target_achieved == "2R"
+        assert o.realized_r is not None
 
 
 # ── 6. 2R then stopped ──────────────────────────────────────────────────────
@@ -554,20 +555,20 @@ class TestRealizedR:
         r = evaluate_trade_outcome(_dr(), _tp(), [_bar(10420, 10110)], CONFIG3)
         assert r["outcome"].realized_r == 3
 
-    def test_open_null(self):
+    def test_session_close_has_r(self):
         _reset_ms()
         r = evaluate_trade_outcome(_dr(), _tp(), [_bar(10150, 10060)], CONFIG4)
-        assert r["outcome"].realized_r is None
+        assert r["outcome"].realized_r is not None  # SESSION_CLOSE computes R
 
     def test_ambiguous_null(self):
         _reset_ms()
         r = evaluate_trade_outcome(_dr(), _tp(), [_bar(10520, 9950)], CONFIG4)
-        assert r["outcome"].realized_r is None
+        assert r["outcome"].realized_r is None  # AMBIGUOUS has no R
 
     def test_not_triggered_null(self):
         tp = _tp(entry_model="BREAK_OF_SIGNAL_BAR")
         r = evaluate_trade_outcome(_dr(), tp, [], CONFIG4)
-        assert r["outcome"].realized_r is None
+        assert r["outcome"].realized_r is None  # ENTRY_NOT_TRIGGERED has no R
 
 
 # ── 24. BOSB same-bar entry+stop+target → AMBIGUOUS ────────────────────────
@@ -950,4 +951,4 @@ class TestDictConfig:
             {"direction": "LONG", "exit_target_r": 4},
         )
         assert r["status"] == "OK"
-        assert r["outcome"].outcome == TradeOutcomeStatus.OPEN
+        assert r["outcome"].outcome == TradeOutcomeStatus.SESSION_CLOSE

@@ -49,6 +49,7 @@ class Outcome(StrEnum):
     TARGET_HIT = "TARGET_HIT"
     AMBIGUOUS = "AMBIGUOUS"
     OPEN = "OPEN"
+    SESSION_CLOSE = "SESSION_CLOSE"
     PIPELINE_FAILURE = "PIPELINE_FAILURE"
 
 
@@ -352,6 +353,7 @@ def _process_one_session(session, preset, engine_config, tp_config, outcome_conf
         "TARGET_HIT": Outcome.TARGET_HIT,
         "AMBIGUOUS": Outcome.AMBIGUOUS,
         "OPEN": Outcome.OPEN,
+        "SESSION_CLOSE": Outcome.SESSION_CLOSE,
         "ENTRY_NOT_TRIGGERED": Outcome.ENTRY_NOT_TRIGGERED,
     }
     runner_outcome = outcome_map.get(

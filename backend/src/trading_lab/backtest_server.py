@@ -271,7 +271,17 @@ def _compute_metrics(results: list[dict]) -> dict:
 
     wins = [r for r in valid if str(r["outcome"]) == "TARGET_HIT"]
     losses = [r for r in valid if str(r["outcome"]) == "STOPPED"]
+    session_closes = [r for r in valid if str(r["outcome"]) == "SESSION_CLOSE"]
     open_trades = [r for r in valid if str(r["outcome"]) in ("OPEN", "AMBIGUOUS")]
+
+    # SESSION_CLOSE trades count as wins or losses based on realized_r
+    for sc in session_closes:
+        rr = sc.get("realized_r")
+        rr_val = _rational_to_number(rr) if rr is not None else 0
+        if rr_val > 0:
+            wins.append(sc)
+        else:
+            losses.append(sc)
 
     n_trades = len(valid)
     n_wins = len(wins)

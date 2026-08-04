@@ -492,7 +492,13 @@ def evaluate_trade_outcome(
     if not entry_triggered:
         outcome_type = "ENTRY_NOT_TRIGGERED"
     elif outcome_type is None:
-        outcome_type = "OPEN"
+        # Trade still open at end of available data → force close on last bar
+        outcome_type = "SESSION_CLOSE"
+        if len(post_confirmation_bars) > 0:
+            last_bar = post_confirmation_bars[-1]
+            exit_bar_index = len(post_confirmation_bars) - 1
+            exit_bar_utc_ms = _get(last_bar, "bar_utc_ms")
+            exit_price_ticks = _get(_get(last_bar, "close"), "ticks")
 
     # ── Step 6: realized_r ───────────────────────────────────────────────
 
@@ -501,6 +507,14 @@ def evaluate_trade_outcome(
         realized_r = -1
     if outcome_type == "TARGET_HIT":
         realized_r = selected_r
+    if outcome_type == "SESSION_CLOSE" and exit_price_ticks is not None:
+        sc_risk = abs(entry_ticks - stop_ticks)
+        if sc_risk > 0:
+            if is_short:
+                realized_r_raw = (entry_ticks - exit_price_ticks) / sc_risk
+            else:
+                realized_r_raw = (exit_price_ticks - entry_ticks) / sc_risk
+            realized_r = round(realized_r_raw * 100) / 100
 
     # ── Step 7: assemble TradeOutcome ────────────────────────────────────
 
@@ -798,7 +812,13 @@ def evaluate_trade_outcome_v2(
     if not entry_triggered:
         outcome_type = "ENTRY_NOT_TRIGGERED"
     elif outcome_type is None:
-        outcome_type = "OPEN"
+        # Trade still open at end of available data → force close on last bar
+        outcome_type = "SESSION_CLOSE"
+        if len(post_confirmation_bars) > 0:
+            last_bar = post_confirmation_bars[-1]
+            exit_bar_index = len(post_confirmation_bars) - 1
+            exit_bar_utc_ms = _get(last_bar, "bar_utc_ms")
+            exit_price_ticks = _get(_get(last_bar, "close"), "ticks")
 
     # ── Step 6: realized_r ───────────────────────────────────────────────
 
@@ -807,6 +827,14 @@ def evaluate_trade_outcome_v2(
         realized_r = Rational(-1, 1)
     if outcome_type == "TARGET_HIT":
         realized_r = effective_r
+    if outcome_type == "SESSION_CLOSE" and exit_price_ticks is not None:
+        if is_short:
+            realized_r_raw = (entry_ticks - exit_price_ticks) / risk_ticks
+        else:
+            realized_r_raw = (exit_price_ticks - entry_ticks) / risk_ticks
+        # Round to 2 decimal places, express as Rational
+        rounded_cents = round(realized_r_raw * 100)
+        realized_r = Rational(rounded_cents, 100)
 
     # ── Step 7: assemble TradeOutcome/v2 ─────────────────────────────────
 

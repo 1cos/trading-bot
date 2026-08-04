@@ -215,12 +215,12 @@ class TestTradeOutcomeStatus:
     def test_all_values(self):
         expected = {
             "TARGET_HIT", "STOPPED", "AMBIGUOUS",
-            "OPEN", "ENTRY_NOT_TRIGGERED",
+            "OPEN", "SESSION_CLOSE", "ENTRY_NOT_TRIGGERED",
         }
         assert {m.value for m in TradeOutcomeStatus} == expected
 
     def test_member_count(self):
-        assert len(TradeOutcomeStatus) == 5
+        assert len(TradeOutcomeStatus) == 6
 
     def test_string_comparison(self):
         assert TradeOutcomeStatus.STOPPED == "STOPPED"

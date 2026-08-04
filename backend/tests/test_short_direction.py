@@ -639,7 +639,7 @@ class TestShortOutcome:
         bars = [_bar_obj(2000, 9870, 9800)]
         r = evaluate_trade_outcome(_short_dr(), _short_tp(), bars, SHORT_OC)
         assert r["status"] == "OK"
-        assert str(r["outcome"].outcome) == "OPEN"
+        assert str(r["outcome"].outcome) == "SESSION_CLOSE"
 
     def test_same_candle_stop_and_target(self):
         """Both stop and target hit on same candle → AMBIGUOUS."""
@@ -725,7 +725,7 @@ class TestShortEndToEnd:
         assert len(results) == 1
         r = results[0]
         assert r["detection_status"] == "VALID"
-        assert r["outcome"] in ("TARGET_HIT", "STOPPED", "OPEN", "AMBIGUOUS",
+        assert r["outcome"] in ("TARGET_HIT", "STOPPED", "OPEN", "SESSION_CLOSE", "AMBIGUOUS",
                                  "ENTRY_NOT_TRIGGERED")
 
     def test_short_fail_at_break(self):

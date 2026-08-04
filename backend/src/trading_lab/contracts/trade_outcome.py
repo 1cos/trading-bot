@@ -93,6 +93,7 @@ class TradeOutcomeStatus(StrEnum):
     STOPPED = "STOPPED"
     AMBIGUOUS = "AMBIGUOUS"
     OPEN = "OPEN"
+    SESSION_CLOSE = "SESSION_CLOSE"
     ENTRY_NOT_TRIGGERED = "ENTRY_NOT_TRIGGERED"
 
 
@@ -119,6 +120,19 @@ def _require_optional_int(value: object, name: str) -> int | None:
     if not isinstance(value, int):
         raise TypeError(
             f"{name} must be an int or None, got {type(value).__name__}"
+        )
+    return value
+
+
+def _require_optional_number(value: object, name: str) -> int | float | None:
+    """Like _require_optional_int but also accepts float (for realized_r)."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise TypeError(f"{name} must be a number or None, got bool")
+    if not isinstance(value, (int, float)):
+        raise TypeError(
+            f"{name} must be a number or None, got {type(value).__name__}"
         )
     return value
 
@@ -259,7 +273,7 @@ class TradeOutcome:
             self.highest_target_achieved, "highest_target_achieved"
         )
         _require_optional_int(self.highest_target_r, "highest_target_r")
-        _require_optional_int(self.realized_r, "realized_r")
+        _require_optional_number(self.realized_r, "realized_r")
 
         _require_int(self.r2_price_ticks, "r2_price_ticks")
         _require_int(self.r3_price_ticks, "r3_price_ticks")
