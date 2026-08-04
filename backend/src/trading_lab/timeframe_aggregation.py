@@ -354,12 +354,16 @@ def load_candles_for_timeframe(
     """
     dati = Path(dati_dir)
 
-    # Locate 1m file
-    file_1m = dati / f"{symbol}_1m.csv"
-    if not file_1m.exists():
-        file_1m = dati / "1m" / f"{symbol}_1m.csv"
-
     ibkr = is_ibkr_equity(symbol, dati)
+
+    # Locate 1m file — IBKR equity always uses dati/1m/ (canonical),
+    # never dati/SYMBOL_1m.csv (legacy Yahoo).
+    if ibkr:
+        file_1m = dati / "1m" / f"{symbol}_1m.csv"
+    else:
+        file_1m = dati / f"{symbol}_1m.csv"
+        if not file_1m.exists():
+            file_1m = dati / "1m" / f"{symbol}_1m.csv"
 
     source_tf = None
     aggregation = "none"
