@@ -492,34 +492,52 @@ def aggregate_post_orb(
     candles_1m: list[dict],
     target_minutes: int,
     timezone_str: str = "America/New_York",
+    *,
+    orb_open: str = "09:30",
+    orb_close: str = "09:34",
 ) -> tuple[dict, list[dict]]:
     """Build canonical ORB summary + post-ORB aggregated candles from 1m bars.
 
-    The ORB is computed from exactly the five 1-minute bars at 09:30–09:34.
-    Post-ORB candles begin at exactly 09:35 and are aggregated to the
-    target timeframe, anchored at 09:35.
+    The ORB window is [orb_open, orb_close] inclusive — both endpoints are
+    included.  Post-ORB candles begin at the minute after orb_close.
+
+    Defaults match US equity (09:30–09:34, post-ORB at 09:35).
+    For CME futures pass orb_open="08:30", orb_close="08:34".
 
     Returns (orb_summary_candle, post_orb_candles).
-    Raises ValueError if the five ORB bars are not present.
+    Raises ValueError if the expected ORB bars are not present.
     """
     from datetime import timezone as _tz
     from zoneinfo import ZoneInfo
 
     tz = ZoneInfo(timezone_str)
 
+    # Parse ORB window
+    _orb_re = __import__("re").compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
+    if not _orb_re.match(orb_open):
+        raise ValueError(f"Invalid orb_open: {orb_open!r}")
+    if not _orb_re.match(orb_close):
+        raise ValueError(f"Invalid orb_close: {orb_close!r}")
+
+    orb_open_min = int(orb_open[:2]) * 60 + int(orb_open[3:])
+    orb_close_min = int(orb_close[:2]) * 60 + int(orb_close[3:])
+    post_orb_start = orb_close_min + 1
+    expected_orb_count = orb_close_min - orb_open_min + 1
+
     orb_bars = []
     post_bars = []
     for c in candles_1m:
         dt = datetime.fromtimestamp(c["time_ms"] / 1000, tz=_tz.utc).astimezone(tz)
         minute_of_day = dt.hour * 60 + dt.minute
-        if 570 <= minute_of_day <= 574:  # 09:30–09:34
+        if orb_open_min <= minute_of_day <= orb_close_min:
             orb_bars.append(c)
-        elif minute_of_day >= 575:  # 09:35+
+        elif minute_of_day >= post_orb_start:
             post_bars.append(c)
 
-    if len(orb_bars) != 5:
+    if len(orb_bars) != expected_orb_count:
         raise ValueError(
-            f"Expected exactly 5 ORB bars (09:30-09:34), got {len(orb_bars)}"
+            f"Expected exactly {expected_orb_count} ORB bars "
+            f"({orb_open}-{orb_close}), got {len(orb_bars)}"
         )
 
     orb_summary = {
@@ -536,16 +554,17 @@ def aggregate_post_orb(
     else:
         agg_post = _aggregate_from_anchor(post_bars, target_minutes, tz)
 
-    # Verify first post-ORB candle starts at 09:35
+    # Verify first post-ORB candle starts at expected minute
     if agg_post:
         from datetime import timezone as _tz2
         first_dt = datetime.fromtimestamp(
             agg_post[0]["time_ms"] / 1000, tz=_tz2.utc
         ).astimezone(tz)
-        if first_dt.hour * 60 + first_dt.minute != 575:
+        if first_dt.hour * 60 + first_dt.minute != post_orb_start:
+            expected_hhmm = f"{post_orb_start // 60:02d}:{post_orb_start % 60:02d}"
             raise ValueError(
                 f"First post-ORB candle starts at {first_dt.strftime('%H:%M')}, "
-                f"expected 09:35"
+                f"expected {expected_hhmm}"
             )
 
     return orb_summary, agg_post
