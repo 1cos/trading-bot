@@ -1,0 +1,60 @@
+{
+  "provider": "IBKR",
+  "instrument_type": "FUTURE",
+  "data_type": "1m_bars",
+  "format": "time_ct,open,high,low,close,volume",
+  "download_script": "scripts/download_ib_futures_1m.py",
+  "notes": "Each root symbol has a subdirectory per contract (localSymbol). Bars are naive Central Time (America/Chicago). Globex bars are preserved in raw files; the strategy pipeline filters to session window only.",
+  "root_symbols": {
+    "MES": {
+      "description": "Micro E-mini S&P 500",
+      "secType": "FUT",
+      "exchange": "CME",
+      "currency": "USD",
+      "tick_size": "0.25",
+      "tick_value_usd": "1.25",
+      "point_value_usd": "5.00",
+      "strategy_session_timezone": "America/Chicago",
+      "strategy_session_open": "08:30",
+      "strategy_session_close": "15:00",
+      "orb_start": "08:30",
+      "orb_duration_minutes": 5,
+      "contracts": []
+    },
+    "MNQ": {
+      "description": "Micro E-mini Nasdaq-100",
+      "secType": "FUT",
+      "exchange": "CME",
+      "currency": "USD",
+      "tick_size": "0.25",
+      "tick_value_usd": "0.50",
+      "point_value_usd": "2.00",
+      "strategy_session_timezone": "America/Chicago",
+      "strategy_session_open": "08:30",
+      "strategy_session_close": "15:00",
+      "orb_start": "08:30",
+      "orb_duration_minutes": 5,
+      "contracts": []
+    }
+  },
+  "contract_schema": {
+    "description": "Each entry in contracts[] is registered by the downloader after a successful IBKR download",
+    "fields": {
+      "localSymbol": "e.g. MESU6",
+      "expiry": "YYYYMMDD, e.g. 20260918",
+      "conId": "IBKR contract ID (integer)",
+      "tradingClass": "e.g. MES",
+      "exchange": "e.g. CME",
+      "file": "relative path from futures dir, e.g. 1m/MES/MESU6_1m.csv",
+      "downloaded_at": "ISO 8601 timestamp",
+      "earliest_bar": "YYYY-MM-DD",
+      "latest_bar": "YYYY-MM-DD",
+      "session_count": "integer"
+    }
+  },
+  "rollover_policy": {
+    "description": "No back-adjustment. No session may combine bars from two contracts.",
+    "single_contract_backtest": "Use one contract file directly",
+    "concatenated_backtest": "Join contracts chronologically; sessions at rollover boundary are split by contract; trade metadata includes contract identity"
+  }
+}

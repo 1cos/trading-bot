@@ -39,6 +39,15 @@ from trading_lab.timeframe_aggregation import (
     available_timeframes,
     load_candles_for_timeframe,
 )
+from trading_lab.futures_manifest import (
+    get_futures_root_symbols,
+    get_futures_spec,
+    get_validated_contracts,
+    has_validated_data,
+    is_futures_symbol,
+    futures_session_config,
+    load_futures_manifest,
+)
 from trading_lab.orb_builder import build_orb
 from trading_lab.break_finder import find_break
 from trading_lab.displacement_finder import find_displacement
@@ -167,6 +176,7 @@ CORS(app)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 DATI_DIR = REPO_ROOT / "dati"
+FUTURES_DIR = DATI_DIR / "futures"
 LAB_DIR = REPO_ROOT / "lab"
 PRESETS_DIR = REPO_ROOT / "backend" / "runtime" / "presets"
 
@@ -224,10 +234,14 @@ def _load_symbol_data(symbol: str, timeframe: str = "5m") -> dict:
 
 
 def _available_symbols() -> list[dict]:
-    """Scan dati/ and dati/1m/ for available symbol files."""
+    """Scan dati/ and dati/1m/ for available equity symbols, plus validated futures."""
     symbols = []
     seen = set()
-    # Scan both dati/ and dati/1m/
+
+    # ── Futures root symbols that must NOT appear as equity ──
+    futures_roots = set(get_futures_root_symbols(FUTURES_DIR))
+
+    # ── Equity: scan dati/ and dati/1m/ ──
     scan_dirs = [DATI_DIR]
     subdir_1m = DATI_DIR / "1m"
     if subdir_1m.is_dir():
@@ -244,6 +258,9 @@ def _available_symbols() -> list[dict]:
                 continue
             if sym in seen:
                 continue
+            # Skip futures root symbols — they must come from futures manifest
+            if sym in futures_roots:
+                continue
             # Use 5m data for date range info (or 1m if only 1m exists)
             data = _load_symbol_data(sym, "5m")
             if not data.get("dates"):
@@ -253,11 +270,46 @@ def _available_symbols() -> list[dict]:
             seen.add(sym)
             symbols.append({
                 "symbol": sym,
+                "instrument_type": "STOCK",
                 "timeframes": available_timeframes(DATI_DIR, sym),
                 "earliest": data["earliest"],
                 "latest": data["latest"],
                 "session_count": data["session_count"],
             })
+
+    # ── Futures: only validated IBKR contracts ──
+    for root in sorted(futures_roots):
+        contracts = get_validated_contracts(root, FUTURES_DIR)
+        if not contracts:
+            continue  # No validated data — do not show in Lab
+        spec = get_futures_spec(root, FUTURES_DIR)
+        # Aggregate date range across all validated contracts
+        all_earliest = min(c["earliest_bar"] for c in contracts)
+        all_latest = max(c["latest_bar"] for c in contracts)
+        total_sessions = sum(c.get("session_count", 0) for c in contracts)
+        symbols.append({
+            "symbol": root,
+            "instrument_type": "FUTURE",
+            "provider": "IBKR",
+            "root_symbol": root,
+            "contracts": [
+                {
+                    "local_symbol": c["localSymbol"],
+                    "expiry": c["expiry"],
+                    "conId": c["conId"],
+                    "earliest": c["earliest_bar"],
+                    "latest": c["latest_bar"],
+                    "session_count": c.get("session_count", 0),
+                }
+                for c in contracts
+            ],
+            "tick_size": float(spec["tick_size"]),
+            "session_timezone": spec["strategy_session_timezone"],
+            "earliest": all_earliest,
+            "latest": all_latest,
+            "session_count": total_sessions,
+            "timeframes": [],  # populated when data loading supports futures
+        })
     return symbols
 
 
@@ -730,13 +782,21 @@ def api_run():
         if not all_sessions:
             return jsonify({"error": "No sessions found for the selected date range"}), 400
 
+        # Resolve session timezone/open — futures use manifest, equity defaults to NY
+        _first_sym = symbols[0] if symbols else "SPY"
+        _fsc = futures_session_config(_first_sym, FUTURES_DIR)
+        _session_tz = _fsc["timezone"] if _fsc else "America/New_York"
+        _session_open = _fsc["session_open"] if _fsc else "09:30"
+        _orb_start = _fsc["orb_start"] if _fsc else "session_open"
+        _orb_dur = _fsc["orb_duration_minutes"] if _fsc else 5
+
         # Build preset from defaults + overrides
         base_preset = {
             "preset_id": preset_overrides.get("preset_id", "frozen_default"),
             "timeframe_minutes": tf_minutes,
-            "timezone": "America/New_York",
-            "session_open": "09:30",
-            "orb_start": "session_open",
+            "timezone": _session_tz,
+            "session_open": _session_open,
+            "orb_start": _orb_start,
             "orb_duration_minutes": preset_overrides.get("orb_duration_minutes", 5),
             "entry_model": preset_overrides.get("entry_model", "CONFIRMATION_CLOSE"),
             "entry_buffer_ticks": preset_overrides.get("entry_buffer_ticks", 0),
@@ -773,8 +833,9 @@ def api_run():
         except ValueError as ve:
             return jsonify({"error": str(ve)}), 400
 
+        _default_tick = _fsc["tick_size"] if _fsc else 0.01
         config = {
-            "tick_size": config_overrides.get("tick_size", 0.01),
+            "tick_size": config_overrides.get("tick_size", _default_tick),
             "exit_target_r": exit_target_r,
             "engine_version": "1.0.0",
         }
