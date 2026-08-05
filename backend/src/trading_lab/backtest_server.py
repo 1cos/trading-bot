@@ -48,6 +48,7 @@ from trading_lab.futures_manifest import (
     futures_session_config,
     load_futures_manifest,
 )
+from trading_lab.market_config import get_market_config, get_all_symbols as get_manifest_symbols
 from trading_lab.orb_builder import build_orb
 from trading_lab.break_finder import find_break
 from trading_lab.displacement_finder import find_displacement
@@ -177,10 +178,40 @@ CORS(app)
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 DATI_DIR = REPO_ROOT / "dati"
 FUTURES_DIR = DATI_DIR / "futures"
+STAGING_DIR = REPO_ROOT / "backend" / "runtime" / "futures_download_test"
 LAB_DIR = REPO_ROOT / "lab"
 PRESETS_DIR = REPO_ROOT / "backend" / "runtime" / "presets"
 
 _preset_store = PresetStore(PRESETS_DIR)
+
+
+def _load_futures_staging(root_symbol: str) -> dict | None:
+    """Load staging metadata for a CONTFUT download, or None if not validated.
+
+    Validates that both the CSV and the meta JSON exist.
+    """
+    sdir = STAGING_DIR / root_symbol
+    csv_path = sdir / f"{root_symbol}_contfut_1m_staging.csv"
+    meta_path = sdir / f"{root_symbol}_contfut_staging_meta.json"
+    if not csv_path.exists() or not meta_path.exists():
+        return None
+    try:
+        import json as _json
+        meta = _json.loads(meta_path.read_text())
+        # Count sessions from CSV dates
+        with open(csv_path) as f:
+            f.readline()  # skip header
+            dates = set()
+            for line in f:
+                if line.strip():
+                    ts = line.split(",")[0]
+                    dates.add(ts[:10])
+        meta["_session_count"] = len(dates)
+        meta["_source_file"] = str(csv_path.relative_to(REPO_ROOT))
+        return meta
+    except Exception:
+        return None
+
 
 # ── Data loading ─────────────────────────────────────────────────────────────
 
@@ -241,6 +272,12 @@ def _available_symbols() -> list[dict]:
     # ── Futures root symbols that must NOT appear as equity ──
     futures_roots = set(get_futures_root_symbols(FUTURES_DIR))
 
+    # ── All symbols known to market_config (for metadata enrichment) ──
+    try:
+        manifest_syms = set(get_manifest_symbols())
+    except Exception:
+        manifest_syms = set()
+
     # ── Equity: scan dati/ and dati/1m/ ──
     scan_dirs = [DATI_DIR]
     subdir_1m = DATI_DIR / "1m"
@@ -258,7 +295,7 @@ def _available_symbols() -> list[dict]:
                 continue
             if sym in seen:
                 continue
-            # Skip futures root symbols — they must come from futures manifest
+            # Skip futures root symbols — they must come from staging
             if sym in futures_roots:
                 continue
             # Use 5m data for date range info (or 1m if only 1m exists)
@@ -268,47 +305,75 @@ def _available_symbols() -> list[dict]:
             if not data.get("dates"):
                 continue
             seen.add(sym)
-            symbols.append({
+            entry = {
                 "symbol": sym,
-                "instrument_type": "STOCK",
                 "timeframes": available_timeframes(DATI_DIR, sym),
                 "earliest": data["earliest"],
                 "latest": data["latest"],
                 "session_count": data["session_count"],
-            })
+            }
+            # Enrich with market_config if available
+            if sym in manifest_syms:
+                try:
+                    mc = get_market_config(sym)
+                    entry.update({
+                        "asset_class": mc.asset_class,
+                        "provider": mc.provider,
+                        "sec_type": mc.sec_type,
+                        "exchange": mc.exchange,
+                        "currency": mc.currency,
+                        "timezone": mc.timezone,
+                        "session_open": mc.session_open,
+                        "session_close": mc.session_close,
+                        "orb_open": mc.orb_open,
+                        "orb_close": mc.orb_close,
+                        "tick_size": mc.tick_size,
+                        "point_value": mc.point_value,
+                        "price_scale": mc.price_scale,
+                    })
+                except Exception:
+                    pass
+            # Legacy fallback for symbols not yet in manifest
+            if "asset_class" not in entry:
+                entry["instrument_type"] = "STOCK"
+            symbols.append(entry)
 
-    # ── Futures: only validated IBKR contracts ──
+    # ── Futures: only with validated staging CONTFUT data ──
     for root in sorted(futures_roots):
-        contracts = get_validated_contracts(root, FUTURES_DIR)
-        if not contracts:
-            continue  # No validated data — do not show in Lab
-        spec = get_futures_spec(root, FUTURES_DIR)
-        # Aggregate date range across all validated contracts
-        all_earliest = min(c["earliest_bar"] for c in contracts)
-        all_latest = max(c["latest_bar"] for c in contracts)
-        total_sessions = sum(c.get("session_count", 0) for c in contracts)
+        staging = _load_futures_staging(root)
+        if not staging:
+            continue
+        # Must have market_config entry
+        if root not in manifest_syms:
+            continue
+        try:
+            mc = get_market_config(root)
+        except Exception:
+            continue
         symbols.append({
             "symbol": root,
-            "instrument_type": "FUTURE",
-            "provider": "IBKR",
-            "root_symbol": root,
-            "contracts": [
-                {
-                    "local_symbol": c["localSymbol"],
-                    "expiry": c["expiry"],
-                    "conId": c["conId"],
-                    "earliest": c["earliest_bar"],
-                    "latest": c["latest_bar"],
-                    "session_count": c.get("session_count", 0),
-                }
-                for c in contracts
-            ],
-            "tick_size": float(spec["tick_size"]),
-            "session_timezone": spec["strategy_session_timezone"],
-            "earliest": all_earliest,
-            "latest": all_latest,
-            "session_count": total_sessions,
-            "timeframes": [],  # populated when data loading supports futures
+            "asset_class": mc.asset_class,
+            "instrument_type": "CONTINUOUS_FUTURE",
+            "provider": mc.provider,
+            "sec_type": mc.sec_type,
+            "exchange": mc.exchange,
+            "currency": mc.currency,
+            "timezone": mc.timezone,
+            "session_open": mc.session_open,
+            "session_close": mc.session_close,
+            "orb_open": mc.orb_open,
+            "orb_close": mc.orb_close,
+            "tick_size": mc.tick_size,
+            "point_value": mc.point_value,
+            "price_scale": mc.price_scale,
+            "tradable": False,
+            "historical_only": True,
+            "conId": staging.get("conId"),
+            "source_file": staging.get("_source_file"),
+            "earliest": staging.get("first_bar", "")[:10],
+            "latest": staging.get("last_bar", "")[:10],
+            "session_count": staging.get("_session_count", 0),
+            "timeframes": [],
         })
     return symbols
 

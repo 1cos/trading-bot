@@ -365,11 +365,13 @@ async function init(){
   var sel=document.getElementById("pSymbol");
   syms.forEach(function(s){
     var o=document.createElement("option");
-    o.value=s.symbol;o.textContent=s.symbol;
+    o.value=s.symbol;
+    o.textContent=s.instrument_type==="CONTINUOUS_FUTURE"?s.symbol+" — Historical continuous future":s.symbol;
     sel.appendChild(o);
   });
   if(syms.length>0){
     updateDateRange(syms[0]);
+    _applySymbolMeta(syms[0]);
     updateTimeframes(syms[0].symbol);
   }
   sel.addEventListener("change",function(){
@@ -377,9 +379,27 @@ async function init(){
     if(s){
       updateDateRange(s);
       updateTimeframes(s.symbol);
+      _applySymbolMeta(s);
     }
   });
   state.defaults=await(await fetch(API+"/defaults")).json();
+}
+
+function _applySymbolMeta(s){
+  // Set tick_size from server metadata if available
+  if(s.tick_size!==undefined){
+    document.getElementById("pTickSize").value=s.tick_size;
+  }
+  // Disable Run for futures without loader
+  var btn=document.getElementById("btnRun");
+  var status=document.getElementById("status");
+  if(s.tradable===false){
+    btn.disabled=true;
+    status.textContent="Futures loader not connected yet";
+  }else{
+    btn.disabled=false;
+    if(status.textContent==="Futures loader not connected yet") status.textContent="";
+  }
 }
 
 function updateDateRange(s){
