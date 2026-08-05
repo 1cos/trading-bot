@@ -102,19 +102,34 @@ def dedup_candles(candles: list[dict]) -> tuple[list[dict], int]:
 
 def filter_rth_sessions(
     candles_by_date: dict[str, list[dict]],
+    *,
+    timezone_str: str = "America/New_York",
+    session_open: str = "09:30",
+    session_close: str = "16:00",
 ) -> dict[str, list[dict]]:
-    """Keep only dates that contain at least one RTH bar (09:30–15:59 ET).
+    """Keep only dates that contain at least one bar inside the strategy session.
 
-    This excludes holidays/weekends that only have extended-hours data.
+    The session window is [session_open, session_close) — the close minute
+    is exclusive.  For example session_close="16:00" means the last included
+    minute is 15:59.
+
+    Defaults match US equity RTH (09:30–15:59 America/New_York).
+    For CME futures pass timezone_str="America/Chicago",
+    session_open="08:30", session_close="15:00".
     """
-    et = ZoneInfo("America/New_York")
+    tz = ZoneInfo(timezone_str)
+    open_h, open_m = int(session_open[:2]), int(session_open[3:])
+    close_h, close_m = int(session_close[:2]), int(session_close[3:])
+    open_minutes = open_h * 60 + open_m
+    close_minutes = close_h * 60 + close_m  # exclusive
+
     result = {}
     for date_str, candles in candles_by_date.items():
         has_rth = False
         for c in candles:
-            dt = datetime.fromtimestamp(c["time_ms"] / 1000, tz=et)
-            h, m = dt.hour, dt.minute
-            if (h == 9 and m >= 30) or (10 <= h <= 14) or (h == 15):
+            dt = datetime.fromtimestamp(c["time_ms"] / 1000, tz=tz)
+            minute_of_day = dt.hour * 60 + dt.minute
+            if open_minutes <= minute_of_day < close_minutes:
                 has_rth = True
                 break
         if has_rth:
