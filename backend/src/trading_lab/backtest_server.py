@@ -36,8 +36,13 @@ from trading_lab.trade_dataset import build_trade_dataset
 from trading_lab.visual_review_exporter import export_visual_event
 from trading_lab.sequence_validator import validate_sequence
 from trading_lab.timeframe_aggregation import (
+    aggregate_candles,
+    aggregate_post_orb,
     available_timeframes,
+    filter_rth_sessions,
     load_candles_for_timeframe,
+    parse_csv_candles,
+    split_into_sessions,
 )
 from trading_lab.futures_manifest import (
     get_futures_root_symbols,
@@ -211,6 +216,102 @@ def _load_futures_staging(root_symbol: str) -> dict | None:
         return meta
     except Exception:
         return None
+
+
+# ── Futures data loading ─────────────────────────────────────────────────────
+
+# Symbols with staging CONTFUT data that the server can load.
+_FUTURES_STAGING_ENABLED = {"MES"}
+
+
+def _load_futures_candles(symbol: str, tf_minutes: int) -> dict | None:
+    """Load candles for a futures symbol from staging, or None if unavailable.
+
+    Uses market_config for timezone/session/ORB parameters and the
+    parametrized filter/aggregate functions from timeframe_aggregation.
+    """
+    if symbol not in _FUTURES_STAGING_ENABLED:
+        return None
+
+    staging = _load_futures_staging(symbol)
+    if staging is None:
+        return None
+
+    try:
+        mc = get_market_config(symbol)
+    except (KeyError, ValueError):
+        return None
+
+    csv_path = STAGING_DIR / symbol / f"{symbol}_contfut_1m_staging.csv"
+    if not csv_path.exists():
+        return None
+
+    # Parse 1m bars from staging CSV
+    all_candles = parse_csv_candles(csv_path)
+    if not all_candles:
+        return {"error": f"No candles in staging file for {symbol}"}
+
+    # Split into per-date sessions
+    candles_by_date = split_into_sessions(all_candles)
+
+    # Filter to strategy session window only (date-level)
+    candles_by_date = filter_rth_sessions(
+        candles_by_date,
+        timezone_str=mc.timezone,
+        session_open=mc.session_open,
+        session_close=mc.session_close,
+    )
+
+    # Bar-level filter: keep only bars within session window.
+    # filter_rth_sessions keeps dates with ≥1 RTH bar but preserves all
+    # bars in that date (including Globex).  For futures we must strip
+    # individual bars outside the session window.
+    from zoneinfo import ZoneInfo as _ZI
+    _ftz = _ZI(mc.timezone)
+    _open_min = int(mc.session_open[:2]) * 60 + int(mc.session_open[3:])
+    _close_min = int(mc.session_close[:2]) * 60 + int(mc.session_close[3:])
+    filtered_by_date = {}
+    for date_key, bars in candles_by_date.items():
+        kept = []
+        for c in bars:
+            dt = datetime.fromtimestamp(c["time_ms"] / 1000, tz=_ftz)
+            mod = dt.hour * 60 + dt.minute
+            if _open_min <= mod < _close_min:
+                kept.append(c)
+        if kept:
+            filtered_by_date[date_key] = kept
+    candles_by_date = filtered_by_date
+
+    # Aggregate to requested timeframe if needed
+    if tf_minutes > 1:
+        aggregated = {}
+        for date_key in sorted(candles_by_date.keys()):
+            agg = aggregate_candles(candles_by_date[date_key], tf_minutes)
+            aggregated[date_key] = agg
+        candles_by_date = aggregated
+
+    dates = sorted(candles_by_date.keys())
+
+    return {
+        "candles_by_date": candles_by_date,
+        "source_timeframe": "1m",
+        "selected_timeframe": f"{tf_minutes}m",
+        "aggregation_method": "none" if tf_minutes == 1 else f"1m_to_{tf_minutes}m",
+        "provider": "IBKR",
+        "source_file": str(csv_path),
+        "dates": dates,
+        "earliest": dates[0] if dates else None,
+        "latest": dates[-1] if dates else None,
+        "session_count": len(dates),
+        "duplicate_rows_removed": 0,
+        "instrument_type": "CONTINUOUS_FUTURE",
+        "timezone": mc.timezone,
+        "session_open": mc.session_open,
+        "session_close": mc.session_close,
+        "orb_open": mc.orb_open,
+        "orb_close": mc.orb_close,
+        "tick_size": mc.tick_size,
+    }
 
 
 # ── Data loading ─────────────────────────────────────────────────────────────
@@ -816,7 +917,10 @@ def api_run():
         sessions_data = {}
         provenance = {}
         for sym in symbols:
-            tf_data = load_candles_for_timeframe(DATI_DIR, sym, tf_minutes)
+            # Try futures staging first, then standard equity loader
+            tf_data = _load_futures_candles(sym, tf_minutes)
+            if tf_data is None:
+                tf_data = load_candles_for_timeframe(DATI_DIR, sym, tf_minutes)
             if tf_data.get("error"):
                 return jsonify({"error": tf_data["error"]}), 400
             sessions_data[sym] = tf_data
@@ -828,6 +932,7 @@ def api_run():
                 "source_file": tf_data.get("source_file"),
                 "duplicate_rows_removed": tf_data.get("duplicate_rows_removed", 0),
             }
+            _sym_tz = tf_data.get("timezone", "America/New_York")
             for date in tf_data["dates"]:
                 if start_date and date < start_date:
                     continue
@@ -837,7 +942,7 @@ def api_run():
                 all_sessions.append({
                     "symbol": sym,
                     "date": date,
-                    "market_timezone": "America/New_York",
+                    "market_timezone": _sym_tz,
                     "session_open_utc_ms": candles[0]["time_ms"],
                     "session_close_utc_ms": candles[-1]["time_ms"],
                     "timeframe": timeframe,
@@ -847,13 +952,22 @@ def api_run():
         if not all_sessions:
             return jsonify({"error": "No sessions found for the selected date range"}), 400
 
-        # Resolve session timezone/open — futures use manifest, equity defaults to NY
+        # Resolve session timezone/open/ORB — use market_config if available
         _first_sym = symbols[0] if symbols else "SPY"
-        _fsc = futures_session_config(_first_sym, FUTURES_DIR)
-        _session_tz = _fsc["timezone"] if _fsc else "America/New_York"
-        _session_open = _fsc["session_open"] if _fsc else "09:30"
-        _orb_start = _fsc["orb_start"] if _fsc else "session_open"
-        _orb_dur = _fsc["orb_duration_minutes"] if _fsc else 5
+        try:
+            _mc = get_market_config(_first_sym)
+            _session_tz = _mc.timezone
+            _session_open = _mc.session_open
+            _orb_start = _mc.orb_open
+            _orb_dur = 5
+            _default_tick = _mc.tick_size
+        except (KeyError, ValueError, FileNotFoundError):
+            _fsc = futures_session_config(_first_sym, FUTURES_DIR)
+            _session_tz = _fsc["timezone"] if _fsc else "America/New_York"
+            _session_open = _fsc["session_open"] if _fsc else "09:30"
+            _orb_start = _fsc["orb_start"] if _fsc else "session_open"
+            _orb_dur = _fsc["orb_duration_minutes"] if _fsc else 5
+            _default_tick = _fsc["tick_size"] if _fsc else 0.01
 
         # Build preset from defaults + overrides
         base_preset = {
@@ -898,7 +1012,6 @@ def api_run():
         except ValueError as ve:
             return jsonify({"error": str(ve)}), 400
 
-        _default_tick = _fsc["tick_size"] if _fsc else 0.01
         config = {
             "tick_size": config_overrides.get("tick_size", _default_tick),
             "exit_target_r": exit_target_r,
