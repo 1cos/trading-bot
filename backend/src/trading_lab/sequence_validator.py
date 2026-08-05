@@ -79,6 +79,25 @@ def validate_sequence(
     direction = config.get("direction", "LONG")
     threshold = config.get("consecutive_orb_closes", DEFAULT_CONSECUTIVE_ORB_CLOSES)
 
+    # ── ORB-specific guard ──────────────────────────────────────────────
+    # The consecutive-closes-inside-ORB-band rule is meaningful ONLY for
+    # ORB levels, where a defined zone (orb_high → orb_low) exists.
+    # For non-ORB levels this check is not applicable and is skipped.
+    level_source = config.get("level_source", "ORB_HIGH")
+    if level_source not in ("ORB_HIGH", "ORB_LOW"):
+        return {
+            "status": "NOT_APPLICABLE",
+            "reason": (
+                f"ORB band invalidation check is not applicable for "
+                f'level_source "{level_source}". '
+                f"Only ORB_HIGH and ORB_LOW use this validator."
+            ),
+            "max_valid_index": len(candles) - 1,
+            "invalidation_index": None,
+            "invalidation_reason": None,
+            "consecutive_inside_closes": [],
+        }
+
     orb_high = orb["orb_high"]
     orb_low = orb["orb_low"]
 

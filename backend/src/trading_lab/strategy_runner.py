@@ -26,7 +26,7 @@ from trading_lab.bar_adapter import raw_candle_to_canonical_bar
 from trading_lab.break_finder import find_break
 from trading_lab.detection_result_builder import build_detection_result
 from trading_lab.displacement_finder import find_displacement
-from trading_lab.orb_builder import build_orb
+from trading_lab.level_provider import build_level
 from trading_lab.tick_arithmetic import price_to_ticks
 from trading_lab.rejection_finder import find_rejection
 from trading_lab.retest_window import find_retest_window
@@ -240,32 +240,31 @@ def _process_one_session(session, preset, engine_config, tp_config, outcome_conf
 
     sc_candles = sc["candles"]
 
-    # Stage 1b — ORB construction
+    # Stage 1b — Level construction (generic dispatcher)
     # If an orb_override is provided (multi-timeframe runs with canonical
-    # 1-minute ORB), use it instead of calling build_orb.
-    # This is the ONLY strategy_runner change for multi-timeframe support.
+    # 1-minute ORB), use it instead of the dispatcher.
     orb_override = _get(session, "_orb_override")
     if orb_override is not None:
-        orb = _build_orb_from_override(orb_override, sc, engine_config)
+        level_result = _build_orb_from_override(orb_override, sc, engine_config)
     else:
-        orb = build_orb(sc_candles, sc, engine_config)
+        level_result = build_level(sc_candles, sc, engine_config)
 
-    # Stage 2
-    if orb.get("status") == "OK":
-        brk = find_break(sc_candles, orb, engine_config)
+    # Stage 2 — Break detection (generic: reads only level_price)
+    if level_result.get("status") == "OK":
+        brk = find_break(sc_candles, level_result, engine_config)
     else:
-        brk = {"status": "FAILED", "failed_stage": orb.get("failed_stage"), "reason": orb.get("reason")}
+        brk = {"status": "FAILED", "failed_stage": level_result.get("failed_stage"), "reason": level_result.get("reason")}
 
-    # Stage 3
+    # Stage 3 — Displacement (generic: reads only level_price)
     if brk.get("status") == "OK":
-        disp = find_displacement(sc_candles, orb, brk, engine_config)
+        disp = find_displacement(sc_candles, level_result, brk, engine_config)
     else:
         disp = {"status": "FAILED", "failed_stage": brk.get("failed_stage"), "reason": brk.get("reason")}
 
-    # Stage 3b — Sequence validation
+    # Stage 3b — Sequence validation (ORB-specific: skipped for non-ORB)
     seq_val = None
     if disp.get("status") == "OK":
-        seq_val = validate_sequence(sc_candles, orb, brk, disp, engine_config)
+        seq_val = validate_sequence(sc_candles, level_result, brk, disp, engine_config)
         if seq_val.get("status") == "INVALIDATED":
             max_vi = seq_val["max_valid_index"]
             first_retest = disp["first_retest_contact_index"]
@@ -280,21 +279,23 @@ def _process_one_session(session, preset, engine_config, tp_config, outcome_conf
                 # Cap the retest window via config passthrough
                 engine_config = {**engine_config, "_max_valid_index": max_vi}
 
-    # Stage 4
+    # Stage 4 — Retest window (generic: reads only level_price)
     if disp.get("status") == "OK":
-        retest = find_retest_window(sc_candles, orb, brk, disp, engine_config)
+        retest = find_retest_window(sc_candles, level_result, brk, disp, engine_config)
     else:
         retest = {"status": "FAILED", "failed_stage": disp.get("failed_stage"), "reason": disp.get("reason")}
 
-    # Stage 5
+    # Stage 5 — Rejection / Entry Candle (generic: reads only level_price)
     if retest.get("status") == "OK":
-        rej = find_rejection(sc_candles, orb, brk, disp, retest, engine_config)
+        rej = find_rejection(sc_candles, level_result, brk, disp, retest, engine_config)
     else:
         rej = {"status": "FAILED", "failed_stage": retest.get("failed_stage"), "reason": retest.get("reason")}
 
     # DetectionResult/v1
+    # Note: the key "orb" is a legacy name in the detection_result_builder
+    # contract. It accepts any LevelResult dict.
     dr_build = build_detection_result(
-        {"orb": orb, "break_result": brk, "disp_result": disp,
+        {"orb": level_result, "break_result": brk, "disp_result": disp,
          "retest_result": retest, "rej_result": rej},
         dr_metadata,
         id_factory=id_factory,

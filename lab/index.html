@@ -207,11 +207,20 @@ tr.clickable{cursor:pointer}
     </div>
     <div class="param-row" id="levelSourceRow">
       <span class="param-label">Level Source</span>
-      <span class="param-static" id="pLevelSourceDisplay">ORB_HIGH</span>
-      <input type="hidden" id="pLevelSource" value="ORB_HIGH">
+      <select id="pLevelSource" class="param-select">
+        <option value="ORB_HIGH" selected>ORB_HIGH</option>
+        <option value="ORB_LOW">ORB_LOW</option>
+        <option value="PDH" disabled>PDH (not yet implemented)</option>
+        <option value="PDL" disabled>PDL (not yet implemented)</option>
+        <option value="PMH" disabled>PMH (not yet implemented)</option>
+        <option value="PML" disabled>PML (not yet implemented)</option>
+        <option value="PIVOT_WICK" disabled>PIVOT_WICK (not yet implemented)</option>
+        <option value="OCL" disabled>OCL (not yet implemented)</option>
+      </select>
     </div>
     <div class="param-tooltip" id="levelSourceNote">
-      Derived from Direction: LONG→ORB_HIGH, SHORT→ORB_LOW, BOTH→both.
+      Level source determines which structural level the engine uses for Break &amp; Retest.
+      Currently only ORB is implemented. Future sources shown as disabled.
     </div>
   </div>
 
@@ -606,17 +615,17 @@ window.loadPreset=async function(){
 
 window.onDirectionChange=function(){
   var dir=document.getElementById("pDirection").value;
-  var display=document.getElementById("pLevelSourceDisplay");
-  var hidden=document.getElementById("pLevelSource");
-  if(dir==="BOTH"){
-    display.textContent="ORB_HIGH + ORB_LOW";
-    hidden.value="BOTH";
-  }else if(dir==="SHORT"){
-    display.textContent="ORB_LOW";
-    hidden.value="ORB_LOW";
-  }else{
-    display.textContent="ORB_HIGH";
-    hidden.value="ORB_HIGH";
+  var sel=document.getElementById("pLevelSource");
+  // Auto-derive level source from direction ONLY when level source is ORB
+  var cur=sel.value;
+  if(cur==="ORB_HIGH"||cur==="ORB_LOW"||cur==="BOTH"){
+    if(dir==="BOTH"){
+      sel.value="ORB_HIGH"; // server handles BOTH via direction param
+    }else if(dir==="SHORT"){
+      sel.value="ORB_LOW";
+    }else{
+      sel.value="ORB_HIGH";
+    }
   }
 };
 

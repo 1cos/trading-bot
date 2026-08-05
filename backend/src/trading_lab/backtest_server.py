@@ -54,7 +54,7 @@ from trading_lab.futures_manifest import (
     load_futures_manifest,
 )
 from trading_lab.market_config import get_market_config, get_all_symbols as get_manifest_symbols
-from trading_lab.orb_builder import build_orb
+from trading_lab.level_provider import build_level
 from trading_lab.break_finder import find_break
 from trading_lab.displacement_finder import find_displacement
 from trading_lab.retest_window import find_retest_window
@@ -1121,14 +1121,21 @@ def api_run():
             }
             try:
                 sc = build_session_context(candles, ec)
-                orb = build_orb(sc["candles"], sc, ec)
-                # Use canonical ORB high/low (max/min over entire window)
-                if orb["status"] == "OK":
-                    event["orb_high_ticks"] = orb["orb_high_ticks"]
-                    event["orb_low_ticks"] = orb["orb_low_ticks"]
-                brk = find_break(sc["candles"], orb, ec)
-                disp = find_displacement(sc["candles"], orb, brk, ec)
-                sv = validate_sequence(sc["candles"], orb, brk, disp, ec)
+                level_result = build_level(sc["candles"], sc, ec)
+                # Use canonical ORB high/low when available
+                if level_result["status"] == "OK":
+                    pd = level_result.get("provider_data", {})
+                    if pd.get("orb_high_ticks") is not None:
+                        event["orb_high_ticks"] = pd["orb_high_ticks"]
+                        event["orb_low_ticks"] = pd["orb_low_ticks"]
+                    # DEPRECATED legacy path — remove when all consumers
+                    # read from provider_data:
+                    elif "orb_high_ticks" in level_result:
+                        event["orb_high_ticks"] = level_result["orb_high_ticks"]
+                        event["orb_low_ticks"] = level_result["orb_low_ticks"]
+                brk = find_break(sc["candles"], level_result, ec)
+                disp = find_displacement(sc["candles"], level_result, brk, ec)
+                sv = validate_sequence(sc["candles"], level_result, brk, disp, ec)
                 if sv["status"] == "INVALIDATED":
                     event["invalidation_index"] = sv["invalidation_index"]
                     event["consecutive_inside_closes"] = [
@@ -1147,9 +1154,9 @@ def api_run():
                 rc = {**ec}
                 if sv["status"] == "INVALIDATED":
                     rc["_max_valid_index"] = sv["max_valid_index"]
-                rt = find_retest_window(sc["candles"], orb, brk, disp, rc)
+                rt = find_retest_window(sc["candles"], level_result, brk, disp, rc)
                 if rt["status"] == "OK":
-                    rej = find_rejection(sc["candles"], orb, brk, disp, rt, rc)
+                    rej = find_rejection(sc["candles"], level_result, brk, disp, rt, rc)
                     event["wick_depth_ticks"] = rej.get("wick_depth_ticks")
                     # Geometry inspection fields
                     geom = rej.get("geometry", {})
