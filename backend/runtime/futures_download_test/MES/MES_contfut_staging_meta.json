@@ -1,0 +1,19 @@
+{
+  "provider": "IBKR",
+  "symbol": "MES",
+  "secType": "CONTFUT",
+  "conId": 793356217,
+  "exchange": "CME",
+  "multiplier": "5",
+  "minTick": 0.25,
+  "download_params": {
+    "durationStr": "5 D",
+    "barSizeSetting": "1 min",
+    "whatToShow": "TRADES",
+    "useRTH": false
+  },
+  "first_bar": "2026-07-29 17:00:00-05:00",
+  "last_bar": "2026-08-04 21:37:00-05:00",
+  "bar_count": 5798,
+  "downloaded_at": "2026-08-04T21:48:28.391740-05:00"
+}
