@@ -294,6 +294,7 @@ tr.clickable{cursor:pointer}
   <div class="run-section">
     <button class="btn-run" id="btnRun" onclick="runBacktest()">RUN BACKTEST</button>
     <div class="run-status" id="runStatus"></div>
+    <div id="futuresBanner" style="display:none;margin-top:6px;padding:4px 8px;background:#3a2a10;color:#e8b840;border-radius:4px;font-size:11px;text-align:center"></div>
   </div>
 </div>
 
@@ -386,19 +387,35 @@ async function init(){
 }
 
 function _applySymbolMeta(s){
+  var btn=document.getElementById("btnRun");
+  var banner=document.getElementById("futuresBanner");
+  var runStatus=document.getElementById("runStatus");
+
   // Set tick_size from server metadata if available
   if(s.tick_size!==undefined){
     document.getElementById("pTickSize").value=s.tick_size;
   }
-  // Disable Run for futures without loader
-  var btn=document.getElementById("btnRun");
-  var status=document.getElementById("status");
-  if(s.tradable===false){
-    btn.disabled=true;
-    status.textContent="Futures loader not connected yet";
+
+  // Futures with staging data loaded on server → Run enabled + banner
+  // Futures without staging → Run disabled
+  // Equity → normal
+  if(s.instrument_type==="CONTINUOUS_FUTURE"){
+    if(s.symbol==="MES"){
+      btn.disabled=false;
+      banner.style.display="block";
+      banner.textContent="Historical continuous future \u2014 not orderable";
+      if(runStatus.textContent==="Futures loader not connected yet") runStatus.textContent="";
+    }else{
+      btn.disabled=true;
+      banner.style.display="block";
+      banner.textContent="Futures loader not connected yet";
+      runStatus.textContent="";
+    }
   }else{
     btn.disabled=false;
-    if(status.textContent==="Futures loader not connected yet") status.textContent="";
+    banner.style.display="none";
+    banner.textContent="";
+    if(runStatus.textContent==="Futures loader not connected yet") runStatus.textContent="";
   }
 }
 
