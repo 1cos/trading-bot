@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "instruments": {
+    "SPY": {
+      "asset_class": "EQUITY",
+      "provider": "IBKR",
+      "sec_type": "STK",
+      "exchange": "SMART",
+      "currency": "USD",
+      "timezone": "America/New_York",
+      "session_open": "09:30",
+      "session_close": "16:00",
+      "orb_open": "09:30",
+      "orb_close": "09:34",
+      "tick_size": 0.01,
+      "point_value": 1.0,
+      "price_scale": 2
+    },
+    "NVDA": {
+      "asset_class": "EQUITY",
+      "provider": "IBKR",
+      "sec_type": "STK",
+      "exchange": "SMART",
+      "currency": "USD",
+      "timezone": "America/New_York",
+      "session_open": "09:30",
+      "session_close": "16:00",
+      "orb_open": "09:30",
+      "orb_close": "09:34",
+      "tick_size": 0.01,
+      "point_value": 1.0,
+      "price_scale": 2
+    },
+    "MES": {
+      "asset_class": "FUTURE",
+      "provider": "IBKR",
+      "sec_type": "CONTFUT",
+      "exchange": "CME",
+      "currency": "USD",
+      "timezone": "America/Chicago",
+      "session_open": "08:30",
+      "session_close": "15:00",
+      "orb_open": "08:30",
+      "orb_close": "08:34",
+      "tick_size": 0.25,
+      "point_value": 5.0,
+      "price_scale": 2
+    },
+    "MNQ": {
+      "asset_class": "FUTURE",
+      "provider": "IBKR",
+      "sec_type": "CONTFUT",
+      "exchange": "CME",
+      "currency": "USD",
+      "timezone": "America/Chicago",
+      "session_open": "08:30",
+      "session_close": "15:00",
+      "orb_open": "08:30",
+      "orb_close": "08:34",
+      "tick_size": 0.25,
+      "point_value": 2.0,
+      "price_scale": 2
+    }
+  }
+}
