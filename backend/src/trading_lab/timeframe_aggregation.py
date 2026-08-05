@@ -222,14 +222,18 @@ def parse_csv_candles(filepath: str | Path) -> list[dict]:
     Supports:
     - TradingView/yfinance: 3 header rows, columns Price,Close,High,Low,Open,Volume
     - Simple 1m: 1 header row, columns time_et,open,high,low,close,volume
+    - Futures staging: 1 header row, columns time_utc,open,high,low,close,volume
+      (or time_ct — timestamps are ISO with explicit offset, e.g. 2026-07-29T17:00:00-05:00)
     """
     candles = []
     with open(filepath) as f:
         reader = csv.reader(f)
         header = next(reader, [])
 
+        first_col = header[0].strip().lower() if header else ""
+
         # Detect format by first header cell
-        if header and header[0].strip().lower() == "time_et":
+        if first_col == "time_et":
             # Simple 1m format: time_et,open,high,low,close,volume
             # Timestamps are naive Eastern Time — interpret with America/New_York
             # which handles EST (-05:00) and EDT (-04:00) automatically.
@@ -243,6 +247,31 @@ def parse_csv_candles(filepath: str | Path) -> list[dict]:
                     aware = naive.replace(tzinfo=et)
                 except ValueError:
                     continue
+                candles.append({
+                    "time_ms": int(aware.timestamp() * 1000),
+                    "open": float(row[1]),
+                    "high": float(row[2]),
+                    "low": float(row[3]),
+                    "close": float(row[4]),
+                    "volume": int(float(row[5])) if len(row) > 5 else 0,
+                })
+        elif first_col in ("time_utc", "time_ct"):
+            # Futures staging format: ISO timestamps with explicit offset.
+            # The offset encodes the absolute instant — no timezone inference needed.
+            for row in reader:
+                if not row[0].strip():
+                    continue
+                ts_str = row[0].strip()
+                try:
+                    aware = datetime.fromisoformat(ts_str)
+                except ValueError as e:
+                    raise ValueError(
+                        f"Invalid timestamp in futures CSV: {ts_str!r}"
+                    ) from e
+                if aware.tzinfo is None:
+                    raise ValueError(
+                        f"Futures CSV timestamp missing offset: {ts_str!r}"
+                    )
                 candles.append({
                     "time_ms": int(aware.timestamp() * 1000),
                     "open": float(row[1]),
