@@ -56,7 +56,7 @@ class TestFailedStage:
 
 class TestLevelSource:
     def test_all_values(self):
-        expected = {"ORB_HIGH", "ORB_LOW", "PDH", "PDL", "PMH", "PML", "OB", "SR"}
+        expected = {"ORB_HIGH", "ORB_LOW", "PREVIOUS_DAY_HIGH", "PREVIOUS_DAY_LOW", "PMH", "PML", "OB", "SR"}
         assert {m.value for m in LevelSource} == expected
 
     def test_member_count(self):

@@ -21,7 +21,10 @@ SCHEMA_VERSION = "StrategyPreset/v1"
 STRATEGY_ID = "BDRR"
 
 _VALID_DIRECTIONS = frozenset({"LONG", "SHORT", "BOTH"})
-_VALID_LEVEL_SOURCES = frozenset({"ORB_HIGH", "ORB_LOW", "BOTH"})
+_VALID_LEVEL_SOURCES = frozenset({
+    "ORB_HIGH", "ORB_LOW", "BOTH",
+    "PREVIOUS_DAY_HIGH", "PREVIOUS_DAY_LOW",
+})
 _VALID_ENTRY_MODELS = frozenset({"CONFIRMATION_CLOSE", "BREAK_OF_SIGNAL_BAR"})
 _VALID_TIMEFRAMES = frozenset({"1m", "5m", "10m", "15m", "30m"})
 
@@ -141,7 +144,7 @@ def validate_preset_params(params: dict) -> list[str]:
                     f"{key} must be a valid decimal string or null, got {v!r}"
                 )
 
-    # Direction/Level Source coherence — only 3 canonical pairs allowed
+    # Direction/Level Source coherence
     dir_val = params.get("direction")
     ls_val = params.get("level_source")
     if dir_val and ls_val:
@@ -149,12 +152,15 @@ def validate_preset_params(params: dict) -> list[str]:
             ("LONG", "ORB_HIGH"),
             ("SHORT", "ORB_LOW"),
             ("BOTH", "BOTH"),
+            ("SHORT", "PREVIOUS_DAY_HIGH"),
+            ("LONG", "PREVIOUS_DAY_LOW"),
         }
         if (dir_val, ls_val) not in canonical_pairs:
             errors.append(
                 f"direction '{dir_val}' + level_source '{ls_val}' is not "
                 f"a valid canonical pair; allowed: LONG/ORB_HIGH, "
-                f"SHORT/ORB_LOW, BOTH/BOTH"
+                f"SHORT/ORB_LOW, BOTH/BOTH, "
+                f"SHORT/PREVIOUS_DAY_HIGH, LONG/PREVIOUS_DAY_LOW"
             )
 
     return errors

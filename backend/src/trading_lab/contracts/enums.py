@@ -46,8 +46,8 @@ class LevelSource(StrEnum):
 
     ORB_HIGH = "ORB_HIGH"
     ORB_LOW = "ORB_LOW"
-    PDH = "PDH"
-    PDL = "PDL"
+    PREVIOUS_DAY_HIGH = "PREVIOUS_DAY_HIGH"
+    PREVIOUS_DAY_LOW = "PREVIOUS_DAY_LOW"
     PMH = "PMH"
     PML = "PML"
     OB = "OB"
