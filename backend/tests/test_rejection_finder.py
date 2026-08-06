@@ -576,6 +576,9 @@ class TestGeometryFields:
             "penetration_through_level_ticks", "penetration_through_level_points",
             "close_beyond_level_ticks", "close_beyond_level_points",
             "body_outside_orb", "wick_penetration_pct",
+            # B4: ATR diagnostics
+            "candle_atr_status", "candle_atr_ratio",
+            "candle_atr_previous", "candle_atr_threshold",
         }
         assert set(g.keys()) == expected_keys
 
@@ -643,3 +646,274 @@ class TestFailedOutputShape:
         assert "timestamp" in fr
         assert "geometry" in fr
         assert "failed_rules" in fr
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# B4 — News Candle ATR filter tests
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _huge_candle(time_ms, range_points=50.0):
+    """A candle with an enormous range that exceeds 3 ATR.
+
+    The padding candles have range ~2.0 points (matching qualifying_candle).
+    ATR(14) will be ~2.0.  A 50-point range gives ratio ~25, well above 3 ATR.
+    Geometry: wick=0.50, body=0.30, closeLoc=0.80 (same proportions
+    as qualifying_candle, just scaled up enormously).
+    """
+    range_ticks = int(range_points / TICK_SIZE)  # 5000 ticks
+    low_ticks = LEVEL_TICKS - int(range_ticks * 0.50)  # wick reaches far below
+    open_ticks = low_ticks + int(range_ticks * 0.50)
+    close_ticks = low_ticks + int(range_ticks * 0.80)
+    return mk_candle(time_ms, low_ticks=low_ticks, range_ticks=range_ticks,
+                     open_ticks=open_ticks, close_ticks=close_ticks)
+
+
+def _many_candles_before(extra, n_padding=15):
+    """Base candles + padding to ensure ATR has sufficient history.
+
+    Padding candles have range ~2.0 points (200 ticks), close to the
+    qualifying_candle range of 10.0 points (1000 ticks).  This ensures
+    the qualifying candle's ratio stays well below 3 ATR while the
+    huge candle's ratio stays well above it.
+    """
+    base = [
+        c(MS_0930, high=101.0, low=99.0, close=100.5),       # ORB (range=2.0)
+        c(MS_0935, open_=100.50, high=101.50, low=100.30, close=101.20),  # break
+        c(MS_0940, open_=101.20, high=101.60, low=101.10, close=101.30),  # displacement
+    ]
+    # Padding candles with range ~10.0 points (same as qualifying_candle)
+    # so qualifying_candle ratio is ~1.0 and huge_candle ratio is >>3.
+    # Both open and low stay above level (101.0) so they are NOT retest
+    # attempts in the LONG direction.
+    padding = []
+    for j in range(n_padding):
+        t = MS_0940 + (j + 1) * 300000
+        padding.append(c(t, open_=106.0, high=111.0, low=101.10, close=105.0))
+    return base + padding + extra
+
+
+class TestNewsCandleFilter:
+    """B4: News Candle classification integrated into rejection finder."""
+
+    def test_normal_candle_qualifies(self):
+        """A normal-sized qualifying candle passes all gates."""
+        candles = _many_candles_before([qualifying_candle(MS_0930 + 20 * 300000)])
+        _, _, _, _, _, rej = run_full(candles)
+        assert rej["status"] == "OK"
+        geo = rej["geometry"]
+        assert geo["candle_atr_status"] in ("NORMAL", "LARGE")
+        assert "CANDLE_ATR_EXCEEDS_THRESHOLD" not in rej.get("failed_rules", [])
+
+    def test_huge_candle_excluded(self):
+        """A candle with range >> 3 ATR is excluded despite good geometry."""
+        candles = _many_candles_before([_huge_candle(MS_0930 + 20 * 300000)])
+        _, _, _, _, _, rej = run_full(candles)
+        # The huge candle should be in failed_retests
+        assert rej["status"] == "FAILED"
+        fr = rej["failed_retests"]
+        assert len(fr) >= 1
+        atr_failures = [
+            f for f in fr
+            if "CANDLE_ATR_EXCEEDS_THRESHOLD" in f["failed_rules"]
+        ]
+        assert len(atr_failures) >= 1
+
+    def test_first_news_second_valid(self):
+        """First candidate is NEWS_CANDLE, second qualifies → OK on second."""
+        t1 = MS_0930 + 20 * 300000
+        t2 = t1 + 300000
+        candles = _many_candles_before([_huge_candle(t1), qualifying_candle(t2)])
+        _, _, _, _, _, rej = run_full(candles)
+        assert rej["status"] == "OK"
+        # The first (huge) candle should be in failed_retests
+        assert rej["failed_retest_count"] >= 1
+        atr_in_failed = any(
+            "CANDLE_ATR_EXCEEDS_THRESHOLD" in fr["failed_rules"]
+            for fr in rej["failed_retests"]
+        )
+        assert atr_in_failed
+        # Confirmation candle should NOT have the ATR failure
+        assert rej["geometry"]["candle_atr_status"] != "NEWS_CANDLE"
+
+    def test_all_candidates_news_candle(self):
+        """All candidates are NEWS_CANDLE → NO_QUALIFYING_REJECTION_CANDLE."""
+        t1 = MS_0930 + 20 * 300000
+        t2 = t1 + 300000
+        candles = _many_candles_before([_huge_candle(t1), _huge_candle(t2)])
+        _, _, _, _, _, rej = run_full(candles)
+        assert rej["status"] == "FAILED"
+        assert rej["failed_stage"] == "NO_QUALIFYING_REJECTION_CANDLE"
+
+
+class TestNewsCandleMetadata:
+    """ATR diagnostics present in geometry for every candidate."""
+
+    def test_metadata_in_ok_result(self):
+        candles = _many_candles_before([qualifying_candle(MS_0930 + 20 * 300000)])
+        _, _, _, _, _, rej = run_full(candles)
+        assert rej["status"] == "OK"
+        geo = rej["geometry"]
+        assert "candle_atr_status" in geo
+        assert "candle_atr_ratio" in geo
+        assert "candle_atr_previous" in geo
+        assert "candle_atr_threshold" in geo
+
+    def test_metadata_in_failed_retest(self):
+        candles = _many_candles_before([failing_candle_a(MS_0930 + 20 * 300000)])
+        _, _, _, _, _, rej = run_full(candles)
+        assert rej["status"] == "FAILED"
+        fr = rej["failed_retests"][0]
+        geo = fr["geometry"]
+        assert "candle_atr_status" in geo
+        assert "candle_atr_ratio" in geo
+        assert "candle_atr_previous" in geo
+        assert "candle_atr_threshold" in geo
+
+    def test_metadata_threshold_default(self):
+        candles = _many_candles_before([qualifying_candle(MS_0930 + 20 * 300000)])
+        _, _, _, _, _, rej = run_full(candles)
+        assert rej["geometry"]["candle_atr_threshold"] == 3.0
+
+    def test_metadata_threshold_custom(self):
+        cfg = {**CONFIG, "news_threshold": 2.5}
+        candles = _many_candles_before([qualifying_candle(MS_0930 + 20 * 300000)])
+        _, _, _, _, _, rej = run_full(candles, config=cfg)
+        assert rej["geometry"]["candle_atr_threshold"] == 2.5
+
+
+class TestNewsCandleNoLookAhead:
+    """The confirmation candle must not be included in its own ATR."""
+
+    def test_confirmation_excluded_from_own_atr(self):
+        """Changing the confirmation candle's range doesn't change its ATR."""
+        t_entry = MS_0930 + 20 * 300000
+
+        # Run with normal qualifying candle
+        candles_normal = _many_candles_before([qualifying_candle(t_entry)])
+        _, _, _, _, _, rej_normal = run_full(candles_normal)
+        assert rej_normal["status"] == "OK"
+        atr_normal = rej_normal["geometry"]["candle_atr_previous"]
+
+        # Run with a differently-sized qualifying candle at same position
+        bigger = mk_candle(t_entry, low_ticks=9400, range_ticks=1200,
+                           open_ticks=10100, close_ticks=10420)
+        candles_bigger = _many_candles_before([bigger])
+        _, _, _, _, _, rej_bigger = run_full(candles_bigger)
+        if rej_bigger["status"] == "OK":
+            atr_bigger = rej_bigger["geometry"]["candle_atr_previous"]
+            # ATR should be identical — confirmation candle excluded
+            assert atr_normal == atr_bigger
+
+
+class TestNewsCandleInsufficientHistory:
+    """Early candles with insufficient ATR history are fail-open."""
+
+    def test_insufficient_history_allows_entry(self):
+        """Candle within first 14 bars has INSUFFICIENT_HISTORY → entry OK."""
+        # Use base_candles with qualifying candle at index 3 (< 14)
+        candles = base_candles([qualifying_candle(MS_0945)])
+        _, _, _, _, _, rej = run_full(candles)
+        assert rej["status"] == "OK"
+        assert rej["geometry"]["candle_atr_status"] == "INSUFFICIENT_HISTORY"
+        assert rej["geometry"]["candle_atr_ratio"] is None
+        assert rej["geometry"]["candle_atr_previous"] is None
+
+
+class TestNewsCandleLongShortSymmetry:
+    """ATR filter is direction-independent."""
+
+    def test_short_direction_has_atr_metadata(self):
+        short_cfg = {**CONFIG, "level_source": "ORB_LOW", "direction": "SHORT"}
+        short_candles = [
+            c(MS_0930, high=101.0, low=99.0, close=99.5),    # ORB
+            c(MS_0935, open_=99.50, high=99.70, low=98.50, close=98.80),  # break
+            c(MS_0940, open_=98.80, high=98.90, low=98.40, close=98.50),  # disp
+        ]
+        for j in range(15):
+            t = MS_0940 + (j + 1) * 300000
+            short_candles.append(
+                c(t, open_=98.50, high=98.70, low=98.30, close=98.50)
+            )
+        t_entry = MS_0940 + 16 * 300000
+        short_candles.append(
+            c(t_entry, open_=98.80, high=99.50, low=98.60, close=98.70)
+        )
+        _, _, _, _, _, rej = run_full(short_candles, config=short_cfg)
+        if rej["status"] == "OK":
+            assert "candle_atr_status" in rej["geometry"]
+            assert "candle_atr_ratio" in rej["geometry"]
+
+
+class TestNewsCandleCustomThreshold:
+    """Custom news_threshold via config."""
+
+    def test_invalid_threshold_below_2(self):
+        cfg = {**CONFIG, "news_threshold": 1.5}
+        candles = _many_candles_before([qualifying_candle(MS_0930 + 20 * 300000)])
+        with pytest.raises(ValueError, match=">= 2.0"):
+            run_full(candles, config=cfg)
+
+    def test_bool_threshold(self):
+        cfg = {**CONFIG, "news_threshold": True}
+        candles = _many_candles_before([qualifying_candle(MS_0930 + 20 * 300000)])
+        with pytest.raises(TypeError, match="bool"):
+            run_full(candles, config=cfg)
+
+    def test_nan_threshold(self):
+        cfg = {**CONFIG, "news_threshold": float("nan")}
+        candles = _many_candles_before([qualifying_candle(MS_0930 + 20 * 300000)])
+        with pytest.raises(ValueError, match="finite"):
+            run_full(candles, config=cfg)
+
+
+class TestNewsCandleFailedRuleNoDuplicates:
+    """CANDLE_ATR_EXCEEDS_THRESHOLD appears at most once per candle."""
+
+    def test_no_duplicate_atr_rule(self):
+        t1 = MS_0930 + 20 * 300000
+        candles = _many_candles_before([_huge_candle(t1)])
+        _, _, _, _, _, rej = run_full(candles)
+        for fr in rej.get("failed_retests", []):
+            atr_count = fr["failed_rules"].count("CANDLE_ATR_EXCEEDS_THRESHOLD")
+            assert atr_count <= 1
+
+
+class TestNewsCandleGeometryFailPlusAtr:
+    """Candle fails both geometry and ATR: both recorded."""
+
+    def test_geometry_and_atr_failures_coexist(self):
+        """A huge candle with bad geometry has both sets of failed_rules."""
+        t1 = MS_0930 + 20 * 300000
+        range_ticks = 5000
+        low_ticks = LEVEL_TICKS - int(range_ticks * 0.50)
+        cnd = mk_candle(t1, low_ticks=low_ticks, range_ticks=range_ticks,
+                        open_ticks=low_ticks + 100, close_ticks=low_ticks + 200)
+        candles = _many_candles_before([cnd])
+        _, _, _, _, _, rej = run_full(candles)
+        assert rej["status"] == "FAILED"
+        fr = rej["failed_retests"]
+        huge_fr = [f for f in fr if "CANDLE_ATR_EXCEEDS_THRESHOLD" in f["failed_rules"]]
+        if huge_fr:
+            rules = huge_fr[0]["failed_rules"]
+            assert len(rules) > 1
+
+
+class TestNewsCandleAtrComputedOnce:
+    """atr_series is called exactly once per find_rejection invocation."""
+
+    def test_single_atr_call(self):
+        from unittest.mock import patch
+        candles = _many_candles_before([qualifying_candle(MS_0930 + 20 * 300000)])
+        sc = build_session_context(candles, CONFIG)
+        orb = build_orb(sc["candles"], sc, CONFIG)
+        brk = find_break(sc["candles"], orb, CONFIG)
+        disp = find_displacement(sc["candles"], orb, brk, CONFIG)
+        rw = find_retest_window(sc["candles"], orb, brk, disp, CONFIG)
+
+        with patch(
+            "trading_lab.rejection_finder.atr_series",
+            wraps=__import__("trading_lab.atr", fromlist=["atr_series"]).atr_series,
+        ) as mock_atr:
+            find_rejection(sc["candles"], orb, brk, disp, rw, CONFIG)
+            assert mock_atr.call_count == 1

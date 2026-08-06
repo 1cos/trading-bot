@@ -36,6 +36,8 @@ Output (OK):
 
 from __future__ import annotations
 
+from trading_lab.atr import atr_series
+from trading_lab.news_candle import classify_candle_atr
 from trading_lab.tick_arithmetic import price_to_ticks, ticks_to_points
 
 
@@ -363,6 +365,14 @@ def find_rejection(
             "qualifies": len(failed_rules) == 0,
         }
 
+    # ── ATR cache (O(n), computed once) ─────────────────────────────────
+    # Used by the News Candle filter (spec §9).  previous_atr for candle
+    # i is atr_cache[i-1]; candle i is never included in its own ATR.
+    # initial_previous_close=None: the session array starts from the
+    # first available candle; close before session is out of scope for B4.
+    news_threshold = config.get("news_threshold", 3.0)
+    atr_cache = atr_series(candles, 14)
+
     # ── Scan retest window ───────────────────────────────────────────────
     failed_retests: list[dict] = []
     window_start = retest_result["retest_window_start_index"]
@@ -380,6 +390,27 @@ def find_rejection(
                 continue  # not a retest attempt
 
         result = evaluate_geometry(cnd)
+
+        # ── News Candle classification (spec §9) ─────────────────────
+        # previous_atr for candle i = atr_cache[i-1] (excludes candle i)
+        prev_atr_val = atr_cache[i - 1] if i >= 1 else None
+        atr_classification = classify_candle_atr(
+            cnd, prev_atr_val, news_threshold=news_threshold,
+        )
+
+        # Inject ATR diagnostics into geometry (always, for every candidate)
+        result["geometry"]["candle_atr_status"] = atr_classification.status.value
+        result["geometry"]["candle_atr_ratio"] = atr_classification.ratio
+        result["geometry"]["candle_atr_previous"] = atr_classification.previous_atr
+        result["geometry"]["candle_atr_threshold"] = atr_classification.news_threshold
+
+        # ATR gate: NEWS_CANDLE adds a failed rule
+        is_news_candle = (
+            atr_classification.status.value == "NEWS_CANDLE"
+        )
+        if is_news_candle:
+            result["failed_rules"].append("CANDLE_ATR_EXCEEDS_THRESHOLD")
+            result["qualifies"] = False
 
         if result["qualifies"]:
             # Record wick depth: how far the wick penetrated the ORB boundary
