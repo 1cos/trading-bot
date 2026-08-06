@@ -3,6 +3,7 @@
 import pytest
 
 from trading_lab.contracts.enums import (
+    CandleAtrStatus,
     DetectionStatus,
     Direction,
     EntryPatternType,
@@ -179,9 +180,37 @@ class TestZoneStatus:
             ZoneStatus("EXPIRED")
 
 
+class TestCandleAtrStatus:
+    def test_all_values(self):
+        expected = {
+            "NORMAL", "LARGE", "NEWS_CANDLE",
+            "INSUFFICIENT_HISTORY", "ATR_ZERO",
+        }
+        assert {m.value for m in CandleAtrStatus} == expected
+
+    def test_member_count(self):
+        assert len(CandleAtrStatus) == 5
+
+    def test_string_comparison(self):
+        assert CandleAtrStatus.NEWS_CANDLE == "NEWS_CANDLE"
+        assert CandleAtrStatus.NORMAL == "NORMAL"
+        assert CandleAtrStatus.LARGE == "LARGE"
+        assert CandleAtrStatus.INSUFFICIENT_HISTORY == "INSUFFICIENT_HISTORY"
+        assert CandleAtrStatus.ATR_ZERO == "ATR_ZERO"
+
+    def test_unique_values(self):
+        values = [m.value for m in CandleAtrStatus]
+        assert len(values) == len(set(values))
+
+    def test_invalid_value(self):
+        with pytest.raises(ValueError):
+            CandleAtrStatus("OVERSIZED")
+
+
 class TestPackageExports:
     def test_all_enums_importable(self):
         from trading_lab.contracts import (
+            CandleAtrStatus,
             DetectionStatus,
             Direction,
             EntryPatternType,
@@ -203,6 +232,7 @@ class TestPackageExports:
         assert EntryPatternType.SINGLE_CANDLE_REJECTION == "SINGLE_CANDLE_REJECTION"
         assert ZoneType.VALIDATED_PIVOT_ZONE == "VALIDATED_PIVOT_ZONE"
         assert ZoneStatus.ACTIVE == "ACTIVE"
+        assert CandleAtrStatus.NEWS_CANDLE == "NEWS_CANDLE"
 
     def test_new_contracts_importable(self):
         from trading_lab.contracts import (

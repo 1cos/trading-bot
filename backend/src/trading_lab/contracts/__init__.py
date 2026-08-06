@@ -17,6 +17,7 @@ from trading_lab.contracts.distances import (
 )
 from trading_lab.contracts.entry_pattern import EntryPatternResult
 from trading_lab.contracts.enums import (
+    CandleAtrStatus,
     ConfluenceStatus,
     DetectionStatus,
     Direction,
@@ -52,6 +53,7 @@ __all__ = [
     "AbsoluteTickDistance",
     "Bar",
     "CandidateStatus",
+    "CandleAtrStatus",
     "CompositeZone",
     "ConfluenceResult",
     "ConfluenceStatus",

@@ -169,3 +169,21 @@ class ZoneStatus(StrEnum):
     ACTIVE = "ACTIVE"
     SECONDARY = "SECONDARY"
     STORED = "STORED"
+
+
+@unique
+class CandleAtrStatus(StrEnum):
+    """News candle classification status (spec §9.3).
+
+    NORMAL               — ratio <= 2.0.
+    LARGE                — 2.0 < ratio <= news_threshold.
+    NEWS_CANDLE          — ratio > news_threshold (setup excluded).
+    INSUFFICIENT_HISTORY — ATR could not be computed (not enough prior candles).
+    ATR_ZERO             — ATR is zero (all prior candles had zero range).
+    """
+
+    NORMAL = "NORMAL"
+    LARGE = "LARGE"
+    NEWS_CANDLE = "NEWS_CANDLE"
+    INSUFFICIENT_HISTORY = "INSUFFICIENT_HISTORY"
+    ATR_ZERO = "ATR_ZERO"
