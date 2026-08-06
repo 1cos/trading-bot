@@ -110,14 +110,14 @@ def find_displacement(
             ),
         }
 
-    _supported_sources = ("ORB_HIGH", "ORB_LOW")
-    if config["level_source"] not in _supported_sources:
+    from trading_lab.level_provider import IMPLEMENTED_SOURCES
+    if config["level_source"] not in IMPLEMENTED_SOURCES:
         return {
             "status": "FAILED",
             "failed_stage": "UNSUPPORTED_CONFIGURATION",
             "reason": (
-                f'level_source "{config["level_source"]}" is not implemented '
-                f'in this stage; only "ORB_HIGH" and "ORB_LOW" are supported'
+                f'level_source "{config["level_source"]}" is not implemented; '
+                f"supported: {sorted(IMPLEMENTED_SOURCES)}"
             ),
         }
 
