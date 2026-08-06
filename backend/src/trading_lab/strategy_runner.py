@@ -191,7 +191,7 @@ def _build_orb_from_override(override, session_context, engine_config):
     }
 
 
-def _process_one_session(session, preset, engine_config, tp_config, outcome_config, config, id_factory=None, *, _evaluator=None):
+def _process_one_session(session, preset, engine_config, tp_config, outcome_config, config, id_factory=None, *, all_sessions=None, _evaluator=None):
     run_record_id = _uuidv4()
     tick_size = config["tick_size"]
 
@@ -247,7 +247,7 @@ def _process_one_session(session, preset, engine_config, tp_config, outcome_conf
     if orb_override is not None:
         level_result = _build_orb_from_override(orb_override, sc, engine_config)
     else:
-        level_result = build_level(sc_candles, sc, engine_config)
+        level_result = build_level(sc_candles, sc, engine_config, all_sessions=all_sessions)
 
     # Stage 2 — Break detection (generic: reads only level_price)
     if level_result.get("status") == "OK":
@@ -474,6 +474,7 @@ def run_bdrr_strategy(sessions, preset, config, *, id_factory=None):
         record = _process_one_session(
             session, preset, engine_config, tp_config, outcome_config, config,
             id_factory=id_factory,
+            all_sessions=sessions,
         )
         results.append(record)
 
@@ -558,6 +559,7 @@ def run_bdrr_strategy_v2(sessions, preset, config, *, id_factory=None):
         record = _process_one_session(
             session, preset, engine_config, tp_config, outcome_config, config,
             id_factory=id_factory,
+            all_sessions=sessions,
             _evaluator=evaluate_trade_outcome_v2,
         )
         results.append(record)

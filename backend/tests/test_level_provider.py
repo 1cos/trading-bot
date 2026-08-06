@@ -115,10 +115,10 @@ class TestDispatcherUnimplemented:
         assert source in result["reason"]
         assert "No fallback" in result["reason"]
 
-    def test_pdh_not_silently_orb(self):
-        """PDH must NOT silently produce an ORB result."""
+    def test_future_source_not_silently_orb(self):
+        """PMH must NOT silently produce an ORB result."""
         sc, config = _sc_and_config("ORB_HIGH")
-        config = {**config, "level_source": "PDH"}
+        config = {**config, "level_source": "PMH"}
         result = build_level(sc["candles"], sc, config)
         assert result["status"] == "FAILED"
         # Must not contain any ORB fields
@@ -260,7 +260,7 @@ class TestSequenceValidatorConditional:
         )
         assert result["status"] in ("OK", "INVALIDATED")
 
-    @pytest.mark.parametrize("source", ["PDH", "PDL", "PMH", "PML", "PIVOT_WICK", "OCL"])
+    @pytest.mark.parametrize("source", ["PREVIOUS_DAY_HIGH", "PREVIOUS_DAY_LOW", "PMH", "PML", "PIVOT_WICK", "OCL"])
     def test_non_orb_returns_not_applicable(self, source):
         """Non-ORB sources must skip the ORB band check."""
         candles = [
@@ -283,7 +283,7 @@ class TestSequenceValidatorConditional:
             {"time_ms": i, "open": 100, "high": 101, "low": 99, "close": 100}
             for i in range(10)
         ]
-        config = {**BASE_CONFIG, "level_source": "PDH", "consecutive_orb_closes": 2}
+        config = {**BASE_CONFIG, "level_source": "PREVIOUS_DAY_HIGH", "consecutive_orb_closes": 2}
         result = validate_sequence(
             candles, {"status": "OK"}, self._break_ok(), self._disp_ok(), config
         )
@@ -396,7 +396,7 @@ class TestHelpers:
         assert _is_orb_source("ORB_LOW") is True
 
     def test_is_orb_source_false(self):
-        assert _is_orb_source("PDH") is False
+        assert _is_orb_source("PREVIOUS_DAY_HIGH") is False
         assert _is_orb_source("PIVOT_WICK") is False
         assert _is_orb_source("") is False
 
