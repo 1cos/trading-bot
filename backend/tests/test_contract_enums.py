@@ -5,11 +5,14 @@ import pytest
 from trading_lab.contracts.enums import (
     DetectionStatus,
     Direction,
+    EntryPatternType,
     FailedStage,
     LevelSource,
     Operator,
     Stage,
     ValueType,
+    ZoneStatus,
+    ZoneType,
 )
 
 
@@ -120,16 +123,75 @@ class TestOperator:
             Operator("BETWEEN")
 
 
+class TestEntryPatternType:
+    def test_all_values(self):
+        expected = {
+            "SINGLE_CANDLE_REJECTION",
+            "TWO_CANDLE_ENGULFING_RECOVERY",
+            "RETEST_STRUCTURE",
+        }
+        assert {m.value for m in EntryPatternType} == expected
+
+    def test_member_count(self):
+        assert len(EntryPatternType) == 3
+
+    def test_string_comparison(self):
+        assert EntryPatternType.TWO_CANDLE_ENGULFING_RECOVERY == "TWO_CANDLE_ENGULFING_RECOVERY"
+
+    def test_invalid_value(self):
+        with pytest.raises(ValueError):
+            EntryPatternType("UNKNOWN_PATTERN")
+
+
+class TestZoneType:
+    def test_all_values(self):
+        expected = {
+            "VALIDATED_PIVOT_ZONE",
+            "COMPOSITE_CONFLUENCE_ZONE",
+        }
+        assert {m.value for m in ZoneType} == expected
+
+    def test_member_count(self):
+        assert len(ZoneType) == 2
+
+    def test_string_comparison(self):
+        assert ZoneType.VALIDATED_PIVOT_ZONE == "VALIDATED_PIVOT_ZONE"
+
+    def test_invalid_value(self):
+        with pytest.raises(ValueError):
+            ZoneType("NOT_A_ZONE")
+
+
+class TestZoneStatus:
+    def test_all_values(self):
+        expected = {"ACTIVE", "SECONDARY", "STORED"}
+        assert {m.value for m in ZoneStatus} == expected
+
+    def test_member_count(self):
+        assert len(ZoneStatus) == 3
+
+    def test_stored_and_secondary_distinct(self):
+        assert ZoneStatus.STORED != ZoneStatus.SECONDARY
+        assert ZoneStatus.STORED.value != ZoneStatus.SECONDARY.value
+
+    def test_invalid_value(self):
+        with pytest.raises(ValueError):
+            ZoneStatus("EXPIRED")
+
+
 class TestPackageExports:
     def test_all_enums_importable(self):
         from trading_lab.contracts import (
             DetectionStatus,
             Direction,
+            EntryPatternType,
             FailedStage,
             LevelSource,
             Operator,
             Stage,
             ValueType,
+            ZoneStatus,
+            ZoneType,
         )
         assert DetectionStatus.VALID == "VALID"
         assert Direction.LONG == "LONG"
@@ -138,3 +200,16 @@ class TestPackageExports:
         assert Operator.GT == "GT"
         assert Stage.LEVEL == "LEVEL"
         assert ValueType.DECIMAL == "DECIMAL"
+        assert EntryPatternType.SINGLE_CANDLE_REJECTION == "SINGLE_CANDLE_REJECTION"
+        assert ZoneType.VALIDATED_PIVOT_ZONE == "VALIDATED_PIVOT_ZONE"
+        assert ZoneStatus.ACTIVE == "ACTIVE"
+
+    def test_new_contracts_importable(self):
+        from trading_lab.contracts import (
+            CompositeZone,
+            EntryPatternResult,
+            ZoneComponent,
+        )
+        assert CompositeZone is not None
+        assert EntryPatternResult is not None
+        assert ZoneComponent is not None

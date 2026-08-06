@@ -15,10 +15,12 @@ from trading_lab.contracts.distances import (
     AbsoluteTickDistance,
     DirectionalTickDistance,
 )
+from trading_lab.contracts.entry_pattern import EntryPatternResult
 from trading_lab.contracts.enums import (
     ConfluenceStatus,
     DetectionStatus,
     Direction,
+    EntryPatternType,
     EvaluationStatus,
     FailedStage,
     LevelSource,
@@ -26,6 +28,8 @@ from trading_lab.contracts.enums import (
     QualityGrade,
     Stage,
     ValueType,
+    ZoneStatus,
+    ZoneType,
 )
 from trading_lab.contracts.module_result import ModuleResult
 from trading_lab.contracts.primitives import (
@@ -41,12 +45,14 @@ from trading_lab.contracts.session_metadata import SessionMetadata
 from trading_lab.contracts.setup_candidate import SetupCandidate
 from trading_lab.contracts.trade_outcome import TradeOutcome, TradeOutcomeStatus
 from trading_lab.contracts.trade_outcome_v2 import TradeOutcomeV2, rational_to_label
+from trading_lab.contracts.zone import CompositeZone, ZoneComponent
 from trading_lab.contracts.trade_plan import EntryModel, TradePlan
 
 __all__ = [
     "AbsoluteTickDistance",
     "Bar",
     "CandidateStatus",
+    "CompositeZone",
     "ConfluenceResult",
     "ConfluenceStatus",
     "DetectionResult",
@@ -55,6 +61,8 @@ __all__ = [
     "Direction",
     "DirectionalTickDistance",
     "EntryModel",
+    "EntryPatternResult",
+    "EntryPatternType",
     "EvaluationStatus",
     "FailedStage",
     "LevelSource",
@@ -75,4 +83,7 @@ __all__ = [
     "TradePlan",
     "rational_to_label",
     "ValueType",
+    "ZoneComponent",
+    "ZoneStatus",
+    "ZoneType",
 ]

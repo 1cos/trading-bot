@@ -134,3 +134,38 @@ class ConfluenceStatus(StrEnum):
     NEUTRAL = "NEUTRAL"
     CONFLICTING = "CONFLICTING"
     DATA_UNAVAILABLE = "DATA_UNAVAILABLE"
+
+
+# ── Retest / Entry / Zone enums ──────────────────────────────────────────────
+# Defined in MAXBOT_RETEST_ENTRY_AND_TRADE_MANAGEMENT_SPEC.md §2–§7.
+
+
+@unique
+class EntryPatternType(StrEnum):
+    """Canonical entry pattern classification (spec §4–§6)."""
+
+    SINGLE_CANDLE_REJECTION = "SINGLE_CANDLE_REJECTION"
+    TWO_CANDLE_ENGULFING_RECOVERY = "TWO_CANDLE_ENGULFING_RECOVERY"
+    RETEST_STRUCTURE = "RETEST_STRUCTURE"
+
+
+@unique
+class ZoneType(StrEnum):
+    """Composite zone classification (spec §7)."""
+
+    VALIDATED_PIVOT_ZONE = "VALIDATED_PIVOT_ZONE"
+    COMPOSITE_CONFLUENCE_ZONE = "COMPOSITE_CONFLUENCE_ZONE"
+
+
+@unique
+class ZoneStatus(StrEnum):
+    """Lifecycle state of a composite zone (spec §7.3 / §8).
+
+    ACTIVE    — primary zone currently eligible for retest.
+    SECONDARY — still eligible but lower priority than active zone.
+    STORED    — retained in session history, not currently eligible.
+    """
+
+    ACTIVE = "ACTIVE"
+    SECONDARY = "SECONDARY"
+    STORED = "STORED"
