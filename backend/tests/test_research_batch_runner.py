@@ -311,11 +311,11 @@ class TestNonExportedFields:
 class TestIntegration:
     def test_spy_row_count(self):
         rows = _run_spy()
-        assert len(rows) == 3
+        assert len(rows) == 5  # B5: TWO_CANDLE finds additional valid setups
 
     def test_qqq_row_count(self):
         rows = _run_qqq()
-        assert len(rows) == 2  # sequence_validator invalidates 2 former false positives
+        assert len(rows) == 6  # B5: TWO_CANDLE finds additional valid setups
 
     def test_all_columns_present(self):
         rows = _run_spy()
@@ -331,7 +331,7 @@ class TestIntegration:
         assert isinstance(csv_out, str)
         assert csv_out.endswith("\n")
         lines = csv_out.strip().split("\n")
-        assert len(lines) == 4  # header + 3 data
+        assert len(lines) == 6  # B5: header + 5 data (TWO_CANDLE finds more)
 
 
 # ── Error propagation ────────────────────────────────────────────────────────

@@ -318,6 +318,7 @@ def _tick_size_to_str(tick_size: object) -> str:
 def build_trade_plan(
     detection_result: object,
     config: object,
+    stop_override_ticks: int | None = None,
 ) -> dict:
     """Build a canonical TradePlan/v1 from a DetectionResult/v1.
 
@@ -333,6 +334,13 @@ def build_trade_plan(
         TradePlanConfig instance or compatible dict-like object with
         keys: direction, entry_model, entry_buffer_ticks,
         stop_buffer_ticks, tick_size.
+    stop_override_ticks : int or None
+        When provided, overrides the stop basis derived from the
+        confirmation bar.  Used by TWO_CANDLE_ENGULFING_RECOVERY
+        where the stop is based on the entire pair's extreme, not
+        just the confirmation candle.
+        LONG: stop = stop_override_ticks - stop_buffer_ticks.
+        SHORT: stop = stop_override_ticks + stop_buffer_ticks.
 
     Returns
     -------
@@ -391,10 +399,17 @@ def build_trade_plan(
     # ── Step 4: compute stop price ───────────────────────────────────────
 
     stop_buffer = _get(config, "stop_buffer_ticks")
-    if is_short:
-        stop_ticks = high_ticks + stop_buffer
+    if stop_override_ticks is not None:
+        # TWO_CANDLE_ENGULFING_RECOVERY: stop from pair extreme
+        if is_short:
+            stop_ticks = stop_override_ticks + stop_buffer
+        else:
+            stop_ticks = stop_override_ticks - stop_buffer
     else:
-        stop_ticks = low_ticks - stop_buffer
+        if is_short:
+            stop_ticks = high_ticks + stop_buffer
+        else:
+            stop_ticks = low_ticks - stop_buffer
 
     # ── Step 5: validate geometric relationship ──────────────────────────
 

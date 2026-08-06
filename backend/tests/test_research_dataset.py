@@ -511,9 +511,12 @@ class TestSPYIntegration:
         rows = build_research_rows(
             results, source_dataset_id="spy-test", code_commit_hash="abc",
         )
-        assert len(rows) == 3
+        assert len(rows) == 5  # B5: TWO_CANDLE
         dates = [r["session_date"] for r in rows]
-        assert set(dates) == {"2026-05-26", "2026-06-08", "2026-07-06"}
+        assert set(dates) == {
+            "2026-05-14", "2026-05-26", "2026-06-08",
+            "2026-07-06", "2026-07-17",
+        }  # B5: 2 new dates
 
         # Verify SPY 2026-05-26 frozen values
         may26 = [r for r in rows if r["session_date"] == "2026-05-26"][0]
@@ -524,7 +527,7 @@ class TestSPYIntegration:
         assert may26["realized_r"] == -1
 
         csv_text = serialize_research_csv(rows)
-        assert csv_text.count("\n") == 4  # header + 3 data rows
+        assert csv_text.count("\n") == 6  # B5: header + 5 data rows
 
 
 class TestQQQIntegration:
@@ -534,11 +537,12 @@ class TestQQQIntegration:
         rows = build_research_rows(
             results, source_dataset_id="qqq-test", code_commit_hash="def",
         )
-        assert len(rows) == 2  # sequence_validator invalidates 2 former false positives
+        assert len(rows) == 6  # B5: TWO_CANDLE
         dates = [r["session_date"] for r in rows]
         assert set(dates) == {
-            "2026-05-06", "2026-05-13",
-        }
+            "2026-05-06", "2026-05-13", "2026-06-02",
+            "2026-06-11", "2026-06-15", "2026-07-17",
+        }  # B5: 4 new dates
 
 
 # ── 33–34. Specific outcomes ─────────────────────────────────────────────────

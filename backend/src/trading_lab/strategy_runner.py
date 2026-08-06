@@ -318,7 +318,14 @@ def _process_one_session(session, preset, engine_config, tp_config, outcome_conf
         )
 
     # TradePlan/v1
-    tp_build = build_trade_plan(detection_result, tp_config)
+    # TWO_CANDLE_ENGULFING_RECOVERY: stop based on pair extreme, not
+    # just confirmation bar.  The rejection result carries
+    # pair_stop_basis_ticks when the pattern is TWO_CANDLE.
+    pair_stop_ticks = rej.get("pair_stop_basis_ticks")
+    tp_build = build_trade_plan(
+        detection_result, tp_config,
+        stop_override_ticks=pair_stop_ticks,
+    )
     if tp_build.get("status") != "OK":
         return _build_failure_record(
             run_record_id, session_meta, preset, config,

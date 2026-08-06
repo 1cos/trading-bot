@@ -364,17 +364,18 @@ class TestTD10SPYIntegration:
         assert ds["metadata"]["preset_id"] == "bdrr_v1_initial"
         assert ds["metadata"]["engine_version"] == "bdrr_v1.0"
         assert ds["metadata"]["exit_target_r"] == 2
-        assert ds["metadata"]["trade_count"] == 3
-        assert len(ds["trades"]) == 3
+        assert ds["metadata"]["trade_count"] == 5  # B5: TWO_CANDLE
+        assert len(ds["trades"]) == 5  # B5: TWO_CANDLE
 
         # Outcome breakdown
         outcomes = {}
         for r in ds["records"]:
             o = str(r["outcome"])
             outcomes[o] = outcomes.get(o, 0) + 1
-        assert outcomes.get("NO_VALID_SETUP") == 57
+        assert outcomes.get("NO_VALID_SETUP") == 55  # B5: fewer no-setup
         assert outcomes.get("STOPPED") == 2
-        assert outcomes.get("TARGET_HIT") == 1
+        assert outcomes.get("TARGET_HIT") == 2  # B5: 1 new target hit
+        assert outcomes.get("SESSION_CLOSE") == 1  # B5: new outcome
 
         # No NO_VALID_SETUP in trades
         assert all(str(r["outcome"]) != "NO_VALID_SETUP" for r in ds["trades"])
@@ -389,8 +390,8 @@ class TestTD10bQQQIntegration:
         ds = build_trade_dataset(results)
         assert ds["metadata"]["session_count"] == len(sessions)
         assert ds["metadata"]["symbol"] == "QQQ"
-        assert ds["metadata"]["trade_count"] == 2  # sequence_validator invalidates 2
-        assert len(ds["trades"]) == 2
+        assert ds["metadata"]["trade_count"] == 6  # B5: TWO_CANDLE
+        assert len(ds["trades"]) == 6  # B5: TWO_CANDLE
 
 
 # ── TD11: schema_version constant ────────────────────────────────────────────

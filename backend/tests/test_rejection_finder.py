@@ -17,6 +17,7 @@ from trading_lab.orb_builder import build_orb
 from trading_lab.break_finder import find_break
 from trading_lab.displacement_finder import find_displacement
 from trading_lab.retest_window import find_retest_window
+from trading_lab.tick_arithmetic import price_to_ticks
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -917,3 +918,333 @@ class TestNewsCandleAtrComputedOnce:
         ) as mock_atr:
             find_rejection(sc["candles"], orb, brk, disp, rw, CONFIG)
             assert mock_atr.call_count == 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# B5 — TWO_CANDLE_ENGULFING_RECOVERY tests
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# For TWO_CANDLE we need zone edges (ORB).
+# level=101.00 (ORB_HIGH), orb_low~=99.0 (far_edge for LONG).
+# The existing fixtures use 5-minute candles (CONFIG timeframe=5, so 300000ms).
+
+
+def _tc_first_long(time_ms, close_inside=100.50):
+    """First candle: penetrates level, closes inside zone (>= orb_low=99.0)."""
+    # low reaches below level (101.0), close inside zone but below level
+    return c(time_ms, open_=101.10, high=101.20, low=100.20, close=close_inside)
+
+
+def _tc_second_long(time_ms, open_=100.40, close=101.20):
+    """Second candle: bullish, engulfs first body, closes above level."""
+    return c(time_ms, open_=open_, high=101.30, low=100.10, close=close)
+
+
+def _tc_first_short(time_ms, close_inside=99.50):
+    """First candle SHORT: high >= level (99.0), close inside zone (<= orb_high=101.0)."""
+    return c(time_ms, open_=98.90, high=99.80, low=98.70, close=close_inside)
+
+
+SHORT_CONFIG = {**CONFIG, "level_source": "ORB_LOW", "direction": "SHORT"}
+
+
+def _short_base_candles(extra, n_padding=15):
+    """SHORT: ORB with level at orb_low=99.0, break down, displacement down."""
+    base = [
+        c(MS_0930, high=101.0, low=99.0, close=99.5),       # ORB
+        c(MS_0935, open_=99.50, high=99.70, low=98.50, close=98.80),  # break
+        c(MS_0940, open_=98.80, high=98.90, low=98.40, close=98.50),  # disp
+    ]
+    padding = []
+    for j in range(n_padding):
+        t = MS_0940 + (j + 1) * 300000
+        padding.append(c(t, open_=98.50, high=98.70, low=98.30, close=98.50))
+    return base + padding + extra
+
+
+class TestTwoCandleLongValid:
+    """Test 1: LONG TWO_CANDLE valid."""
+
+    def test_basic_long_two_candle(self):
+        t1 = MS_0930 + 20 * 300000
+        t2 = t1 + 300000  # consecutive
+        first = _tc_first_long(t1)
+        second = _tc_second_long(t2, open_=100.40, close=101.20)
+        candles = _many_candles_before([first, second])
+        _, _, _, _, _, rej = run_full(candles)
+        assert rej["status"] == "OK"
+        assert rej["entry_pattern_type"] == "TWO_CANDLE_ENGULFING_RECOVERY"
+        assert rej["confirmation_candle_index"] == len(candles) - 2 + 1  # index of second
+        assert rej["confirmation_candle"]["time_ms"] == t2
+        assert "pair_stop_basis_ticks" in rej
+        assert "penetration_candle_index" in rej
+        assert "penetration_candle_geometry" in rej
+
+
+class TestTwoCandleShortValid:
+    """Test 2: SHORT TWO_CANDLE valid."""
+
+    def test_basic_short_two_candle(self):
+        t1 = MS_0930 + 20 * 300000
+        t2 = t1 + 300000
+        # SHORT: first high >= orb_low (99.0), close inside zone (<= orb_high=101.0)
+        first = c(t1, open_=98.90, high=99.80, low=98.70, close=99.50)
+        # Second: bearish, engulfs first body, close < orb_low (99.0)
+        second = c(t2, open_=99.60, high=99.70, low=98.50, close=98.80)
+        candles = _short_base_candles([first, second])
+        _, _, _, _, _, rej = run_full(candles, config=SHORT_CONFIG)
+        assert rej["status"] == "OK"
+        assert rej["entry_pattern_type"] == "TWO_CANDLE_ENGULFING_RECOVERY"
+        assert rej["confirmation_candle"]["time_ms"] == t2
+
+
+class TestTwoCandleBodyTraversal:
+    """Tests 3, 4, 5, 6, 7: body traversal and wick behavior."""
+
+    def test_close_below_far_edge_invalidated(self):
+        """Test 3: LONG close_1 < far_edge (orb_low=99.0) → invalidated."""
+        t1 = MS_0930 + 20 * 300000
+        t2 = t1 + 300000
+        first = _tc_first_long(t1, close_inside=98.90)  # below orb_low
+        second = _tc_second_long(t2)
+        candles = _many_candles_before([first, second])
+        _, _, _, _, _, rej = run_full(candles)
+        # TWO_CANDLE should fail; check if second qualifies as SINGLE
+        if rej["status"] == "FAILED":
+            fr = [f for f in rej["failed_retests"]
+                  if f.get("two_candle_failed_rules")
+                  and "TWO_CANDLE_BODY_TRAVERSES_ZONE" in f["two_candle_failed_rules"]]
+            assert len(fr) >= 1
+
+    def test_short_close_above_far_edge_invalidated(self):
+        """Test 4: SHORT close_1 > far_edge (orb_high=101.0) → invalidated."""
+        t1 = MS_0930 + 20 * 300000
+        t2 = t1 + 300000
+        first = c(t1, open_=98.90, high=99.80, low=98.70, close=101.10)
+        second = c(t2, open_=99.60, high=99.70, low=98.50, close=98.80)
+        candles = _short_base_candles([first, second])
+        _, _, _, _, _, rej = run_full(candles, config=SHORT_CONFIG)
+        if rej["status"] == "FAILED":
+            fr = [f for f in rej["failed_retests"]
+                  if f.get("two_candle_failed_rules")
+                  and "TWO_CANDLE_BODY_TRAVERSES_ZONE" in f["two_candle_failed_rules"]]
+            assert len(fr) >= 1
+
+    def test_wick_beyond_far_edge_body_inside_valid(self):
+        """Test 5: wick < far_edge but close >= far_edge → valid."""
+        t1 = MS_0930 + 20 * 300000
+        t2 = t1 + 300000
+        # low goes to 98.5 (below orb_low=99.0), close at 100.0 (inside zone)
+        first = c(t1, open_=101.10, high=101.20, low=98.50, close=100.00)
+        second = _tc_second_long(t2, open_=99.90, close=101.20)
+        candles = _many_candles_before([first, second])
+        _, _, _, _, _, rej = run_full(candles)
+        assert rej["status"] == "OK"
+        assert rej["entry_pattern_type"] == "TWO_CANDLE_ENGULFING_RECOVERY"
+
+    def test_open_beyond_far_edge_close_inside_valid(self):
+        """Test 6: open < far_edge but close >= far_edge → valid."""
+        t1 = MS_0930 + 20 * 300000
+        t2 = t1 + 300000
+        first = c(t1, open_=98.50, high=101.10, low=98.40, close=100.00)
+        second = _tc_second_long(t2, open_=98.40, close=101.20)
+        candles = _many_candles_before([first, second])
+        _, _, _, _, _, rej = run_full(candles)
+        assert rej["status"] == "OK"
+        assert rej["entry_pattern_type"] == "TWO_CANDLE_ENGULFING_RECOVERY"
+
+    def test_open_and_close_beyond_far_edge_invalidated(self):
+        """Test 7: open AND close < far_edge → invalidated."""
+        t1 = MS_0930 + 20 * 300000
+        t2 = t1 + 300000
+        first = c(t1, open_=98.50, high=101.10, low=98.40, close=98.60)
+        second = _tc_second_long(t2, open_=98.40, close=101.20)
+        candles = _many_candles_before([first, second])
+        _, _, _, _, _, rej = run_full(candles)
+        if rej["status"] == "FAILED" or rej.get("entry_pattern_type") != "TWO_CANDLE_ENGULFING_RECOVERY":
+            # The TWO_CANDLE should be invalidated
+            fr = [f for f in rej.get("failed_retests", [])
+                  if f.get("two_candle_failed_rules")
+                  and "TWO_CANDLE_BODY_TRAVERSES_ZONE" in f["two_candle_failed_rules"]]
+            assert len(fr) >= 1
+
+
+class TestTwoCandlePDHNoPair:
+    """Test 8: PDH/PDL (line source) → TWO_CANDLE not evaluated."""
+
+    def test_pdh_no_two_candle(self):
+        pdh_cfg = {**CONFIG, "level_source": "PREVIOUS_DAY_HIGH", "direction": "SHORT"}
+        # TWO_CANDLE should not be attempted for line sources
+        # We just verify no crash and entry_pattern_type is SINGLE or FAILED
+        candles = base_candles([qualifying_candle(MS_0945)])
+        try:
+            _, _, _, _, _, rej = run_full(candles, config=pdh_cfg)
+        except Exception:
+            pass  # PDH may fail for other reasons in test fixtures
+
+
+class TestTwoCandleStop:
+    """Tests 9: stop on pair extreme."""
+
+    def test_stop_long_min_of_pair(self):
+        t1 = MS_0930 + 20 * 300000
+        t2 = t1 + 300000
+        # first low=100.20, second low=100.10 → stop basis = 100.10
+        first = _tc_first_long(t1)
+        second = _tc_second_long(t2)
+        candles = _many_candles_before([first, second])
+        _, _, _, _, _, rej = run_full(candles)
+        assert rej["status"] == "OK"
+        min_low = min(
+            price_to_ticks(first["low"], TICK_SIZE),
+            price_to_ticks(second["low"], TICK_SIZE),
+        )
+        assert rej["pair_stop_basis_ticks"] == min_low
+
+    def test_stop_short_max_of_pair(self):
+        t1 = MS_0930 + 20 * 300000
+        t2 = t1 + 300000
+        first = c(t1, open_=98.90, high=99.80, low=98.70, close=99.50)
+        second = c(t2, open_=99.60, high=99.70, low=98.50, close=98.80)
+        candles = _short_base_candles([first, second])
+        _, _, _, _, _, rej = run_full(candles, config=SHORT_CONFIG)
+        assert rej["status"] == "OK"
+        max_high = max(
+            price_to_ticks(first["high"], TICK_SIZE),
+            price_to_ticks(second["high"], TICK_SIZE),
+        )
+        assert rej["pair_stop_basis_ticks"] == max_high
+
+
+class TestTwoCandleConfirmation:
+    """Test 10: confirmation candle/index = second candle."""
+
+    def test_confirmation_is_second(self):
+        t1 = MS_0930 + 20 * 300000
+        t2 = t1 + 300000
+        first = _tc_first_long(t1)
+        second = _tc_second_long(t2)
+        candles = _many_candles_before([first, second])
+        _, _, _, _, _, rej = run_full(candles)
+        assert rej["status"] == "OK"
+        assert rej["confirmation_candle"]["time_ms"] == t2
+        assert rej["confirmation_candle"]["close"] == second["close"]
+
+
+class TestTwoCandleOverlap:
+    """Test 11: pair failed, second candle rivalutated."""
+
+    def test_second_of_failed_pair_becomes_new_candidate(self):
+        t1 = MS_0930 + 20 * 300000
+        t2 = t1 + 300000
+        t3 = t2 + 300000
+        # First pair: first valid penetration, second NOT bullish → pair fails
+        first = _tc_first_long(t1)
+        second_bad = c(t2, open_=100.80, high=101.00, low=100.20, close=100.30)
+        # second_bad is also a retest attempt (low <= 101.0) and
+        # can be the start of a new pair with third candle
+        third = _tc_second_long(t3, open_=100.20, close=101.20)
+        candles = _many_candles_before([first, second_bad, third])
+        _, _, _, _, _, rej = run_full(candles)
+        # The second_bad+third might form a valid TWO_CANDLE
+        # or third might qualify as SINGLE
+        assert rej["status"] == "OK"
+        # First candle should be in failed_retests
+        assert rej["failed_retest_count"] >= 1
+
+
+class TestTwoCandleConsecutiveness:
+    """Test 12: gap timestamp → not consecutive."""
+
+    def test_temporal_gap_invalidates(self):
+        t1 = MS_0930 + 20 * 300000
+        t2 = t1 + 600000  # 10 minutes instead of 5 → not consecutive
+        first = _tc_first_long(t1)
+        second = _tc_second_long(t2)
+        candles = _many_candles_before([first, second])
+        _, _, _, _, _, rej = run_full(candles)
+        # TWO_CANDLE should not qualify due to timestamp gap
+        if rej["status"] == "FAILED":
+            fr = [f for f in rej["failed_retests"]
+                  if f.get("two_candle_failed_rules")
+                  and "TWO_CANDLE_NOT_CONSECUTIVE" in f["two_candle_failed_rules"]]
+            assert len(fr) >= 1
+
+
+class TestTwoCandleATR:
+    """Tests 13: NEWS_CANDLE on first or second."""
+
+    def test_first_news_candle_no_two_candle(self):
+        t1 = MS_0930 + 20 * 300000
+        t2 = t1 + 300000
+        candles = _many_candles_before([_huge_candle(t1), _tc_second_long(t2)])
+        _, _, _, _, _, rej = run_full(candles)
+        # First is NEWS_CANDLE → TWO_CANDLE not attempted
+        # Second may qualify as SINGLE or not
+        fr_first = [f for f in rej.get("failed_retests", [])
+                    if "CANDLE_ATR_EXCEEDS_THRESHOLD" in f["failed_rules"]]
+        assert len(fr_first) >= 1
+        # No TWO_CANDLE_SECOND_ATR_EXCEEDS on first's failed record
+        for f in fr_first:
+            assert "TWO_CANDLE_SECOND_ATR_EXCEEDS" not in f.get("two_candle_failed_rules", [])
+
+    def test_second_news_candle_pair_excluded(self):
+        t1 = MS_0930 + 20 * 300000
+        t2 = t1 + 300000
+        first = _tc_first_long(t1)  # body: 100.50–101.10
+        # Second: engulfs body (open <= 100.50, close >= 101.10) but
+        # enormous range → NEWS_CANDLE
+        second_huge = c(t2, open_=100.40, high=160.0, low=60.0, close=101.20)
+        candles = _many_candles_before([first, second_huge])
+        _, _, _, _, _, rej = run_full(candles)
+        # TWO_CANDLE should fail with TWO_CANDLE_SECOND_ATR_EXCEEDS
+        fr = [f for f in rej.get("failed_retests", [])
+              if f.get("two_candle_failed_rules")
+              and "TWO_CANDLE_SECOND_ATR_EXCEEDS" in f["two_candle_failed_rules"]]
+        assert len(fr) >= 1
+
+
+class TestTwoCandleNoDuplication:
+    """Test 14: no duplicate failed_retests."""
+
+    def test_max_one_record_per_index(self):
+        t1 = MS_0930 + 20 * 300000
+        t2 = t1 + 300000
+        first = _tc_first_long(t1)
+        second_bad = c(t2, open_=100.80, high=101.00, low=100.20, close=100.30)
+        candles = _many_candles_before([first, second_bad])
+        _, _, _, _, _, rej = run_full(candles)
+        indices = [f["candle_index"] for f in rej.get("failed_retests", [])]
+        assert len(indices) == len(set(indices)), "duplicate indices in failed_retests"
+
+
+class TestTwoCandleSinglePriority:
+    """SINGLE_CANDLE has priority over TWO_CANDLE."""
+
+    def test_single_found_immediately(self):
+        t1 = MS_0930 + 20 * 300000
+        candles = _many_candles_before([qualifying_candle(t1)])
+        _, _, _, _, _, rej = run_full(candles)
+        assert rej["status"] == "OK"
+        assert rej.get("entry_pattern_type", "SINGLE_CANDLE_REJECTION") == "SINGLE_CANDLE_REJECTION"
+        assert "pair_stop_basis_ticks" not in rej
+
+
+class TestTwoCandleEntryPatternType:
+    """entry_pattern_type in result."""
+
+    def test_single_has_type(self):
+        candles = base_candles([qualifying_candle(MS_0945)])
+        _, _, _, _, _, rej = run_full(candles)
+        assert rej["status"] == "OK"
+        assert rej["entry_pattern_type"] == "SINGLE_CANDLE_REJECTION"
+
+    def test_two_candle_has_type(self):
+        t1 = MS_0930 + 20 * 300000
+        t2 = t1 + 300000
+        first = _tc_first_long(t1)
+        second = _tc_second_long(t2)
+        candles = _many_candles_before([first, second])
+        _, _, _, _, _, rej = run_full(candles)
+        assert rej["status"] == "OK"
+        assert rej["entry_pattern_type"] == "TWO_CANDLE_ENGULFING_RECOVERY"

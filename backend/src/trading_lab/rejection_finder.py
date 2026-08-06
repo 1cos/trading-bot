@@ -373,79 +373,212 @@ def find_rejection(
     news_threshold = config.get("news_threshold", 3.0)
     atr_cache = atr_series(candles, 14)
 
+    # ── Zone edges for TWO_CANDLE (spec §5, STRUCTURAL-ZONE RECOVERY) ──
+    # TWO_CANDLE requires near_edge and far_edge.  Only ORB sources
+    # provide both today.  For line sources (PDH/PDL) far_edge is None
+    # and TWO_CANDLE is not evaluated.
+    has_zone_edges = ("orb_high" in orb and "orb_low" in orb)
+    if has_zone_edges:
+        if is_short:
+            # SHORT: near_edge = orb_low, far_edge = orb_high
+            zone_far_edge = orb["orb_high"]
+            zone_far_edge_ticks = price_to_ticks(zone_far_edge, tick_size)
+        else:
+            # LONG: near_edge = orb_high, far_edge = orb_low
+            zone_far_edge = orb["orb_low"]
+            zone_far_edge_ticks = price_to_ticks(zone_far_edge, tick_size)
+
+    timeframe_ms = config["timeframe_minutes"] * 60 * 1000
+
+    def _classify_atr(idx: int, cnd: dict) -> object:
+        """Classify a candle's ATR status.  Returns CandleAtrClassification."""
+        prev_atr_val = atr_cache[idx - 1] if idx >= 1 else None
+        return classify_candle_atr(
+            cnd, prev_atr_val, news_threshold=news_threshold,
+        )
+
+    def _inject_atr(result: dict, atr_class: object) -> bool:
+        """Inject ATR metadata and return True if NEWS_CANDLE."""
+        result["geometry"]["candle_atr_status"] = atr_class.status.value
+        result["geometry"]["candle_atr_ratio"] = atr_class.ratio
+        result["geometry"]["candle_atr_previous"] = atr_class.previous_atr
+        result["geometry"]["candle_atr_threshold"] = atr_class.news_threshold
+        return atr_class.status.value == "NEWS_CANDLE"
+
+    def _build_ok(
+        idx, cnd, result, *,
+        entry_pattern_type="SINGLE_CANDLE_REJECTION",
+        pair_stop_basis_ticks=None,
+        penetration_candle_index=None,
+        penetration_candle_geometry=None,
+    ):
+        if is_short:
+            wick_depth = max(0, price_to_ticks(cnd["high"], tick_size) - level_ticks)
+        else:
+            wick_depth = max(0, level_ticks - price_to_ticks(cnd["low"], tick_size))
+        ok = {
+            "status": "OK",
+            "date": orb["date"],
+            "level_price": level_price,
+            "confirmation_candle_index": idx,
+            "confirmation_candle": cnd,
+            "confirmation_timestamp": cnd["time_ms"],
+            "geometry": result["geometry"],
+            "wick_depth_ticks": wick_depth,
+            "failed_retests": failed_retests,
+            "failed_retest_count": len(failed_retests),
+            "entry_pattern_type": entry_pattern_type,
+        }
+        if pair_stop_basis_ticks is not None:
+            ok["pair_stop_basis_ticks"] = pair_stop_basis_ticks
+        if penetration_candle_index is not None:
+            ok["penetration_candle_index"] = penetration_candle_index
+        if penetration_candle_geometry is not None:
+            ok["penetration_candle_geometry"] = penetration_candle_geometry
+        return ok
+
     # ── Scan retest window ───────────────────────────────────────────────
     failed_retests: list[dict] = []
     window_start = retest_result["retest_window_start_index"]
     window_end = retest_result["retest_window_end_index"]
 
-    for i in range(window_start, window_end + 1):
+    i = window_start
+    while i <= window_end:
         cnd = candles[i]
-        # LONG: only candles with low <= level are retest attempts
-        # SHORT: only candles with high >= level are retest attempts
+
+        # Retest attempt filter
         if is_short:
             if cnd["high"] < level_price:
-                continue  # not a retest attempt
+                i += 1
+                continue
         else:
             if cnd["low"] > level_price:
-                continue  # not a retest attempt
+                i += 1
+                continue
 
         result = evaluate_geometry(cnd)
+        atr_class = _classify_atr(i, cnd)
+        is_nc = _inject_atr(result, atr_class)
 
-        # ── News Candle classification (spec §9) ─────────────────────
-        # previous_atr for candle i = atr_cache[i-1] (excludes candle i)
-        prev_atr_val = atr_cache[i - 1] if i >= 1 else None
-        atr_classification = classify_candle_atr(
-            cnd, prev_atr_val, news_threshold=news_threshold,
-        )
-
-        # Inject ATR diagnostics into geometry (always, for every candidate)
-        result["geometry"]["candle_atr_status"] = atr_classification.status.value
-        result["geometry"]["candle_atr_ratio"] = atr_classification.ratio
-        result["geometry"]["candle_atr_previous"] = atr_classification.previous_atr
-        result["geometry"]["candle_atr_threshold"] = atr_classification.news_threshold
-
-        # ATR gate: NEWS_CANDLE adds a failed rule
-        is_news_candle = (
-            atr_classification.status.value == "NEWS_CANDLE"
-        )
-        if is_news_candle:
+        if is_nc:
             result["failed_rules"].append("CANDLE_ATR_EXCEEDS_THRESHOLD")
             result["qualifies"] = False
 
+        # ── SINGLE_CANDLE_REJECTION (priority) ───────────────────────
         if result["qualifies"]:
-            # Record wick depth: how far the wick penetrated the ORB boundary
-            if is_short:
-                wick_depth = max(0, price_to_ticks(cnd["high"], tick_size) - level_ticks)
-            else:
-                wick_depth = max(0, level_ticks - price_to_ticks(cnd["low"], tick_size))
+            return _build_ok(i, cnd, result)
 
-            return {
-                "status": "OK",
-                "date": orb["date"],
-                "level_price": level_price,
-                "confirmation_candle_index": i,
-                "confirmation_candle": cnd,
-                "confirmation_timestamp": cnd["time_ms"],
-                "geometry": result["geometry"],
-                "wick_depth_ticks": wick_depth,
-                "failed_retests": failed_retests,
-                "failed_retest_count": len(failed_retests),
-            }
+        # ── TWO_CANDLE_ENGULFING_RECOVERY ────────────────────────────
+        # Only when zone edges exist and first candle is not NEWS_CANDLE
+        tc_failed_rules: list[str] = []
+        tc_attempted = False
 
-        failed_retests.append({
+        if has_zone_edges and not is_nc:
+            j = i + 1
+            if j <= window_end:
+                cnd2 = candles[j]
+
+                # Consecutiveness: timestamp exactly one timeframe apart
+                ts_diff = cnd2["time_ms"] - cnd["time_ms"]
+                if ts_diff != timeframe_ms:
+                    tc_failed_rules.append("TWO_CANDLE_NOT_CONSECUTIVE")
+                else:
+                    tc_attempted = True
+
+                    # First candle body-traversal check (close-based)
+                    close1_ticks = price_to_ticks(cnd["close"], tick_size)
+                    open1_ticks = price_to_ticks(cnd["open"], tick_size)
+                    if is_short:
+                        # SHORT: close must not be above far_edge (orb_high)
+                        if close1_ticks > zone_far_edge_ticks:
+                            tc_failed_rules.append("TWO_CANDLE_BODY_TRAVERSES_ZONE")
+                    else:
+                        # LONG: close must not be below far_edge (orb_low)
+                        if close1_ticks < zone_far_edge_ticks:
+                            tc_failed_rules.append("TWO_CANDLE_BODY_TRAVERSES_ZONE")
+
+                    if not tc_failed_rules:
+                        # Second candle evaluation
+                        open2_ticks = price_to_ticks(cnd2["open"], tick_size)
+                        close2_ticks = price_to_ticks(cnd2["close"], tick_size)
+
+                        body1_high = max(open1_ticks, close1_ticks)
+                        body1_low = min(open1_ticks, close1_ticks)
+
+                        if is_short:
+                            # Bearish
+                            if close2_ticks >= open2_ticks:
+                                tc_failed_rules.append("TWO_CANDLE_NOT_BEARISH")
+                            # Engulfs body
+                            if not (open2_ticks >= body1_high and close2_ticks <= body1_low):
+                                if "TWO_CANDLE_NOT_BEARISH" not in tc_failed_rules:
+                                    tc_failed_rules.append("TWO_CANDLE_ENGULFING_INSUFFICIENT")
+                            # Recovery: close below near_edge
+                            if close2_ticks >= level_ticks:
+                                tc_failed_rules.append("TWO_CANDLE_RECOVERY_WRONG_SIDE")
+                        else:
+                            # Bullish
+                            if close2_ticks <= open2_ticks:
+                                tc_failed_rules.append("TWO_CANDLE_NOT_BULLISH")
+                            # Engulfs body
+                            if not (open2_ticks <= body1_low and close2_ticks >= body1_high):
+                                if "TWO_CANDLE_NOT_BULLISH" not in tc_failed_rules:
+                                    tc_failed_rules.append("TWO_CANDLE_ENGULFING_INSUFFICIENT")
+                            # Recovery: close above near_edge
+                            if close2_ticks <= level_ticks:
+                                tc_failed_rules.append("TWO_CANDLE_RECOVERY_WRONG_SIDE")
+
+                        # ATR check on second candle
+                        if not tc_failed_rules:
+                            atr_class2 = _classify_atr(j, cnd2)
+                            if atr_class2.status.value == "NEWS_CANDLE":
+                                tc_failed_rules.append("TWO_CANDLE_SECOND_ATR_EXCEEDS")
+
+                    # ── TWO_CANDLE qualifies? ────────────────────────
+                    if tc_attempted and not tc_failed_rules:
+                        # Build geometry for second candle
+                        result2 = evaluate_geometry(cnd2)
+                        atr_class2_final = _classify_atr(j, cnd2)
+                        _inject_atr(result2, atr_class2_final)
+
+                        # Stop basis: extreme of the pair
+                        low1_ticks = price_to_ticks(cnd["low"], tick_size)
+                        low2_ticks = price_to_ticks(cnd2["low"], tick_size)
+                        high1_ticks = price_to_ticks(cnd["high"], tick_size)
+                        high2_ticks = price_to_ticks(cnd2["high"], tick_size)
+                        if is_short:
+                            pair_stop = max(high1_ticks, high2_ticks)
+                        else:
+                            pair_stop = min(low1_ticks, low2_ticks)
+
+                        return _build_ok(
+                            j, cnd2, result2,
+                            entry_pattern_type="TWO_CANDLE_ENGULFING_RECOVERY",
+                            pair_stop_basis_ticks=pair_stop,
+                            penetration_candle_index=i,
+                            penetration_candle_geometry=result["geometry"],
+                        )
+
+        # ── Record failed retest ─────────────────────────────────────
+        failed_record = {
             "candle_index": i,
             "candle": cnd,
             "timestamp": cnd["time_ms"],
             "geometry": result["geometry"],
             "failed_rules": result["failed_rules"],
-        })
+        }
+        if tc_failed_rules:
+            failed_record["two_candle_failed_rules"] = tc_failed_rules
+        failed_retests.append(failed_record)
+
+        i += 1
 
     return {
         "status": "FAILED",
         "failed_stage": "NO_QUALIFYING_REJECTION_CANDLE",
         "reason": (
-            "no retest-attempt candle satisfied all three rejection "
-            "geometry thresholds within the retest window "
+            "no retest-attempt candle satisfied rejection geometry or "
+            "two-candle engulfing recovery within the retest window "
             f"(indices {window_start}-{window_end})"
         ),
         "failed_retests": failed_retests,

@@ -491,8 +491,11 @@ class TestT15SPYBatch:
         valid = [r for r in results if r["detection_status"] == "VALID"]
         valid_dates = sorted(r["session_date"] for r in valid)
 
-        assert len(valid) == 3
-        assert set(valid_dates) == {"2026-05-26", "2026-06-08", "2026-07-06"}
+        assert len(valid) == 5  # B5: TWO_CANDLE finds additional valid setups
+        assert set(valid_dates) == {
+            "2026-05-14", "2026-05-26", "2026-06-08",
+            "2026-07-06", "2026-07-17",
+        }  # B5: 2 new dates from TWO_CANDLE
 
 
 # ── T16: QQQ batch oracle ───────────────────────────────────────────────────
@@ -508,10 +511,11 @@ class TestT16QQQBatch:
         valid = [r for r in results if r["detection_status"] == "VALID"]
         valid_dates = sorted(r["session_date"] for r in valid)
 
-        assert len(valid) == 2  # sequence_validator invalidates 2 former false positives
+        assert len(valid) == 6  # B5: TWO_CANDLE finds additional valid setups
         assert set(valid_dates) == {
-            "2026-05-06", "2026-05-13",
-        }
+            "2026-05-06", "2026-05-13", "2026-06-02",
+            "2026-06-11", "2026-06-15", "2026-07-17",
+        }  # B5: 4 new dates from TWO_CANDLE
 
 
 # ── T17: Result record schema ───────────────────────────────────────────────

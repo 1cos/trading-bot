@@ -1141,3 +1141,57 @@ class TestDictConfig:
         r = build_trade_plan(_dr(), cfg)
         assert r["status"] == "OK"
         assert r["trade_plan"].entry_price.ticks == 10120
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# B5 — stop_override_ticks tests
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestStopOverrideTicks:
+    """TWO_CANDLE stop based on pair extreme via stop_override_ticks."""
+
+    def test_long_stop_override(self):
+        """LONG: stop = stop_override_ticks - buffer."""
+        # Default confirmation_bar low = 100.00 (10000 ticks)
+        # pair extreme low = 99.80 → 9980 ticks
+        cfg = TradePlanConfig(
+            direction="LONG", entry_model="CONFIRMATION_CLOSE",
+            entry_buffer_ticks=0, stop_buffer_ticks=2, tick_size=TICK,
+        )
+        # Without override: stop = 10000 - 2 = 9998
+        r_no = build_trade_plan(_dr(), cfg)
+        assert r_no["status"] == "OK"
+        assert r_no["trade_plan"].stop_price.ticks == 9998
+
+        # With override at 9980: stop = 9980 - 2 = 9978
+        r_ov = build_trade_plan(_dr(), cfg, stop_override_ticks=9980)
+        assert r_ov["status"] == "OK"
+        assert r_ov["trade_plan"].stop_price.ticks == 9978
+
+    def test_short_stop_override(self):
+        """SHORT: stop = stop_override_ticks + buffer."""
+        dr = _dr(
+            direction="SHORT",
+            confirmation_bar=_bar(high=102.00, close=100.80),
+        )
+        cfg = TradePlanConfig(
+            direction="SHORT", entry_model="CONFIRMATION_CLOSE",
+            entry_buffer_ticks=0, stop_buffer_ticks=2, tick_size=TICK,
+        )
+        # Without override: stop = 10200 + 2 = 10202
+        r_no = build_trade_plan(dr, cfg)
+        assert r_no["status"] == "OK"
+        assert r_no["trade_plan"].stop_price.ticks == 10202
+
+        # With override at 10250 (pair high): stop = 10250 + 2 = 10252
+        r_ov = build_trade_plan(dr, cfg, stop_override_ticks=10250)
+        assert r_ov["status"] == "OK"
+        assert r_ov["trade_plan"].stop_price.ticks == 10252
+
+    def test_none_override_uses_confirmation_bar(self):
+        """None override falls back to confirmation bar low/high."""
+        r = build_trade_plan(_dr(), BASE_CONFIG, stop_override_ticks=None)
+        assert r["status"] == "OK"
+        # Default: confirmation_bar.low = 100.00 (10000 ticks), buffer = 0
+        assert r["trade_plan"].stop_price.ticks == 10000
