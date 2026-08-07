@@ -137,6 +137,49 @@ def filter_rth_sessions(
     return result
 
 
+def strip_non_rth_bars(
+    candles_by_date: dict[str, list[dict]],
+    *,
+    timezone_str: str = "America/New_York",
+    session_open: str = "09:30",
+    session_close: str = "16:00",
+) -> dict[str, list[dict]]:
+    """Remove individual bars outside the strategy session window.
+
+    Keeps only bars whose local time (in ``timezone_str``) satisfies
+    ``session_open <= HH:MM < session_close``.
+
+    This is a **bar-level** filter, complementing the date-level
+    ``filter_rth_sessions``.  It ensures that pre-market and
+    after-hours bars never enter the strategy pipeline.
+
+    Dates left with zero bars after filtering are dropped entirely.
+
+    Defaults match US equity RTH (09:30–15:59 America/New_York).
+    """
+    from datetime import timezone as _tz
+
+    tz = ZoneInfo(timezone_str)
+    open_h, open_m = int(session_open[:2]), int(session_open[3:])
+    close_h, close_m = int(session_close[:2]), int(session_close[3:])
+    open_minutes = open_h * 60 + open_m
+    close_minutes = close_h * 60 + close_m  # exclusive
+
+    result = {}
+    for date_str, candles in candles_by_date.items():
+        kept = []
+        for c in candles:
+            dt = datetime.fromtimestamp(
+                c["time_ms"] / 1000, tz=_tz.utc
+            ).astimezone(tz)
+            mod = dt.hour * 60 + dt.minute
+            if open_minutes <= mod < close_minutes:
+                kept.append(c)
+        if kept:
+            result[date_str] = kept
+    return result
+
+
 # ── Canonical timeframe parser ───────────────────────────────────────────────
 
 _TF_RE = re.compile(r"^(\d+)m$")
@@ -471,6 +514,12 @@ def load_candles_for_timeframe(
     # For IBKR equity, count only sessions with RTH bars
     if ibkr:
         candles_by_date = filter_rth_sessions(candles_by_date)
+        # Bar-level filter: strip pre-market and after-hours bars.
+        # filter_rth_sessions keeps dates with ≥1 RTH bar but preserves
+        # all bars in that date.  strip_non_rth_bars removes individual
+        # bars outside 09:30–15:59 ET so only RTH bars enter the
+        # strategy pipeline.
+        candles_by_date = strip_non_rth_bars(candles_by_date)
 
     dates = sorted(candles_by_date.keys())
 
