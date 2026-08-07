@@ -1,6 +1,6 @@
 # MaxBot — Retest, Entry, and Trade Management Specification
 
-> **Version:** 1.0 — **Date:** 2026-08-06
+> **Version:** 1.1 — **Date:** 2026-08-06
 > **Status:** AUTHORITATIVE EXTENSION — supplements MAXBOT_SPECIFICATION.md
 >
 > This document extends the project constitution
@@ -154,6 +154,18 @@ completely new sequence:
 
 The recovery MUST NOT be treated as continuation of the original
 setup.
+
+### §3.3 — Daily Trade Limits
+
+**Status: ALREADY_IMPLEMENTED** (in `strategy_runner.py`)
+
+1. Maximum 2 trades per session.
+2. After a win, the session is over — no further entries.
+3. After a loss, a new entry is permitted only if a valid thesis
+   remains and a completely new setup forms.
+4. Do not automatically duplicate exposure on correlated
+   instruments. Each instrument must produce its own valid setup,
+   even if another instrument is used as confirmation (see §13).
 
 ---
 
@@ -733,9 +745,9 @@ Attempt below ORB Low also recovered. No trade.
 |---|---|
 | Stop from Entry Candle (§9) | **ALREADY_IMPLEMENTED** |
 | Target at R multiple — current 2.1R (§10) | **ALREADY_IMPLEMENTED** |
-| Max 2 trades/session (§3.5) | **ALREADY_IMPLEMENTED** |
-| Win → session done (§3.5) | **ALREADY_IMPLEMENTED** |
-| Loss → re-entry only with valid new setup (§3.5) | **ALREADY_IMPLEMENTED** |
+| Max 2 trades/session (§3.3) | **ALREADY_IMPLEMENTED** |
+| Win → session done (§3.3) | **ALREADY_IMPLEMENTED** |
+| Loss → re-entry only with valid new setup (§3.3) | **ALREADY_IMPLEMENTED** |
 
 ### §15.2 — New Rule: Early Exit on Rejection Wall Failure
 
@@ -1009,54 +1021,62 @@ implemented.
 
 ## §21 — Gap Analysis: Specification vs Repository
 
-| # | Requirement | Status | Current File/Module | Current Test | Future Change Needed | Dependencies | Risk to Frozen Contracts |
-|---|---|---|---|---|---|---|---|
-| 1 | `SINGLE_CANDLE_REJECTION` detection | ALREADY_IMPLEMENTED (partial) | `rejection_finder.py` | `test_rejection_finder.py` | Add ATR filter; validate wick reaches primary level in composite zones | ATR module (new) | Low — additive |
-| 2 | `TWO_CANDLE_ENGULFING_RECOVERY` detection | NOT_IMPLEMENTED | — | — | New module + 15 tests | ATR module, zone contracts | None — new module |
-| 3 | `RETEST_STRUCTURE` detection | NOT_IMPLEMENTED | — | — | New module + tests | Zone contracts | None — new module |
-| 4 | ATR(14) calculation | NOT_IMPLEMENTED | — | — | New utility module | None | None |
-| 5 | News candle filter (> 3 ATR) | NOT_IMPLEMENTED | — | — | New filter, integrated into entry evaluation | ATR module | None |
-| 6 | `VALIDATED_PIVOT_ZONE` clustering | NOT_IMPLEMENTED | — | — | New module | Pivot/OB provider (not yet implemented) | None |
-| 7 | `COMPOSITE_CONFLUENCE_ZONE` merging | NOT_IMPLEMENTED | — | — | New module | Level providers must emit standardized results | Low — reads existing LevelResult |
-| 8 | `REJECTION_WALL` detection | NOT_IMPLEMENTED | — | — | New module | Zone contracts | None |
-| 9 | Quality grading with penalties | NOT_IMPLEMENTED | `contracts/enums.py` has `QualityGrade` enum | `test_contract_enums.py` | Grading logic module; penalty rules | Rejection Wall, zone, alignment | Low — enum exists |
-| 10 | `EARLY_EXIT_REJECTION_WALL_FAILURE` | NOT_IMPLEMENTED | — | — | Trade management module | Rejection Wall detection | None |
-| 11 | `CHOP_NO_TRADE` classification | NOT_IMPLEMENTED | — | — | New module or session classifier | Displacement detection | None |
-| 12 | Intermarket alignment | NOT_IMPLEMENTED | — | — | New module | Multi-symbol data feed | None |
-| 13 | Max close distance from level | NOT_IMPLEMENTED | — | — | Config parameter + gate in entry evaluation | ATR module | None |
-| 14 | `LevelSource` enum: TDH, TDL | NOT_IMPLEMENTED | `contracts/enums.py` | `test_contract_enums.py` | Add enum values (decision: OPEN on whether formal provider) | None | Low — additive to enum |
-| 15 | Level lifecycle: intraday expiry | ALREADY_IMPLEMENTED (implicit) | `strategy_runner.py` processes one session at a time | `test_strategy_runner.py` | No change needed for single-session; multi-session state machine is future work | None | None |
-| 16 | Synthetic 2m deduplication | PARTIALLY_IMPLEMENTED | `multi_timeframe_runner.py` exists | `test_multi_timeframe.py` | Extend to prevent double-counting TWO_CANDLE + 2m | TWO_CANDLE module | Low |
-| 17 | Pivot/OB Wick provider | NOT_IMPLEMENTED | `level_provider.py` declares `PIVOT_WICK` as future | — | Phase 5 of constitution roadmap | Constitution §11 | None |
-| 18 | OCL provider | NOT_IMPLEMENTED | `level_provider.py` declares `OCL` as future | — | Phase 6 of constitution roadmap | `ONE_CANDLE_LEVEL_SPEC.md` | None |
-| 19 | PMH/PML provider | NOT_IMPLEMENTED | `level_provider.py` declares `PMH`/`PML` as future | — | Phase 4 of constitution roadmap | Pre-market window definition | None |
+> **Last updated:** v1.1 (2026-08-06), after B1–B5 + ATR warmup.
+
+| # | Requirement | Status | Current File/Module | Current Test | Commit | Future Change Needed |
+|---|---|---|---|---|---|---|
+| 1 | `SINGLE_CANDLE_REJECTION` detection | **DONE** (partial — ATR gate added B4; primary-level validation pending B8) | `rejection_finder.py` | `test_rejection_finder.py` | pre-B1 + `9d0db99` | B8: validate wick reaches primary level in composite zones |
+| 2 | `TWO_CANDLE_ENGULFING_RECOVERY` detection | **DONE** | `rejection_finder.py` | `test_rejection_finder.py` | `4568e6b` | — |
+| 3 | `RETEST_STRUCTURE` detection | **BLOCKED** — criteria OPEN | — | — | — | Requires approved formation criteria (§18) |
+| 4 | ATR(14) calculation | **DONE** | `atr.py` | `test_atr.py` | `0649871` | — |
+| 5 | News candle filter (> 3 ATR) | **DONE** | `news_candle.py` + `rejection_finder.py` | `test_news_candle.py`, `test_rejection_finder.py` | `23c57ee` + `9d0db99` | — |
+| 5b | ATR warmup from previous session | **DONE** | `rejection_finder.py`, `strategy_runner.py` | `test_atr_warmup.py` | `5d78005` | — |
+| 5c | Equity RTH bar filter | **DONE** | `session_split.py` | `test_rth_bar_filter.py` | `af9bd77` | — |
+| 6 | `VALIDATED_PIVOT_ZONE` clustering | NOT_IMPLEMENTED | — | — | — | New module `pivot_cluster.py`. Pivot provider not yet built but module can operate on generic `ZoneComponent`. |
+| 7 | `COMPOSITE_CONFLUENCE_ZONE` merging | NOT_IMPLEMENTED | — | — | — | New module `confluence_zone_builder.py`. |
+| 8 | Primary-level retest validation in zones | NOT_IMPLEMENTED | — | — | — | Gate in `rejection_finder.py`. Depends on B7. |
+| 9 | `REJECTION_WALL` detection | NOT_IMPLEMENTED | — | — | — | Mechanical criteria OPEN (§18). |
+| 10 | Quality grading with penalties | NOT_IMPLEMENTED | `contracts/enums.py` has `QualityGrade` | `test_contract_enums.py` | — | New grading module. Depends on B9. |
+| 11 | `EARLY_EXIT_REJECTION_WALL_FAILURE` | NOT_IMPLEMENTED | — | — | — | Trade management extension. Depends on B9. |
+| 12 | `CHOP_NO_TRADE` classification | **BLOCKED** — thresholds OPEN | — | — | — | Requires approved mechanical thresholds (§18). |
+| 13 | Intermarket alignment | NOT_IMPLEMENTED | — | — | — | Multi-symbol data feed needed. |
+| 14 | Max close distance from level | NOT_IMPLEMENTED | — | — | — | Parameter OPEN (`0.25 ATR` proposed, not approved). |
+| 15 | `LevelSource` enum: TDH, TDL | NOT_IMPLEMENTED | — | — | — | Decision OPEN: formal provider or display only. |
+| 16 | Level lifecycle: intraday expiry | **DONE** (implicit) | `strategy_runner.py` | `test_strategy_runner.py` | pre-B1 | — |
+| 17 | Synthetic 2m deduplication | PARTIALLY_IMPLEMENTED | `multi_timeframe_runner.py` | `test_multi_timeframe.py` | pre-B1 | Extend to prevent TWO_CANDLE + 2m double-count. |
+| 18 | Pivot/OB Wick provider | NOT_IMPLEMENTED | `level_provider.py` declares future | — | — | Constitution Phase 5. |
+| 19 | OCL provider | NOT_IMPLEMENTED | `level_provider.py` declares future | — | — | Constitution Phase 6. |
+| 20 | PMH/PML provider | NOT_IMPLEMENTED | `level_provider.py` declares future | — | — | Constitution Phase 4. |
+| 21 | Zone contracts (ZoneComponent, CompositeZone) | **DONE** | `contracts/zone.py` | `test_contract_zone.py` | `77211da` | — |
+| 22 | Entry pattern contracts (EntryPatternResult) | **DONE** | `contracts/entry_pattern.py` | `test_contract_entry_pattern.py` | `77211da` | — |
+| 23 | Entry pattern enums + zone enums | **DONE** | `contracts/enums.py` | `test_contract_enums.py` | `77211da` | — |
+| 24 | Review Workspace metadata extensions | NOT_IMPLEMENTED | — | — | — | Depends on B6–B11. |
 
 ---
 
-## §22 — Recommended Implementation Order (Phase B)
+## §22 — Implementation Order (Phase B)
 
-Based on the gap analysis, the recommended order is:
+> **Last updated:** v1.1 — B1–B5 completed. B6+ approved for
+> execution in this order.
 
-| Task | Description | Dependencies | Risk |
-|---|---|---|---|
-| B1 | Contracts and enum extensions | None | Minimal |
-| B2 | ATR(14) utility module | None | None |
-| B3 | News candle filter | B2 | None |
-| B4 | TWO_CANDLE_ENGULFING_RECOVERY detector | B2, B3 | None |
-| B5 | Synthetic 2m deduplication | B4 | Low |
-| B6 | Pivot clustering → VALIDATED_PIVOT_ZONE | None (data structures only until Pivot provider exists) | None |
-| B7 | COMPOSITE_CONFLUENCE_ZONE builder | B6 | Low |
-| B8 | Primary-level retest validation in composite zones | B7 | Low |
-| B9 | REJECTION_WALL detection | None | None |
-| B10 | Grading penalties (wall, structure, alignment) | B9 | None |
-| B11 | EARLY_EXIT_REJECTION_WALL_FAILURE | B9 | None |
-| B12 | CHOP_NO_TRADE classifier | Requires approved thresholds | Blocked on OPEN decision |
-| B13 | RETEST_STRUCTURE detector | Requires approved criteria | Blocked on OPEN decisions |
-| B14 | Review Workspace metadata extensions | B4–B11 | None |
-
-> **Note:** This order is a recommendation based on the gap analysis.
-> It has NOT been approved for execution. Max must approve before
-> any Phase B task begins.
+| Task | Description | Status | Commit | Dependencies |
+|---|---|---|---|---|
+| B1 | Contracts and enum extensions | **DONE** | `77211da` | — |
+| B2 | ATR(14) utility module | **DONE** | `0649871` | — |
+| B3 | News candle classification | **DONE** | `23c57ee` | B2 |
+| B4 | ATR gate in rejection finder | **DONE** | `9d0db99` | B2, B3 |
+| B5 | TWO_CANDLE_ENGULFING_RECOVERY + stop override | **DONE** | `4568e6b` | B2, B3 |
+| — | ATR warmup from previous session | **DONE** | `5d78005` | B2 |
+| — | Equity RTH bar filter | **DONE** | `af9bd77` | — |
+| B6 | Pivot clustering → VALIDATED_PIVOT_ZONE | NEXT | — | B1 |
+| B7 | COMPOSITE_CONFLUENCE_ZONE builder | PLANNED | — | B6 |
+| B8 | Primary-level retest validation in composite zones | PLANNED | — | B7 |
+| B9 | REJECTION_WALL detection | PLANNED | — | Criteria OPEN (§18) |
+| B10 | Grading penalties (wall, structure, alignment) | PLANNED | — | B9 |
+| B11 | EARLY_EXIT_REJECTION_WALL_FAILURE | PLANNED | — | B9 |
+| B12 | CHOP_NO_TRADE classifier | **BLOCKED** | — | Thresholds OPEN (§18) |
+| B13 | RETEST_STRUCTURE detector | **BLOCKED** | — | Criteria OPEN (§18) |
+| B14 | Review Workspace metadata extensions | PLANNED | — | B6–B11 |
 
 ---
 
@@ -1080,6 +1100,7 @@ Based on the gap analysis, the recommended order is:
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | 2026-08-06 | Initial specification. Created from live trading session observations, voice-transcribed rules, and prior chat-based analysis. Covers entry patterns, zone composition, grading, trade management, and session classification. All examples from 2026-08-06 session. |
+| 1.1 | 2026-08-06 | Status update after B1–B5 + ATR warmup + equity RTH filter. §21 gap analysis updated to reflect completions. §22 updated with commit hashes. §3.3 added (daily trade limits — already implemented, now formally documented). Fixed §3.5 references → §3.3. |
 
 ---
 
