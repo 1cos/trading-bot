@@ -76,7 +76,7 @@ class TestDetectionResultLevelSource:
             "timeframe_minutes": 5, "timezone": "America/New_York",
             "session_open": "09:30", "orb_start": "session_open",
             "orb_duration_minutes": 5,
-            "level_source": "PREVIOUS_DAY_HIGH", "direction": "SHORT",
+            "level_source": "PREVIOUS_DAY_HIGH", "direction": "LONG",
             "entry_model": "CONFIRMATION_CLOSE",
             "entry_buffer_ticks": 0, "stop_buffer_ticks": 0,
             "min_displacement_ticks": None, "min_penetration_ticks": None,
@@ -133,13 +133,13 @@ def _base_preset(**overrides):
 
 
 class TestPresetPDHAccepted:
-    def test_previous_day_high_short_accepted(self):
-        p = _base_preset(level_source="PREVIOUS_DAY_HIGH", direction="SHORT")
+    def test_previous_day_high_long_accepted(self):
+        p = _base_preset(level_source="PREVIOUS_DAY_HIGH", direction="LONG")
         errors = validate_preset_params(p)
         assert errors == [], f"Unexpected errors: {errors}"
 
-    def test_previous_day_low_long_accepted(self):
-        p = _base_preset(level_source="PREVIOUS_DAY_LOW", direction="LONG")
+    def test_previous_day_low_short_accepted(self):
+        p = _base_preset(level_source="PREVIOUS_DAY_LOW", direction="SHORT")
         errors = validate_preset_params(p)
         assert errors == [], f"Unexpected errors: {errors}"
 
@@ -169,15 +169,15 @@ class TestORBPresetsUnchanged:
 # ── 6. Invalid pairings still rejected ──────────────────────────────────────
 
 class TestInvalidPairingsRejected:
-    def test_pdh_long_rejected(self):
-        """PREVIOUS_DAY_HIGH + LONG is not a canonical pair."""
-        p = _base_preset(level_source="PREVIOUS_DAY_HIGH", direction="LONG")
+    def test_pdh_short_rejected(self):
+        """PREVIOUS_DAY_HIGH + SHORT is not a canonical pair."""
+        p = _base_preset(level_source="PREVIOUS_DAY_HIGH", direction="SHORT")
         errors = validate_preset_params(p)
         assert any("canonical pair" in e for e in errors)
 
-    def test_pdl_short_rejected(self):
-        """PREVIOUS_DAY_LOW + SHORT is not a canonical pair."""
-        p = _base_preset(level_source="PREVIOUS_DAY_LOW", direction="SHORT")
+    def test_pdl_long_rejected(self):
+        """PREVIOUS_DAY_LOW + LONG is not a canonical pair."""
+        p = _base_preset(level_source="PREVIOUS_DAY_LOW", direction="LONG")
         errors = validate_preset_params(p)
         assert any("canonical pair" in e for e in errors)
 

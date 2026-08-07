@@ -65,12 +65,12 @@ BASE_CONFIG = {
     "orb_start": "session_open",
     "orb_duration_minutes": 5,
     "level_source": "PREVIOUS_DAY_HIGH",
-    "direction": "SHORT",
+    "direction": "LONG",
     "tick_size": 0.01,
 }
 
 
-def _build_tuesday(level_source, direction="SHORT"):
+def _build_tuesday(level_source, direction="LONG"):
     config = {**BASE_CONFIG, "level_source": level_source, "direction": direction}
     sc = build_session_context(TUESDAY_CANDLES, config)
     assert sc["status"] == "OK"
@@ -114,16 +114,16 @@ class TestDispatcherPDH:
 
 class TestDispatcherPDL:
     def test_returns_ok(self):
-        result, _ = _build_tuesday("PREVIOUS_DAY_LOW", direction="LONG")
+        result, _ = _build_tuesday("PREVIOUS_DAY_LOW", direction="SHORT")
         assert result["status"] == "OK"
 
     def test_level_price_is_monday_low(self):
-        result, _ = _build_tuesday("PREVIOUS_DAY_LOW", direction="LONG")
+        result, _ = _build_tuesday("PREVIOUS_DAY_LOW", direction="SHORT")
         # Monday's min low = 97.0
         assert result["level_price"] == 97.0
 
     def test_level_source_correct(self):
-        result, _ = _build_tuesday("PREVIOUS_DAY_LOW", direction="LONG")
+        result, _ = _build_tuesday("PREVIOUS_DAY_LOW", direction="SHORT")
         assert result["level_source"] == "PREVIOUS_DAY_LOW"
 
 
@@ -136,7 +136,7 @@ class TestTickPrice:
         assert result["level_price_ticks"] == expected
 
     def test_pdl_ticks(self):
-        result, _ = _build_tuesday("PREVIOUS_DAY_LOW", direction="LONG")
+        result, _ = _build_tuesday("PREVIOUS_DAY_LOW", direction="SHORT")
         expected = price_to_ticks(97.0, 0.01)
         assert result["level_price_ticks"] == expected
 

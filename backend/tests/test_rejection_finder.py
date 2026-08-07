@@ -1073,7 +1073,7 @@ class TestTwoCandlePDHNoPair:
     """Test 8: PDH/PDL (line source) → TWO_CANDLE not evaluated."""
 
     def test_pdh_no_two_candle(self):
-        pdh_cfg = {**CONFIG, "level_source": "PREVIOUS_DAY_HIGH", "direction": "SHORT"}
+        pdh_cfg = {**CONFIG, "level_source": "PREVIOUS_DAY_HIGH", "direction": "LONG"}
         # TWO_CANDLE should not be attempted for line sources
         # We just verify no crash and entry_pattern_type is SINGLE or FAILED
         candles = base_candles([qualifying_candle(MS_0945)])

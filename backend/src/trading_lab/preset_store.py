@@ -152,15 +152,15 @@ def validate_preset_params(params: dict) -> list[str]:
             ("LONG", "ORB_HIGH"),
             ("SHORT", "ORB_LOW"),
             ("BOTH", "BOTH"),
-            ("SHORT", "PREVIOUS_DAY_HIGH"),
-            ("LONG", "PREVIOUS_DAY_LOW"),
+            ("LONG", "PREVIOUS_DAY_HIGH"),
+            ("SHORT", "PREVIOUS_DAY_LOW"),
         }
         if (dir_val, ls_val) not in canonical_pairs:
             errors.append(
                 f"direction '{dir_val}' + level_source '{ls_val}' is not "
                 f"a valid canonical pair; allowed: LONG/ORB_HIGH, "
                 f"SHORT/ORB_LOW, BOTH/BOTH, "
-                f"SHORT/PREVIOUS_DAY_HIGH, LONG/PREVIOUS_DAY_LOW"
+                f"LONG/PREVIOUS_DAY_HIGH, SHORT/PREVIOUS_DAY_LOW"
             )
 
     return errors

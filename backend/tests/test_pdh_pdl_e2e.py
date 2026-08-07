@@ -65,7 +65,7 @@ VALID_OUTCOMES = {"WIN", "LOSS", "STOPPED", "SESSION_CLOSE", "NO_VALID_SETUP", "
 class TestPDHEndToEnd:
     def test_pipeline_completes(self, spy_sessions):
         """PREVIOUS_DAY_HIGH completes the full pipeline for every session."""
-        preset = _make_preset("PREVIOUS_DAY_HIGH", "SHORT")
+        preset = _make_preset("PREVIOUS_DAY_HIGH", "LONG")
         results = run_bdrr_strategy(spy_sessions, preset, CONFIG)
         assert len(results) == len(spy_sessions)
         for r in results:
@@ -76,7 +76,7 @@ class TestPDHEndToEnd:
 
     def test_no_pipeline_crash(self, spy_sessions):
         """No session raises an exception."""
-        preset = _make_preset("PREVIOUS_DAY_HIGH", "SHORT")
+        preset = _make_preset("PREVIOUS_DAY_HIGH", "LONG")
         # If any session crashes, run_bdrr_strategy raises
         results = run_bdrr_strategy(spy_sessions, preset, CONFIG)
         assert all(r["outcome"] is not None for r in results)
@@ -85,7 +85,7 @@ class TestPDHEndToEnd:
 class TestPDLEndToEnd:
     def test_pipeline_completes(self, spy_sessions):
         """PREVIOUS_DAY_LOW completes the full pipeline for every session."""
-        preset = _make_preset("PREVIOUS_DAY_LOW", "LONG")
+        preset = _make_preset("PREVIOUS_DAY_LOW", "SHORT")
         results = run_bdrr_strategy(spy_sessions, preset, CONFIG)
         assert len(results) == len(spy_sessions)
         for r in results:
@@ -96,7 +96,7 @@ class TestPDLEndToEnd:
 
     def test_no_pipeline_crash(self, spy_sessions):
         """No session raises an exception."""
-        preset = _make_preset("PREVIOUS_DAY_LOW", "LONG")
+        preset = _make_preset("PREVIOUS_DAY_LOW", "SHORT")
         results = run_bdrr_strategy(spy_sessions, preset, CONFIG)
         assert all(r["outcome"] is not None for r in results)
 
