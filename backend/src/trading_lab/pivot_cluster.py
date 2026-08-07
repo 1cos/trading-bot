@@ -4,38 +4,66 @@ Defined in MAXBOT_RETEST_ENTRY_AND_TRADE_MANAGEMENT_SPEC.md §7.1.
 
 Given a list of ZoneComponents (typically from Pivot/OB Wick sources),
 this module clusters components whose prices fall within a configurable
-tolerance and returns a CompositeZone of type VALIDATED_PIVOT_ZONE
-when the cluster has >= ``min_contacts`` members (FROZEN default: 3).
+tolerance and returns CompositeZone instances of type
+VALIDATED_PIVOT_ZONE when the cluster has >= ``min_contacts`` members
+(FROZEN default: 3).
 
 The module does NOT produce the input ZoneComponents — those come from
 a Level Provider (e.g. a future Pivot/OB Wick provider).  This module
 operates on generic ZoneComponents regardless of source label, so it
 is usable as soon as any provider emits candidate levels.
 
+Algorithm
+---------
+1. Sort components by price (stable).
+2. Find all consecutive windows of length >= ``min_contacts`` whose
+   spread (``max(price) - min(price)``) is <= ``tolerance``.
+3. Select the best window by: (a) most contacts, (b) smallest spread,
+   (c) lowest start index in the sorted array (tie-breaker, no
+   strategic meaning).
+4. Create a zone from that window.
+5. Remove consumed components from the pool.
+6. Re-run globally on residuals (re-sort, re-scan).
+7. Repeat until no valid windows remain.
+8. Return remaining components as unclustered.
+
+Transitive chaining is prevented: the tolerance constrains the total
+spread of each zone, not just pairwise distances.
+
 Design decisions
 ----------------
-- Clustering algorithm: single-pass greedy sort-and-sweep.  Components
-  are sorted by price; consecutive components within ``tolerance`` of
-  their predecessor belong to the same cluster.  This is deterministic
-  and O(n log n).
-- Primary selection: the component closest to the cluster median price
-  is designated ``is_primary=True``.  Ties broken by earliest position
-  in the input list (stable).  This is a heuristic — the caller or a
-  downstream module (e.g. CompositeConfluenceZoneBuilder) may override
-  primary selection when merging with structural levels.
+- Primary selection: OPEN — provisional.  The component whose price
+  is closest to the cluster median is designated ``is_primary=True``.
+  Ties broken by earliest position in the original input list (stable
+  tie-breaker, no strategic meaning).  This does NOT establish a
+  retest validation rule.  It exists solely to satisfy the
+  ``CompositeZone`` contract invariant (exactly one primary).
+  Subject to override when primary selection criteria are approved.
 - Tolerance is a **price distance** (same unit as the prices), NOT an
   ATR ratio.  The parameter is OPEN per §18 and must be supplied by
   the caller.  There is no hidden default.
+- ``status`` is an explicit parameter.  Default ``ZoneStatus.ACTIVE``
+  is provisional and OPEN — the spec does not prescribe the initial
+  status of a freshly clustered zone.  The caller should set the
+  appropriate status based on session context.
 - Components in the output are re-created with ``is_primary`` adjusted.
   The original ``is_primary`` flag on input components is ignored by
   the clustering logic.
+
+Floating-point safety
+---------------------
+Spread comparisons use a centralised ``_spread_within_tolerance``
+function that adds a minimal epsilon (1e-12) to the tolerance before
+comparing.  This prevents mathematically-equal spreads from being
+rejected due to IEEE 754 representation error, without introducing
+a strategically meaningful additional tolerance.
 
 Properties
 ----------
 - Deterministic: same inputs → same outputs, always.
 - Pure function: no side effects, no mutable state.
-- Components with fewer than ``min_contacts`` neighbours are returned
-  individually (not in a zone) so nothing is silently dropped.
+- Components that do not belong to any qualifying cluster are returned
+  as unclustered so nothing is silently dropped.
 """
 
 from __future__ import annotations
@@ -45,6 +73,20 @@ from dataclasses import dataclass
 
 from trading_lab.contracts.enums import ZoneStatus, ZoneType
 from trading_lab.contracts.zone import CompositeZone, ZoneComponent
+
+
+# ── Float-safe comparison ─────────────────────────────────────────────────────
+
+_EPSILON = 1e-12
+
+
+def _spread_within_tolerance(spread: float, tolerance: float) -> bool:
+    """True when *spread* is at most *tolerance*, float-safe.
+
+    Adds a minimal epsilon to tolerance so that a spread that is
+    mathematically equal but IEEE-754-larger is not rejected.
+    """
+    return spread <= tolerance + _EPSILON
 
 
 # ── Validation helpers ────────────────────────────────────────────────────────
@@ -68,7 +110,7 @@ def _require_finite_positive(value: object, name: str) -> float:
 
 
 def _require_non_bool_int(value: object, name: str) -> int:
-    """Require a real int >= 1, rejecting bool."""
+    """Require a real int, rejecting bool."""
     if isinstance(value, bool):
         raise TypeError(f"{name} must be an int, got bool")
     if not isinstance(value, int):
@@ -129,7 +171,7 @@ class PivotClusterResult:
                 )
 
 
-# ── Internal: build a CompositeZone from a cluster ────────────────────────────
+# ── Internal: primary selection ───────────────────────────────────────────────
 
 
 def _select_primary_index(
@@ -137,9 +179,13 @@ def _select_primary_index(
 ) -> int:
     """Return the index *within cluster* of the primary component.
 
+    OPEN — provisional selection to satisfy B1 contract invariant.
+    Does NOT establish a retest validation rule.  Subject to override
+    when primary selection criteria are approved.
+
     Strategy: component whose ``price`` is closest to the cluster
     median price.  Ties broken by original input order (lower
-    ``original_index`` wins).
+    ``original_index`` wins — stable, no strategic meaning).
     """
     prices = sorted(c.price for _, c in cluster)
     n = len(prices)
@@ -163,8 +209,12 @@ def _select_primary_index(
     return best_idx
 
 
+# ── Internal: build a CompositeZone from a cluster ────────────────────────────
+
+
 def _build_zone(
     cluster: list[tuple[int, ZoneComponent]],
+    status: ZoneStatus,
 ) -> CompositeZone:
     """Build a VALIDATED_PIVOT_ZONE from a qualifying cluster."""
     primary_idx = _select_primary_index(cluster)
@@ -172,7 +222,6 @@ def _build_zone(
     components: list[ZoneComponent] = []
     for i, (_, comp) in enumerate(cluster):
         is_primary = (i == primary_idx)
-        # Re-create component with correct is_primary flag
         components.append(
             ZoneComponent(
                 source=comp.source,
@@ -191,8 +240,56 @@ def _build_zone(
         lower_bound=env_lower,
         upper_bound=env_upper,
         components=tuple(components),
-        status=ZoneStatus.ACTIVE,
+        status=status,
     )
+
+
+# ── Internal: find the best valid window in a sorted list ─────────────────────
+
+
+def _find_best_window(
+    sorted_items: list[tuple[int, ZoneComponent]],
+    tolerance: float,
+    min_contacts: int,
+) -> tuple[int, int] | None:
+    """Find the best consecutive window in *sorted_items*.
+
+    Returns (start, end) inclusive indices into *sorted_items*,
+    or None if no valid window exists.
+
+    Selection criteria (in order):
+    (a) most contacts (largest window);
+    (b) smallest spread;
+    (c) lowest start index (tie-breaker, no strategic meaning).
+    """
+    n = len(sorted_items)
+    if n < min_contacts:
+        return None
+
+    best: tuple[int, int] | None = None
+    best_count = 0
+    best_spread = float("inf")
+
+    for start in range(n):
+        for end in range(start + min_contacts - 1, n):
+            spread = sorted_items[end][1].price - sorted_items[start][1].price
+            count = end - start + 1
+
+            if not _spread_within_tolerance(spread, tolerance):
+                # All wider windows from this start will also fail
+                break
+
+            # Check if this window is better
+            if (count > best_count
+                    or (count == best_count and spread < best_spread)):
+                best = (start, end)
+                best_count = count
+                best_spread = spread
+            # Criterion (c) — lowest start index — is satisfied
+            # automatically: we iterate start from 0 upward, so the
+            # first window found at a given (count, spread) wins.
+
+    return best
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -202,6 +299,7 @@ def cluster_pivots(
     components: list[ZoneComponent],
     tolerance: float,
     min_contacts: int = 3,
+    status: ZoneStatus = ZoneStatus.ACTIVE,
 ) -> PivotClusterResult:
     """Cluster nearby ZoneComponents into VALIDATED_PIVOT_ZONE.
 
@@ -211,14 +309,20 @@ def cluster_pivots(
         Candidate components to cluster.  May be empty.  Source
         labels are not filtered — the caller decides what to pass.
     tolerance : float
-        Maximum price distance between consecutive sorted
-        components for them to belong to the same cluster.
-        Must be > 0.  This parameter is OPEN per spec §18;
-        there is no hidden default.
+        Maximum total spread (``max(price) - min(price)``) allowed
+        within a single cluster.  Must be > 0.  This parameter is
+        OPEN per spec §18; there is no hidden default.
     min_contacts : int
         Minimum number of components in a cluster for it to
         qualify as a VALIDATED_PIVOT_ZONE.  FROZEN default: 3
         (spec §7.1).
+    status : ZoneStatus
+        Lifecycle status assigned to each produced zone.
+        Default ``ZoneStatus.ACTIVE`` is provisional and OPEN —
+        the spec does not prescribe the initial status of a freshly
+        clustered zone.  The caller should set the appropriate
+        status based on session context (e.g. whether a break with
+        displacement has occurred).
 
     Returns
     -------
@@ -239,6 +343,12 @@ def cluster_pivots(
     if mc < 1:
         raise ValueError(f"min_contacts must be >= 1, got {mc}")
 
+    if not isinstance(status, ZoneStatus):
+        raise TypeError(
+            f"status must be a ZoneStatus, "
+            f"got {type(status).__name__}"
+        )
+
     if not isinstance(components, list):
         raise TypeError(
             f"components must be a list, "
@@ -251,47 +361,34 @@ def cluster_pivots(
                 f"got {type(c).__name__}"
             )
 
-    # ── Empty input ───────────────────────────────────────────────────
-    if len(components) == 0:
-        return PivotClusterResult(
-            zones=(),
-            unclustered=(),
-            tolerance=tol,
-            min_contacts=mc,
-        )
-
-    # ── Sort by price, preserving original index for tie-breaking ─────
-    indexed = list(enumerate(components))
-    indexed.sort(key=lambda pair: pair[1].price)
-
-    # ── Sweep: group consecutive components within tolerance ──────────
-    clusters: list[list[tuple[int, ZoneComponent]]] = []
-    current_cluster: list[tuple[int, ZoneComponent]] = [indexed[0]]
-
-    for j in range(1, len(indexed)):
-        prev_price = indexed[j - 1][1].price
-        curr_price = indexed[j][1].price
-        if curr_price - prev_price <= tol:
-            current_cluster.append(indexed[j])
-        else:
-            clusters.append(current_cluster)
-            current_cluster = [indexed[j]]
-    clusters.append(current_cluster)
-
-    # ── Separate qualifying clusters from unclustered ─────────────────
+    # ── Iterative extraction ──────────────────────────────────────────
+    # Pool: (original_index, component) pairs — re-sorted each round.
+    pool: list[tuple[int, ZoneComponent]] = list(enumerate(components))
     zones: list[CompositeZone] = []
-    unclustered: list[ZoneComponent] = []
 
-    for cluster in clusters:
-        if len(cluster) >= mc:
-            zones.append(_build_zone(cluster))
-        else:
-            for _, comp in cluster:
-                unclustered.append(comp)
+    while True:
+        # Sort pool by price (stable — preserves original index order
+        # for equal prices).
+        pool.sort(key=lambda pair: pair[1].price)
+
+        window = _find_best_window(pool, tol, mc)
+        if window is None:
+            break
+
+        start, end = window
+        cluster = pool[start:end + 1]
+        zones.append(_build_zone(cluster, status))
+
+        # Remove consumed components from pool
+        consumed = set(range(start, end + 1))
+        pool = [p for i, p in enumerate(pool) if i not in consumed]
+
+    # ── Unclustered: whatever remains in pool ─────────────────────────
+    unclustered = tuple(comp for _, comp in pool)
 
     return PivotClusterResult(
         zones=tuple(zones),
-        unclustered=tuple(unclustered),
+        unclustered=unclustered,
         tolerance=tol,
         min_contacts=mc,
     )
