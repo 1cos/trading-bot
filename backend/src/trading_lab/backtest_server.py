@@ -933,13 +933,14 @@ def api_run():
                 "duplicate_rows_removed": tf_data.get("duplicate_rows_removed", 0),
             }
             _sym_tz = tf_data.get("timezone", "America/New_York")
+            _cbd = tf_data["candles_by_date"]
             for date in tf_data["dates"]:
                 if start_date and date < start_date:
                     continue
                 if end_date and date > end_date:
                     continue
-                candles = tf_data["candles_by_date"][date]
-                all_sessions.append({
+                candles = _cbd[date]
+                sess = {
                     "symbol": sym,
                     "date": date,
                     "market_timezone": _sym_tz,
@@ -947,7 +948,14 @@ def api_run():
                     "session_close_utc_ms": candles[-1]["time_ms"],
                     "timeframe": timeframe,
                     "candles": candles,
-                })
+                }
+                # ATR warm-up from previous session
+                from trading_lab.timeframe_aggregation import get_warmup_candles
+                warmup, warmup_pc = get_warmup_candles(_cbd, date, 14)
+                if warmup:
+                    sess["warmup_candles"] = warmup
+                    sess["warmup_previous_close"] = warmup_pc
+                all_sessions.append(sess)
 
         if not all_sessions:
             return jsonify({"error": "No sessions found for the selected date range"}), 400

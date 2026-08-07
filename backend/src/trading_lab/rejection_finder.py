@@ -90,11 +90,23 @@ def find_rejection(
     displacement_result: dict,
     retest_result: dict,
     config: dict,
+    *,
+    _atr_cache: list[float | None] | None = None,
 ) -> dict:
     """Scan retest window for the first qualifying rejection candle.
 
     Matches JS ``findRejection(candles, orb, breakResult,
     displacementResult, retestResult, config)`` in bdrr_engine.js:674–917.
+
+    Parameters
+    ----------
+    _atr_cache : list[float | None] or None
+        Pre-computed ``atr_series(candles, 14)`` result, optionally
+        including warm-up from a prior session.  When provided, the
+        internal ``atr_series`` call is skipped and this cache is used
+        directly.  Must have the same length as ``candles``.
+        When ``None`` (default), ATR is computed from ``candles`` alone
+        (backward-compatible; first 13 indices have no ATR at 5m).
     """
     _assert_valid_config(config)
 
@@ -368,10 +380,18 @@ def find_rejection(
     # ── ATR cache (O(n), computed once) ─────────────────────────────────
     # Used by the News Candle filter (spec §9).  previous_atr for candle
     # i is atr_cache[i-1]; candle i is never included in its own ATR.
-    # initial_previous_close=None: the session array starts from the
-    # first available candle; close before session is out of scope for B4.
+    # When _atr_cache is provided (warm-up path), use it directly.
+    # Otherwise compute from session candles alone (legacy path).
     news_threshold = config.get("news_threshold", 3.0)
-    atr_cache = atr_series(candles, 14)
+    if _atr_cache is not None:
+        if len(_atr_cache) != len(candles):
+            raise ValueError(
+                f"_atr_cache length ({len(_atr_cache)}) must match "
+                f"candles length ({len(candles)})"
+            )
+        atr_cache = _atr_cache
+    else:
+        atr_cache = atr_series(candles, 14)
 
     # ── Zone edges for TWO_CANDLE (spec §5, STRUCTURAL-ZONE RECOVERY) ──
     # TWO_CANDLE requires near_edge and far_edge.  Only ORB sources

@@ -121,4 +121,14 @@ def run_multi_timeframe(
     if not sessions:
         return []
 
+    # ── ATR warm-up: inject warmup_candles from previous session ─────
+    for i, sess in enumerate(sessions):
+        if i == 0:
+            continue
+        prev = sessions[i - 1]["candles"]
+        warmup = prev[-14:]
+        prev_close = prev[-(14 + 1)]["close"] if len(prev) > 14 else None
+        sess["warmup_candles"] = warmup
+        sess["warmup_previous_close"] = prev_close
+
     return run_bdrr_strategy(sessions, preset, config)

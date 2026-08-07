@@ -22,6 +22,7 @@ import uuid
 from datetime import datetime, timezone
 from enum import StrEnum, unique
 
+from trading_lab.atr import atr_series
 from trading_lab.bar_adapter import raw_candle_to_canonical_bar
 from trading_lab.break_finder import find_break
 from trading_lab.detection_result_builder import build_detection_result
@@ -286,8 +287,22 @@ def _process_one_session(session, preset, engine_config, tp_config, outcome_conf
         retest = {"status": "FAILED", "failed_stage": disp.get("failed_stage"), "reason": disp.get("reason")}
 
     # Stage 5 — Rejection / Entry Candle (generic: reads only level_price)
+    # ATR warm-up: when the session carries warmup_candles from a prior
+    # session, compute ATR on [warmup + session] and shift the cache so
+    # indices align with sc_candles.  Warmup candles never enter the
+    # strategy pipeline — they exist only for ATR computation.
+    warmed_atr_cache = None
     if retest.get("status") == "OK":
-        rej = find_rejection(sc_candles, level_result, brk, disp, retest, engine_config)
+        warmup = _get(session, "warmup_candles")
+        warmup_pc = _get(session, "warmup_previous_close")
+        if warmup and isinstance(warmup, list) and len(warmup) > 0:
+            combined = list(warmup) + list(sc_candles)
+            full_atr = atr_series(combined, 14, initial_previous_close=warmup_pc)
+            warmed_atr_cache = full_atr[len(warmup):]
+        rej = find_rejection(
+            sc_candles, level_result, brk, disp, retest, engine_config,
+            _atr_cache=warmed_atr_cache,
+        )
     else:
         rej = {"status": "FAILED", "failed_stage": retest.get("failed_stage"), "reason": retest.get("reason")}
 

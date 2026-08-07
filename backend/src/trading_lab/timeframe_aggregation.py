@@ -604,3 +604,63 @@ def _aggregate_from_anchor(bars, target_minutes, tz):
         result.append(_flush_bucket(bucket))
 
     return result
+
+
+# ── ATR warm-up sourcing ─────────────────────────────────────────────────────
+
+
+def get_warmup_candles(
+    candles_by_date: dict[str, list[dict]],
+    current_date: str,
+    period: int = 14,
+) -> tuple[list[dict], float | None]:
+    """Return warm-up candles from the previous session for ATR priming.
+
+    Selects the last ``period`` candles from the session immediately
+    preceding ``current_date`` in chronological order.  These candles
+    are intended exclusively for ATR warm-up and must NOT enter the
+    strategy pipeline.
+
+    Parameters
+    ----------
+    candles_by_date : dict[str, list[dict]]
+        All sessions, keyed by date string.
+    current_date : str
+        The date of the session being processed (``"YYYY-MM-DD"``).
+    period : int
+        Number of trailing candles to return.  Default ``14``
+        (matching ATR period).
+
+    Returns
+    -------
+    (warmup_candles, previous_close)
+        ``warmup_candles``: up to ``period`` candles from the end of
+        the previous session.  Empty list if no previous session.
+        ``previous_close``: close of the candle immediately before
+        the warmup block (for ``initial_previous_close`` in ATR).
+        ``None`` if the previous session has fewer than
+        ``period + 1`` candles.
+    """
+    sorted_dates = sorted(candles_by_date.keys())
+    if current_date not in sorted_dates:
+        return [], None
+
+    idx = sorted_dates.index(current_date)
+    if idx == 0:
+        return [], None
+
+    prev_date = sorted_dates[idx - 1]
+    prev_candles = candles_by_date[prev_date]
+
+    if len(prev_candles) == 0:
+        return [], None
+
+    warmup = prev_candles[-period:]
+
+    # previous_close: close of the candle just before the warmup block
+    if len(prev_candles) > period:
+        prev_close = prev_candles[-(period + 1)]["close"]
+    else:
+        prev_close = None
+
+    return warmup, prev_close

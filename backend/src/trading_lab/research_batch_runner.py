@@ -74,8 +74,9 @@ def build_research_dataset_from_csv(
     candles = parse_candles_from_csv(csv_text)
     groups = split_into_sessions(candles, timezone)
 
-    sessions = [
-        {
+    sessions = []
+    for i, g in enumerate(groups):
+        sess = {
             "symbol": symbol,
             "date": g["date"],
             "market_timezone": timezone,
@@ -84,8 +85,14 @@ def build_research_dataset_from_csv(
             "timeframe": "5m",
             "candles": g["candles"],
         }
-        for g in groups
-    ]
+        # ATR warm-up from previous session
+        if i > 0:
+            prev = groups[i - 1]["candles"]
+            sess["warmup_candles"] = prev[-14:]
+            sess["warmup_previous_close"] = (
+                prev[-(14 + 1)]["close"] if len(prev) > 14 else None
+            )
+        sessions.append(sess)
 
     runner_results = run_bdrr_strategy(
         sessions, preset, config,

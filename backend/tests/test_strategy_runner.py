@@ -212,9 +212,9 @@ def _load_real_sessions(symbol):
     candles = parse_candles_from_csv(csv_content)
     groups = split_into_sessions(candles, "America/New_York")
     sessions = []
-    for g in groups:
+    for i, g in enumerate(groups):
         c = g["candles"]
-        sessions.append({
+        sess = {
             "symbol": symbol,
             "date": g["date"],
             "market_timezone": "America/New_York",
@@ -222,7 +222,15 @@ def _load_real_sessions(symbol):
             "session_close_utc_ms": c[-1]["time_ms"],
             "timeframe": "5m",
             "candles": c,
-        })
+        }
+        # ATR warm-up from previous session
+        if i > 0:
+            prev = groups[i - 1]["candles"]
+            sess["warmup_candles"] = prev[-14:]
+            sess["warmup_previous_close"] = (
+                prev[-(14 + 1)]["close"] if len(prev) > 14 else None
+            )
+        sessions.append(sess)
     return sessions
 
 
