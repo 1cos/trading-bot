@@ -1,6 +1,6 @@
 # MaxBot — Retest, Entry, and Trade Management Specification
 
-> **Version:** 1.1 — **Date:** 2026-08-06
+> **Version:** 1.2 — **Date:** 2026-08-09
 > **Status:** AUTHORITATIVE EXTENSION — supplements MAXBOT_SPECIFICATION.md
 >
 > This document extends the project constitution
@@ -1032,9 +1032,10 @@ implemented.
 | 5 | News candle filter (> 3 ATR) | **DONE** | `news_candle.py` + `rejection_finder.py` | `test_news_candle.py`, `test_rejection_finder.py` | `23c57ee` + `9d0db99` | — |
 | 5b | ATR warmup from previous session | **DONE** | `rejection_finder.py`, `strategy_runner.py` | `test_atr_warmup.py` | `5d78005` | — |
 | 5c | Equity RTH bar filter | **DONE** | `session_split.py` | `test_rth_bar_filter.py` | `af9bd77` | — |
-| 6 | `VALIDATED_PIVOT_ZONE` clustering | NOT_IMPLEMENTED | — | — | — | New module `pivot_cluster.py`. Pivot provider not yet built but module can operate on generic `ZoneComponent`. |
-| 7 | `COMPOSITE_CONFLUENCE_ZONE` merging | NOT_IMPLEMENTED | — | — | — | New module `confluence_zone_builder.py`. |
-| 8 | Primary-level retest validation in zones | NOT_IMPLEMENTED | — | — | — | Gate in `rejection_finder.py`. Depends on B7. |
+| 6 | `VALIDATED_PIVOT_ZONE` clustering | **DONE** | `pivot_cluster.py` | `test_pivot_cluster.py` | `6d8f1bb` | Bounded iterative algorithm, no transitive chaining. |
+| 7 | `COMPOSITE_CONFLUENCE_ZONE` merging | **DONE** | `confluence_zone_builder.py` | `test_confluence_zone_builder.py` | `3f84588` | Anchor-based merge around explicit primary. |
+| 8 | Primary-level retest validation in zones | **SATISFIED** | `rejection_finder.py` | `test_rejection_finder.py` | — | `level_price == primary_level_price` by construction. End-to-end blocked by multi-provider. |
+| 8b | Generic level sequence invalidation | **DONE** | `sequence_validator.py` | `test_sequence_validator.py` | `82b81aa` | PDH/PDL: consecutive closes on wrong side of level_price. |
 | 9 | `REJECTION_WALL` detection | NOT_IMPLEMENTED | — | — | — | Mechanical criteria OPEN (§18). |
 | 10 | Quality grading with penalties | NOT_IMPLEMENTED | `contracts/enums.py` has `QualityGrade` | `test_contract_enums.py` | — | New grading module. Depends on B9. |
 | 11 | `EARLY_EXIT_REJECTION_WALL_FAILURE` | NOT_IMPLEMENTED | — | — | — | Trade management extension. Depends on B9. |
@@ -1068,9 +1069,11 @@ implemented.
 | B5 | TWO_CANDLE_ENGULFING_RECOVERY + stop override | **DONE** | `4568e6b` | B2, B3 |
 | — | ATR warmup from previous session | **DONE** | `5d78005` | B2 |
 | — | Equity RTH bar filter | **DONE** | `af9bd77` | — |
-| B6 | Pivot clustering → VALIDATED_PIVOT_ZONE | NEXT | — | B1 |
-| B7 | COMPOSITE_CONFLUENCE_ZONE builder | PLANNED | — | B6 |
-| B8 | Primary-level retest validation in composite zones | PLANNED | — | B7 |
+| B6 | Pivot clustering → VALIDATED_PIVOT_ZONE | **DONE** | `6d8f1bb` | B1 |
+| — | PDH/PDL direction pair correction | **DONE** | `8c73d14` | — |
+| B7 | COMPOSITE_CONFLUENCE_ZONE builder | **DONE** | `3f84588` | B6 |
+| — | Generic level sequence invalidation (PDH/PDL) | **DONE** | `82b81aa` | — |
+| B8 | Primary-level retest validation in composite zones | **SATISFIED** | — | B7. Gate on `level_price` already matches `primary_level_price` by construction. End-to-end integration blocked by multi-provider infrastructure. |
 | B9 | REJECTION_WALL detection | PLANNED | — | Criteria OPEN (§18) |
 | B10 | Grading penalties (wall, structure, alignment) | PLANNED | — | B9 |
 | B11 | EARLY_EXIT_REJECTION_WALL_FAILURE | PLANNED | — | B9 |
@@ -1101,6 +1104,7 @@ implemented.
 |---|---|---|
 | 1.0 | 2026-08-06 | Initial specification. Created from live trading session observations, voice-transcribed rules, and prior chat-based analysis. Covers entry patterns, zone composition, grading, trade management, and session classification. All examples from 2026-08-06 session. |
 | 1.1 | 2026-08-06 | Status update after B1–B5 + ATR warmup + equity RTH filter. §21 gap analysis updated to reflect completions. §22 updated with commit hashes. §3.3 added (daily trade limits — already implemented, now formally documented). Fixed §3.5 references → §3.3. |
+| 1.2 | 2026-08-09 | B6–B8 completion. B6: bounded iterative pivot clustering. PDH/PDL direction pairs corrected. B7: composite confluence zone builder with anchor-based merge. Generic line-level sequence invalidation for PDH/PDL. B8: satisfied locally (level_price == primary_level_price by construction); end-to-end blocked by multi-provider. Quantitative audit: 8/172 SPY sessions have contemporaneous ORB+PDH/PDL displacement; 2/8 within 0.75 ATR. |
 
 ---
 
