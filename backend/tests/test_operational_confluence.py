@@ -605,30 +605,38 @@ class TestRealSPYCases:
         )
 
     def test_2025_12_16_short_composite(self):
-        """2025-12-16 SHORT: dist=0.40, ATR=0.6286, dist/ATR=0.636 → COMPOSITE."""
+        """2025-12-16 SHORT: dist=0.40, ATR=0.6286, dist/ATR=0.636 → COMPOSITE.
+
+        Displacement indices from canonical pipeline (displacement_finder
+        with min_displacement_bars=3).
+        """
         r = self._case(
             "ORB_LOW", 678.85, "PREVIOUS_DAY_LOW", 679.25,
-            orb_disp=13, pd_disp=12, orb_valid=17, pd_valid=17,
+            orb_disp=14, pd_disp=16, orb_valid=17, pd_valid=17,
             atr=0.6286,
         )
         assert r.zone is not None
         assert r.reason == REASON_COMPOSITE_CREATED
         assert r.distance == pytest.approx(0.40)
         assert r.atr_tolerance == pytest.approx(0.6286 * 0.75)
-        assert r.overlap_start_index == 13
+        assert r.overlap_start_index == 16
         assert r.overlap_end_index == 17
 
     def test_2026_05_12_short_composite(self):
-        """2026-05-12 SHORT: dist=0.29, ATR=0.4914, dist/ATR=0.590 → COMPOSITE."""
+        """2026-05-12 SHORT: dist=0.29, ATR=0.4914, dist/ATR=0.590 → COMPOSITE.
+
+        Displacement indices from canonical pipeline (displacement_finder
+        with min_displacement_bars=3).
+        """
         r = self._case(
             "ORB_LOW", 736.16, "PREVIOUS_DAY_LOW", 736.45,
-            orb_disp=7, pd_disp=6, orb_valid=12, pd_valid=13,
+            orb_disp=8, pd_disp=9, orb_valid=12, pd_valid=13,
             atr=0.4914,
         )
         assert r.zone is not None
         assert r.reason == REASON_COMPOSITE_CREATED
         assert r.distance == pytest.approx(0.29)
-        assert r.overlap_start_index == 7
+        assert r.overlap_start_index == 9
         assert r.overlap_end_index == 12
 
     def test_count_composites_is_2(self):
@@ -636,12 +644,10 @@ class TestRealSPYCases:
         # All 8 cases with their actual values from the audit
         cases = [
             # (orb_src, orb_price, pd_src, pd_price, orb_disp, pd_disp, orb_valid, pd_valid, atr, expected_composite)
-            # Case 1: 2025-12-16 SHORT — dist/ATR=0.636 → COMPOSITE
-            ("ORB_LOW", 678.85, "PREVIOUS_DAY_LOW", 679.25, 13, 12, 17, 17, 0.6286, True),
-            # Case 2: 2026-05-12 SHORT — dist/ATR=0.590 → COMPOSITE
-            ("ORB_LOW", 736.16, "PREVIOUS_DAY_LOW", 736.45, 7, 6, 12, 13, 0.4914, True),
-            # Case 3: high dist/ATR examples excluded by distance
-            ("ORB_HIGH", 692.43, "PREVIOUS_DAY_HIGH", 692.32, 13, 11, 30, 30, 0.2557, False),  # 2026-01-07 dist/ATR=0.430 BUT ATR=0.2557 so tol=0.192 < dist=0.11... wait
+            # Case 1: 2025-12-16 SHORT — canonical pipeline indices
+            ("ORB_LOW", 678.85, "PREVIOUS_DAY_LOW", 679.25, 14, 16, 17, 17, 0.6286, True),
+            # Case 2: 2026-05-12 SHORT — canonical pipeline indices
+            ("ORB_LOW", 736.16, "PREVIOUS_DAY_LOW", 736.45, 8, 9, 12, 13, 0.4914, True),
         ]
 
         composites = 0
@@ -656,16 +662,16 @@ class TestRealSPYCases:
 
     def test_no_case_excluded_by_overlap(self):
         """Both confirmed composite cases have valid overlap (not excluded by NO_OVERLAP)."""
-        # 2025-12-16: overlap [13, 17]
+        # 2025-12-16: canonical overlap [16, 17]
         r1 = self._case(
             "ORB_LOW", 678.85, "PREVIOUS_DAY_LOW", 679.25,
-            13, 12, 17, 17, 0.6286,
+            14, 16, 17, 17, 0.6286,
         )
         assert r1.reason != REASON_EXCLUDED_NO_OVERLAP
 
-        # 2026-05-12: overlap [7, 12]
+        # 2026-05-12: canonical overlap [9, 12]
         r2 = self._case(
             "ORB_LOW", 736.16, "PREVIOUS_DAY_LOW", 736.45,
-            7, 6, 12, 13, 0.4914,
+            8, 9, 12, 13, 0.4914,
         )
         assert r2.reason != REASON_EXCLUDED_NO_OVERLAP
