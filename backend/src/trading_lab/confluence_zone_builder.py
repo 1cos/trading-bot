@@ -6,8 +6,8 @@ Given a list of ZoneComponents from different providers (ORB, PDH/PDL,
 Pivot/OB Wick, etc.), this module builds a COMPOSITE_CONFLUENCE_ZONE
 when components are close enough to the designated primary level.
 
-Algorithm
----------
+Algorithm (``build_confluence_zone`` — core geometric builder)
+--------------------------------------------------------------
 1. Validate inputs (tolerance first, then components, then primary).
 2. Identify the single primary component (anchor).
 3. For each secondary, compute ``abs(component.price - primary.price)``.
@@ -16,6 +16,18 @@ Algorithm
 6. If at least one qualifies → build CompositeZone with primary first,
    then included secondaries sorted by price (stable on input order).
 7. Excluded components returned as unmerged in original input order.
+
+Operational builder (``build_operational_confluence`` — B8)
+-----------------------------------------------------------
+Wraps the core builder with two gates that must both pass:
+
+1. **Overlap gate** — the operative windows of both levels
+   (displacement_index..max_valid_index) must overlap in time.
+2. **Distance gate** — abs(price_a - price_b) <= ATR_post_ORB *
+   composite_atr_tolerance.
+
+ATR is frozen at the end of the ORB and reused for the entire session.
+Default coefficient: 0.75.
 
 Design decisions
 ----------------
@@ -26,7 +38,6 @@ Design decisions
 - Float-safe comparison: ``distance <= tolerance + EPSILON`` with
   EPSILON = 1e-12, matching the convention in pivot_cluster.py.
   This is a local helper — not imported from pivot_cluster.
-- Tolerance is OPEN per spec §18 — the caller must supply it.
 - Status is hardcoded to ZoneStatus.ACTIVE (provisional, OPEN).
 - Primary selection is the caller's responsibility.  The builder
   requires exactly one component with is_primary=True and never
@@ -282,4 +293,232 @@ def build_confluence_zone(
         zone=zone,
         unmerged=unmerged,
         tolerance=tol,
+    )
+
+
+# ── B8: Operational Confluence Builder ────────────────────────────────────────
+
+DEFAULT_COMPOSITE_ATR_TOLERANCE = 0.75
+
+
+def validate_composite_atr_tolerance(value: object) -> float:
+    """Validate composite_atr_tolerance coefficient.
+
+    Must be numeric (not bool), finite, >= 0.
+    Converts int to float.  Rejects bool, str, NaN, inf, negative.
+    """
+    if isinstance(value, bool):
+        raise TypeError(
+            "composite_atr_tolerance must be a number, got bool"
+        )
+    if isinstance(value, int):
+        value = float(value)
+    if not isinstance(value, (float, int)):
+        raise TypeError(
+            f"composite_atr_tolerance must be a number, "
+            f"got {type(value).__name__}"
+        )
+    if not math.isfinite(value):
+        raise ValueError(
+            f"composite_atr_tolerance must be finite, got {value!r}"
+        )
+    if value < 0:
+        raise ValueError(
+            f"composite_atr_tolerance must be >= 0, got {value!r}"
+        )
+    return float(value)
+
+
+# ── Reason codes ──────────────────────────────────────────────────────────────
+
+REASON_COMPOSITE_CREATED = "COMPOSITE_CREATED"
+REASON_EXCLUDED_DISTANCE = "EXCLUDED_DISTANCE"
+REASON_EXCLUDED_NO_OVERLAP = "EXCLUDED_NO_OVERLAP"
+REASON_EXCLUDED_ATR_UNAVAILABLE = "EXCLUDED_ATR_UNAVAILABLE"
+
+
+# ── Operational result contract ───────────────────────────────────────────────
+
+
+@dataclass(frozen=True, slots=True)
+class OperationalConfluenceResult:
+    """Result of building an operational composite confluence zone (B8).
+
+    This wraps the core geometric builder with ATR-based tolerance
+    and an overlap gate.
+
+    Fields
+    ------
+    zone : CompositeZone | None
+        The COMPOSITE_CONFLUENCE_ZONE if both gates pass, None otherwise.
+    unmerged : tuple[ZoneComponent, ...]
+        Components not included in the zone.
+    reason : str
+        One of the REASON_* constants.
+    atr_post_orb : float | None
+        The frozen ATR(14) value used.
+    composite_atr_tolerance : float
+        The coefficient used.
+    atr_tolerance : float | None
+        atr_post_orb * composite_atr_tolerance (the effective tolerance).
+    distance : float | None
+        abs(price_a - price_b).
+    overlap_start_index : int | None
+        max(displacement_index_a, displacement_index_b).
+    overlap_end_index : int | None
+        min(max_valid_index_a, max_valid_index_b).
+    components_detail : tuple[dict, ...]
+        Per-component diagnostic info (source, price, displacement_index,
+        max_valid_index).
+    """
+
+    zone: CompositeZone | None
+    unmerged: tuple[ZoneComponent, ...]
+    reason: str
+    atr_post_orb: float | None
+    composite_atr_tolerance: float
+    atr_tolerance: float | None
+    distance: float | None
+    overlap_start_index: int | None
+    overlap_end_index: int | None
+    components_detail: tuple[dict, ...]
+
+
+# ── Operational builder ───────────────────────────────────────────────────────
+
+
+def build_operational_confluence(
+    components: list[ZoneComponent],
+    displacement_indices: list[int],
+    max_valid_indices: list[int],
+    atr_post_orb: float | None,
+    composite_atr_tolerance: float = DEFAULT_COMPOSITE_ATR_TOLERANCE,
+) -> OperationalConfluenceResult:
+    """Build a COMPOSITE_CONFLUENCE_ZONE with ATR tolerance and overlap gate.
+
+    Parameters
+    ----------
+    components : list[ZoneComponent]
+        Exactly two components.  Exactly one must have is_primary=True.
+    displacement_indices : list[int]
+        Displacement start index for each component (same order).
+    max_valid_indices : list[int]
+        Last valid candle index for each component (same order).
+    atr_post_orb : float or None
+        ATR(14) frozen at the end of the ORB.  None if unavailable.
+    composite_atr_tolerance : float
+        Coefficient for ATR-based tolerance.  Default 0.75.
+
+    Returns
+    -------
+    OperationalConfluenceResult
+    """
+    # ── Validate coefficient ──────────────────────────────────────
+    coeff = validate_composite_atr_tolerance(composite_atr_tolerance)
+
+    # ── Validate components (reuse existing) ──────────────────────
+    _primary_idx, primary = _validate_components(components)
+
+    if len(components) != 2:
+        raise ValueError(
+            f"operational confluence requires exactly 2 components, "
+            f"got {len(components)}"
+        )
+    if len(displacement_indices) != 2:
+        raise ValueError(
+            f"displacement_indices must have 2 elements, "
+            f"got {len(displacement_indices)}"
+        )
+    if len(max_valid_indices) != 2:
+        raise ValueError(
+            f"max_valid_indices must have 2 elements, "
+            f"got {len(max_valid_indices)}"
+        )
+
+    # Build per-component detail
+    detail = tuple(
+        {
+            "source": components[i].source,
+            "price": components[i].price,
+            "is_primary": components[i].is_primary,
+            "displacement_index": displacement_indices[i],
+            "max_valid_index": max_valid_indices[i],
+        }
+        for i in range(2)
+    )
+
+    all_unmerged = tuple(components)
+
+    # ── ATR gate ──────────────────────────────────────────────────
+    if (atr_post_orb is None
+            or not isinstance(atr_post_orb, (int, float))
+            or isinstance(atr_post_orb, bool)
+            or (isinstance(atr_post_orb, float)
+                and not math.isfinite(atr_post_orb))
+            or atr_post_orb <= 0):
+        return OperationalConfluenceResult(
+            zone=None,
+            unmerged=all_unmerged,
+            reason=REASON_EXCLUDED_ATR_UNAVAILABLE,
+            atr_post_orb=atr_post_orb if isinstance(atr_post_orb, (int, float)) and not isinstance(atr_post_orb, bool) else None,
+            composite_atr_tolerance=coeff,
+            atr_tolerance=None,
+            distance=None,
+            overlap_start_index=None,
+            overlap_end_index=None,
+            components_detail=detail,
+        )
+
+    atr_val = float(atr_post_orb)
+    atr_tol = atr_val * coeff
+
+    # ── Overlap gate ──────────────────────────────────────────────
+    overlap_start = max(displacement_indices[0], displacement_indices[1])
+    overlap_end = min(max_valid_indices[0], max_valid_indices[1])
+
+    distance = abs(components[0].price - components[1].price)
+
+    if overlap_start > overlap_end:
+        return OperationalConfluenceResult(
+            zone=None,
+            unmerged=all_unmerged,
+            reason=REASON_EXCLUDED_NO_OVERLAP,
+            atr_post_orb=atr_val,
+            composite_atr_tolerance=coeff,
+            atr_tolerance=atr_tol,
+            distance=distance,
+            overlap_start_index=overlap_start,
+            overlap_end_index=overlap_end,
+            components_detail=detail,
+        )
+
+    # ── Distance gate ─────────────────────────────────────────────
+    if not _within_tolerance(distance, atr_tol):
+        return OperationalConfluenceResult(
+            zone=None,
+            unmerged=all_unmerged,
+            reason=REASON_EXCLUDED_DISTANCE,
+            atr_post_orb=atr_val,
+            composite_atr_tolerance=coeff,
+            atr_tolerance=atr_tol,
+            distance=distance,
+            overlap_start_index=overlap_start,
+            overlap_end_index=overlap_end,
+            components_detail=detail,
+        )
+
+    # ── Both gates pass — delegate to core builder ────────────────
+    core_result = build_confluence_zone(components, atr_tol)
+
+    return OperationalConfluenceResult(
+        zone=core_result.zone,
+        unmerged=core_result.unmerged,
+        reason=REASON_COMPOSITE_CREATED,
+        atr_post_orb=atr_val,
+        composite_atr_tolerance=coeff,
+        atr_tolerance=atr_tol,
+        distance=distance,
+        overlap_start_index=overlap_start,
+        overlap_end_index=overlap_end,
+        components_detail=detail,
     )

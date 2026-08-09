@@ -144,6 +144,21 @@ def validate_preset_params(params: dict) -> list[str]:
                     f"{key} must be a valid decimal string or null, got {v!r}"
                 )
 
+    # Optional non-negative decimal: composite_atr_tolerance (default 0.75)
+    cat = params.get("composite_atr_tolerance")
+    if cat is not None:
+        try:
+            d = _parse_decimal_str(cat)
+            if d < 0:
+                errors.append(
+                    f"composite_atr_tolerance must be >= 0, got {cat!r}"
+                )
+        except (InvalidOperation, TypeError, ValueError):
+            errors.append(
+                f"composite_atr_tolerance must be a valid decimal string "
+                f"or null, got {cat!r}"
+            )
+
     # Direction/Level Source coherence
     dir_val = params.get("direction")
     ls_val = params.get("level_source")
@@ -301,6 +316,13 @@ def preset_to_run_config(preset: dict) -> tuple[dict, dict]:
         v = p.get(key)
         if v is not None:
             preset_overrides[key] = float(_parse_decimal_str(v))
+
+    # composite_atr_tolerance: optional, decimal string → float
+    cat = p.get("composite_atr_tolerance")
+    if cat is not None:
+        preset_overrides["composite_atr_tolerance"] = float(
+            _parse_decimal_str(cat)
+        )
 
     config_overrides = {
         "exit_target_r": p["exit_target_r"],  # stays as string
