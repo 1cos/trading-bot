@@ -26,7 +26,7 @@ Note: hashes changed from pre-rebase values due to rebase onto `5a0f921`.
 | B1–B5 | DONE | Pre-session |
 | B6 | DONE | Bounded iterative pivot clustering. No transitive chaining. 42 tests. |
 | B7 | DONE | Composite confluence zone builder. Anchor-based merge around explicit primary. 63 tests. |
-| B8 | SATISFIED locally | `level_price == primary_level_price` by construction. End-to-end integration blocked by multi-provider infrastructure (Constitution Phase 4+). |
+| B8 | DONE | `build_operational_confluence`: ATR tolerance (0.75 × ATR post-ORB) + overlap gate. Standalone builder; runner integration pending. |
 | B8 infra | DONE | Generic level sequence invalidation for PDH/PDL. 34 tests (11 existing + 23 new). |
 | B9 | PLANNED | REJECTION_WALL detection. Criteria OPEN (§18). |
 | B10–B11 | PLANNED | Depend on B9. |
@@ -75,13 +75,14 @@ Note: hashes changed from pre-rebase values due to rebase onto `5a0f921`.
 ## Quantitative audit results (SPY, canonical pipeline)
 
 - 172 RTH sessions, 171 with previous session
-- 35 dual-displacement cases (both ORB and PDH/PDL have break + displacement)
-- **8 contemporaneous** (both still valid at operational snapshot)
-- 27 excluded: one level invalidated before both displacements confirmed
-- Pattern: ORB invalidates first in 19/27 exclusions
-- Distance/ATR distribution (8 cases): min=0.60, median=2.14, max=4.69
-- Coefficient classification: 0/8 within 0.50 ATR, 2/8 within 0.75 ATR, 2/8 within 1.00 ATR
-- Confluence ORB+PDH/PDL is a rare event (~5% of sessions are contemporaneous, ~1% potentially confluent)
+- **Rectified counts (canonical `displacement_finder`, `min_displacement_bars=3`, bar-level):**
+  - 14 dual-displacement cases (both ORB and PDH/PDL have break + displacement)
+  - **6 contemporaneous** (both still valid at operational snapshot)
+  - 8 excluded: one level invalidated before both displacements confirmed
+- Previous audit reported 35 dual-displacement / 8 contemporaneous; see B8 Addendum for rectification
+- Distance/ATR distribution (6 canonical cases): min=0.59, median=2.52, max=4.85
+- Coefficient classification: 0/6 within 0.50 ATR, 2/6 within 0.75 ATR, 2/6 within 1.00 ATR
+- Confluence ORB+PDH/PDL is a rare event (~3.5% of sessions are contemporaneous, ~1.2% potentially confluent)
 
 ## Test counts
 
@@ -98,11 +99,11 @@ Note: hashes changed from pre-rebase values due to rebase onto `5a0f921`.
 
 ## Open decisions requiring Max's approval
 
-1. **B7 tolerance value** — quantitative audit shows 0.75 ATR captures 2/8 contemporaneous cases. No coefficient approved yet.
+1. ~~**B7 tolerance value**~~ — **Resolved**: coefficient 0.75 approved and implemented in B8.
 2. **B9 REJECTION_WALL mechanical criteria** — spec §18 marks as "Not discussed"
 3. **B12 CHOP_NO_TRADE thresholds** — blocked
 4. **B13 RETEST_STRUCTURE criteria** — blocked
-5. **Multi-provider infrastructure** — needed for end-to-end B8, Constitution Phase 4+
+5. **Multi-provider infrastructure** — needed for end-to-end B8 runner integration, Constitution Phase 4+
 
 ## Next unblocked task
 
@@ -113,3 +114,72 @@ Alternatively: **Multi-provider vertical slice** — helper module that calls OR
 ## Files NOT modified
 
 All frozen modules remain untouched: `rejection_finder.py` (except 1 direction fix in tests), `break_finder.py`, `displacement_finder.py`, `detection_result_builder.py`, `trade_plan_builder.py`, `strategy_runner.py`, all `*_finder.py`, all `dati/` files, `training_workspace_8.html`.
+
+---
+
+## B8 Addendum — ATR Tolerance for Operational Composite Confluence
+
+### Commits
+
+| Hash | Message | Files |
+|---|---|---|
+| `c911858` | feat: add ATR tolerance to operational confluence | `confluence_zone_builder.py`, `preset_store.py`, `test_operational_confluence.py` |
+| `addc006` | fix: complete operational confluence verification | `test_operational_confluence.py` |
+
+### Implementation
+
+`build_operational_confluence()` in `confluence_zone_builder.py` wraps the existing geometric builder with two gates:
+
+1. **Overlap gate**: `overlap_start = max(displacement_index_a, displacement_index_b)`, `overlap_end = min(max_valid_index_a, max_valid_index_b)`. Composite admitted only if `overlap_start <= overlap_end`. Single-index overlap (`start == end`) is valid.
+
+2. **Distance gate**: `distance = abs(price_a - price_b)`, `atr_tolerance = atr_post_orb × 0.75`. Composite admitted only if `distance <= atr_tolerance` (inclusive comparison, float-safe with epsilon).
+
+Parameters: `composite_atr_tolerance = 0.75` (default, configurable). No floor. No cap.
+
+ATR: frozen at end of ORB by the canonical caller. The builder receives `atr_post_orb` as a float value and cannot verify its provenance. This is a documented architectural limit — the runner multi-provider integration (not yet implemented) must supply the canonical ATR.
+
+Diagnostics (reason codes): `COMPOSITE_CREATED`, `EXCLUDED_DISTANCE`, `EXCLUDED_NO_OVERLAP`, `EXCLUDED_ATR_UNAVAILABLE`.
+
+### Regression comparison
+
+| Metric | Parent (911cf35) | B8 (addc006) |
+|---|---|---|
+| passed | 2694 | 2735 |
+| failed | 11 | 11 |
+| errors | 45 | 45 |
+| skipped | 7 | 7 |
+
++41 new tests in `test_operational_confluence.py`. No additional failures or errors.
+
+### Canonical SPY verification (6 contemporaneous cases)
+
+| Date | Direction | Distance | ATR post-ORB | Tolerance | Dist/ATR | Result |
+|---|---|---|---|---|---|---|
+| 2025-12-05 | LONG | 1.1900 | 0.4329 | 0.3246 | 2.749 | EXCLUDED_DISTANCE |
+| 2025-12-16 | SHORT | 0.4000 | 0.6286 | 0.4714 | 0.636 | **COMPOSITE_CREATED** |
+| 2026-02-20 | LONG | 2.7200 | 0.5614 | 0.4211 | 4.845 | EXCLUDED_DISTANCE |
+| 2026-03-18 | SHORT | 1.8200 | 0.5600 | 0.4200 | 3.250 | EXCLUDED_DISTANCE |
+| 2026-05-12 | SHORT | 0.2900 | 0.4914 | 0.3686 | 0.590 | **COMPOSITE_CREATED** |
+| 2026-07-09 | LONG | 1.2600 | 0.5500 | 0.4125 | 2.291 | EXCLUDED_DISTANCE |
+
+Totals: 2 COMPOSITE_CREATED, 4 EXCLUDED_DISTANCE, 0 EXCLUDED_NO_OVERLAP, 0 EXCLUDED_ATR_UNAVAILABLE.
+
+### Rectification of previous 35/8 audit
+
+The previous section of this handoff reported "35 dual-displacement cases" and "8 contemporaneous" from a quantitative audit described as using the canonical pipeline. This sample is **not reproducible** and **not normative**:
+
+- The temporary script used for that audit was not committed and is no longer available.
+- Its exact configuration (displacement criterion, parameters) is unknown.
+- No tested configuration of the canonical `displacement_finder` (which requires complete bars beyond the level, per `displacement_future_review.md`) reproduces the counts 35/8.
+- A possible explanation is that the audit script used a close-based displacement criterion rather than the bar-level criterion implemented in `displacement_finder.py`, but this cannot be confirmed with certainty.
+- The canonical pipeline with `min_displacement_bars=3` and bar-level counting produces 14 dual-displacement and 6 contemporaneous cases.
+
+The **normative baseline** for B8 verification is the 6-case canonical sample above.
+
+### Open limits
+
+- `build_operational_confluence` is standalone — not yet integrated into the strategy runner.
+- The runner does not yet construct composite zones from multiple providers.
+- The builder receives `atr_post_orb` as a value and cannot verify its provenance autonomously.
+- Future runner integration must use the canonical ATR frozen at the end of the ORB.
+- `composite_atr_tolerance` is not yet exposed in the UI.

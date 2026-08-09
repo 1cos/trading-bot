@@ -1025,7 +1025,7 @@ implemented.
 
 | # | Requirement | Status | Current File/Module | Current Test | Commit | Future Change Needed |
 |---|---|---|---|---|---|---|
-| 1 | `SINGLE_CANDLE_REJECTION` detection | **DONE** (partial — ATR gate added B4; primary-level validation pending B8) | `rejection_finder.py` | `test_rejection_finder.py` | pre-B1 + `9d0db99` | B8: validate wick reaches primary level in composite zones |
+| 1 | `SINGLE_CANDLE_REJECTION` detection | **DONE** (partial — ATR gate added B4; primary-level validation satisfied by construction) | `rejection_finder.py` | `test_rejection_finder.py` | pre-B1 + `9d0db99` | `level_price == primary_level_price` by construction; composite zone tolerance implemented in B8 |
 | 2 | `TWO_CANDLE_ENGULFING_RECOVERY` detection | **DONE** | `rejection_finder.py` | `test_rejection_finder.py` | `4568e6b` | — |
 | 3 | `RETEST_STRUCTURE` detection | **BLOCKED** — criteria OPEN | — | — | — | Requires approved formation criteria (§18) |
 | 4 | ATR(14) calculation | **DONE** | `atr.py` | `test_atr.py` | `0649871` | — |
@@ -1073,7 +1073,7 @@ implemented.
 | — | PDH/PDL direction pair correction | **DONE** | `8c73d14` | — |
 | B7 | COMPOSITE_CONFLUENCE_ZONE builder | **DONE** | `3f84588` | B6 |
 | — | Generic level sequence invalidation (PDH/PDL) | **DONE** | `82b81aa` | — |
-| B8 | Primary-level retest validation in composite zones | **SATISFIED** | — | B7. Gate on `level_price` already matches `primary_level_price` by construction. End-to-end integration blocked by multi-provider infrastructure. |
+| B8 | ATR tolerance for operational composite confluence | **DONE** | `c911858` + `addc006` | B7. `build_operational_confluence`: overlap gate + distance gate (0.75 × ATR post-ORB). Builder is standalone; runner multi-provider integration not yet implemented. |
 | B9 | REJECTION_WALL detection | PLANNED | — | Criteria OPEN (§18) |
 | B10 | Grading penalties (wall, structure, alignment) | PLANNED | — | B9 |
 | B11 | EARLY_EXIT_REJECTION_WALL_FAILURE | PLANNED | — | B9 |
@@ -1104,7 +1104,7 @@ implemented.
 |---|---|---|
 | 1.0 | 2026-08-06 | Initial specification. Created from live trading session observations, voice-transcribed rules, and prior chat-based analysis. Covers entry patterns, zone composition, grading, trade management, and session classification. All examples from 2026-08-06 session. |
 | 1.1 | 2026-08-06 | Status update after B1–B5 + ATR warmup + equity RTH filter. §21 gap analysis updated to reflect completions. §22 updated with commit hashes. §3.3 added (daily trade limits — already implemented, now formally documented). Fixed §3.5 references → §3.3. |
-| 1.2 | 2026-08-09 | B6–B8 completion. B6: bounded iterative pivot clustering. PDH/PDL direction pairs corrected. B7: composite confluence zone builder with anchor-based merge. Generic line-level sequence invalidation for PDH/PDL. B8: satisfied locally (level_price == primary_level_price by construction); end-to-end blocked by multi-provider. Quantitative audit: 8/172 SPY sessions have contemporaneous ORB+PDH/PDL displacement; 2/8 within 0.75 ATR. |
+| 1.2 | 2026-08-09 | B6–B8 completion. B6: bounded iterative pivot clustering. PDH/PDL direction pairs corrected. B7: composite confluence zone builder with anchor-based merge. Generic line-level sequence invalidation for PDH/PDL. B8: `build_operational_confluence` with ATR-based tolerance (0.75 × ATR post-ORB, inclusive comparison, no floor/cap) and overlap gate (max displacement indices ≤ min max-valid indices). Builder is standalone — ATR post-ORB is received from caller, not verified internally. Runner multi-provider integration not yet implemented. Canonical SPY verification: 6 contemporaneous sessions, 2 COMPOSITE_CREATED, 4 EXCLUDED_DISTANCE. |
 
 ---
 
