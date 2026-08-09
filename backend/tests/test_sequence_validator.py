@@ -209,3 +209,419 @@ class TestUpstreamFailure:
         result = validate_sequence(
             [], _orb(100, 99), _break(), {"status": "FAILED"}, _config())
         assert result["status"] == "FAILED"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LINE-LEVEL INVALIDATION — PREVIOUS_DAY_HIGH / PREVIOUS_DAY_LOW
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def _pd_level(level_price, level_source="PREVIOUS_DAY_HIGH"):
+    """Minimal LevelResult for a line level (no orb_high/orb_low)."""
+    return {
+        "status": "OK",
+        "level_source": level_source,
+        "level_price": level_price,
+    }
+
+
+def _pd_config(direction="LONG", level_source="PREVIOUS_DAY_HIGH",
+               level_invalidation_closes=2):
+    return {
+        "direction": direction,
+        "level_source": level_source,
+        "level_invalidation_closes": level_invalidation_closes,
+    }
+
+
+class TestPDHLongInvalidation:
+    """Cases 1-2: PREVIOUS_DAY_HIGH LONG invalidation."""
+
+    def test_one_close_below_still_valid(self):
+        """One close below PDH → still valid."""
+        candles = [
+            _candle(1000, 200.0),  # ORB placeholder
+            _candle(2000, 200.0),
+            _candle(3000, 200.0),
+            _candle(4000, 200.0),
+            _candle(5000, 200.0),
+            _candle(6000, 199.90),  # close below 200 — first
+            _candle(7000, 200.10),  # recovery
+        ]
+        r = validate_sequence(
+            candles, _pd_level(200.0), _break(), _disp(5),
+            _pd_config("LONG", "PREVIOUS_DAY_HIGH"),
+        )
+        assert r["status"] == "OK"
+
+    def test_two_consecutive_below_invalidated(self):
+        """Two consecutive closes below PDH → invalidated."""
+        candles = [
+            _candle(1000, 200.0),
+            _candle(2000, 200.0),
+            _candle(3000, 200.0),
+            _candle(4000, 200.0),
+            _candle(5000, 200.0),
+            _candle(6000, 199.90),  # first below
+            _candle(7000, 199.80),  # second below → invalidated
+        ]
+        r = validate_sequence(
+            candles, _pd_level(200.0), _break(), _disp(5),
+            _pd_config("LONG", "PREVIOUS_DAY_HIGH"),
+        )
+        assert r["status"] == "INVALIDATED"
+        assert r["invalidation_index"] == 6
+        assert r["max_valid_index"] == 5
+        assert r["threshold"] == 2
+        assert r["level_source"] == "PREVIOUS_DAY_HIGH"
+
+
+class TestPDHLongRecovery:
+    """Case 2: close below, recovery, close below → not invalidated."""
+
+    def test_interrupted_streak_not_invalidated(self):
+        candles = [
+            _candle(1000, 200.0),
+            _candle(2000, 200.0),
+            _candle(3000, 200.0),
+            _candle(4000, 200.0),
+            _candle(5000, 200.0),
+            _candle(6000, 199.90),  # below
+            _candle(7000, 200.10),  # recovery — resets counter
+            _candle(8000, 199.90),  # below again — only 1
+        ]
+        r = validate_sequence(
+            candles, _pd_level(200.0), _break(), _disp(5),
+            _pd_config("LONG", "PREVIOUS_DAY_HIGH"),
+        )
+        assert r["status"] == "OK"
+
+
+class TestPDLShortInvalidation:
+    """Cases 3-4: PREVIOUS_DAY_LOW SHORT invalidation."""
+
+    def test_one_close_above_still_valid(self):
+        """One close above PDL → still valid."""
+        candles = [
+            _candle(1000, 100.0),
+            _candle(2000, 100.0),
+            _candle(3000, 100.0),
+            _candle(4000, 100.0),
+            _candle(5000, 100.0),
+            _candle(6000, 100.10),  # above
+            _candle(7000, 99.90),   # recovery
+        ]
+        r = validate_sequence(
+            candles, _pd_level(100.0, "PREVIOUS_DAY_LOW"), _break(), _disp(5),
+            _pd_config("SHORT", "PREVIOUS_DAY_LOW"),
+        )
+        assert r["status"] == "OK"
+
+    def test_two_consecutive_above_invalidated(self):
+        """Two consecutive closes above PDL → invalidated."""
+        candles = [
+            _candle(1000, 100.0),
+            _candle(2000, 100.0),
+            _candle(3000, 100.0),
+            _candle(4000, 100.0),
+            _candle(5000, 100.0),
+            _candle(6000, 100.10),  # first above
+            _candle(7000, 100.20),  # second above → invalidated
+        ]
+        r = validate_sequence(
+            candles, _pd_level(100.0, "PREVIOUS_DAY_LOW"), _break(), _disp(5),
+            _pd_config("SHORT", "PREVIOUS_DAY_LOW"),
+        )
+        assert r["status"] == "INVALIDATED"
+        assert r["invalidation_index"] == 6
+        assert r["level_source"] == "PREVIOUS_DAY_LOW"
+
+    def test_interrupted_streak_not_invalidated(self):
+        """Close above, below, above → not invalidated."""
+        candles = [
+            _candle(1000, 100.0),
+            _candle(2000, 100.0),
+            _candle(3000, 100.0),
+            _candle(4000, 100.0),
+            _candle(5000, 100.0),
+            _candle(6000, 100.10),  # above
+            _candle(7000, 99.90),   # recovery
+            _candle(8000, 100.10),  # above — only 1
+        ]
+        r = validate_sequence(
+            candles, _pd_level(100.0, "PREVIOUS_DAY_LOW"), _break(), _disp(5),
+            _pd_config("SHORT", "PREVIOUS_DAY_LOW"),
+        )
+        assert r["status"] == "OK"
+
+
+class TestExactEquality:
+    """Case 5: close exactly at level_price does NOT count."""
+
+    def test_close_at_level_long_not_wrong_side(self):
+        candles = [
+            _candle(1000, 200.0),
+            _candle(2000, 200.0),
+            _candle(3000, 200.0),
+            _candle(4000, 200.0),
+            _candle(5000, 200.0),
+            _candle(6000, 200.0),  # exactly at level
+            _candle(7000, 200.0),  # exactly at level again
+        ]
+        r = validate_sequence(
+            candles, _pd_level(200.0), _break(), _disp(5),
+            _pd_config("LONG", "PREVIOUS_DAY_HIGH"),
+        )
+        assert r["status"] == "OK"
+
+    def test_close_at_level_short_not_wrong_side(self):
+        candles = [
+            _candle(1000, 100.0),
+            _candle(2000, 100.0),
+            _candle(3000, 100.0),
+            _candle(4000, 100.0),
+            _candle(5000, 100.0),
+            _candle(6000, 100.0),  # exactly at level
+            _candle(7000, 100.0),  # exactly at level again
+        ]
+        r = validate_sequence(
+            candles, _pd_level(100.0, "PREVIOUS_DAY_LOW"), _break(), _disp(5),
+            _pd_config("SHORT", "PREVIOUS_DAY_LOW"),
+        )
+        assert r["status"] == "OK"
+
+
+class TestMaxValidIndex:
+    """Cases 6-8: max_valid_index correctness."""
+
+    def test_max_valid_is_bar_before_invalidation(self):
+        """max_valid_index = invalidation_index - 1."""
+        candles = [
+            _candle(1000, 200.0),
+            _candle(2000, 200.0),
+            _candle(3000, 200.0),
+            _candle(4000, 200.0),
+            _candle(5000, 200.0),
+            _candle(6000, 200.10),  # above level — still OK
+            _candle(7000, 199.90),  # first below
+            _candle(8000, 199.80),  # second below → invalidated at 7
+        ]
+        r = validate_sequence(
+            candles, _pd_level(200.0), _break(), _disp(5),
+            _pd_config("LONG", "PREVIOUS_DAY_HIGH"),
+        )
+        assert r["status"] == "INVALIDATED"
+        assert r["invalidation_index"] == 7
+        assert r["max_valid_index"] == 6
+
+    def test_invalidation_before_retest_blocks(self):
+        """If invalidation before first_retest, runner would fail disp."""
+        candles = [
+            _candle(1000, 200.0),
+            _candle(2000, 200.0),
+            _candle(3000, 199.90),  # below (frc=3, but invalidated at 3)
+            _candle(4000, 199.80),  # second below
+        ]
+        r = validate_sequence(
+            candles, _pd_level(200.0), _break(), _disp(2),
+            _pd_config("LONG", "PREVIOUS_DAY_HIGH"),
+        )
+        assert r["status"] == "INVALIDATED"
+        assert r["max_valid_index"] == 2
+        # Runner would compare max_valid_index < first_retest_contact
+        # and fail displacement. This test verifies the validator output.
+
+    def test_retest_before_invalidation_usable(self):
+        """Retest at index 5, invalidation at 7 → retest is within window."""
+        candles = [
+            _candle(1000, 200.0),
+            _candle(2000, 200.0),
+            _candle(3000, 200.0),
+            _candle(4000, 200.0),
+            _candle(5000, 200.10),  # retest would be here
+            _candle(6000, 200.05),
+            _candle(7000, 199.90),  # first below
+            _candle(8000, 199.80),  # second → invalidation at 7
+        ]
+        r = validate_sequence(
+            candles, _pd_level(200.0), _break(), _disp(5),
+            _pd_config("LONG", "PREVIOUS_DAY_HIGH"),
+        )
+        assert r["status"] == "INVALIDATED"
+        assert r["max_valid_index"] == 6
+        # Index 5 is within [5, 6] → retest would be accepted
+
+
+class TestORBPreserved:
+    """Cases 9-10: ORB band invalidation unchanged."""
+
+    def test_orb_high_long_band_invalidation(self):
+        """ORB_HIGH LONG: 2 closes ≤ orb_high → invalidated."""
+        candles = [
+            _candle(1000, 101.0),  # ORB
+            _candle(2000, 101.0),
+            _candle(3000, 101.0),
+            _candle(4000, 101.0),
+            _candle(5000, 101.0),
+            _candle(6000, 100.0),  # inside ORB
+            _candle(7000, 99.5),   # inside ORB
+        ]
+        r = validate_sequence(
+            candles, _orb(100.5, 99.0), _break(), _disp(5),
+            {**_config("LONG", 2), "level_source": "ORB_HIGH"},
+        )
+        assert r["status"] == "INVALIDATED"
+        assert "ORB" in r["invalidation_reason"]
+
+    def test_orb_low_short_band_invalidation(self):
+        """ORB_LOW SHORT: 2 closes ≥ orb_low → invalidated."""
+        candles = [
+            _candle(1000, 98.0),
+            _candle(2000, 98.0),
+            _candle(3000, 98.0),
+            _candle(4000, 98.0),
+            _candle(5000, 98.0),
+            _candle(6000, 99.5),  # inside ORB
+            _candle(7000, 100.0), # inside ORB
+        ]
+        r = validate_sequence(
+            candles, _orb(100.5, 99.0), _break(), _disp(5),
+            {**_config("SHORT", 2), "level_source": "ORB_LOW"},
+        )
+        assert r["status"] == "INVALIDATED"
+        assert "ORB" in r["invalidation_reason"]
+
+
+class TestConfigurableThreshold:
+    """Cases 11-12: parameterized threshold."""
+
+    def test_threshold_1_single_close_invalidates(self):
+        """level_invalidation_closes=1: one close below → invalidated."""
+        candles = [
+            _candle(1000, 200.0),
+            _candle(2000, 200.0),
+            _candle(3000, 200.0),
+            _candle(4000, 200.0),
+            _candle(5000, 200.0),
+            _candle(6000, 199.90),  # one close below
+        ]
+        r = validate_sequence(
+            candles, _pd_level(200.0), _break(), _disp(5),
+            _pd_config("LONG", "PREVIOUS_DAY_HIGH",
+                       level_invalidation_closes=1),
+        )
+        assert r["status"] == "INVALIDATED"
+        assert r["threshold"] == 1
+
+    def test_threshold_3_needs_three(self):
+        """level_invalidation_closes=3: two below → still valid."""
+        candles = [
+            _candle(1000, 200.0),
+            _candle(2000, 200.0),
+            _candle(3000, 200.0),
+            _candle(4000, 200.0),
+            _candle(5000, 200.0),
+            _candle(6000, 199.90),
+            _candle(7000, 199.80),  # only 2
+        ]
+        r = validate_sequence(
+            candles, _pd_level(200.0), _break(), _disp(5),
+            _pd_config("LONG", "PREVIOUS_DAY_HIGH",
+                       level_invalidation_closes=3),
+        )
+        assert r["status"] == "OK"
+
+    def test_threshold_3_exactly_three_invalidates(self):
+        """level_invalidation_closes=3: three consecutive → invalidated."""
+        candles = [
+            _candle(1000, 200.0),
+            _candle(2000, 200.0),
+            _candle(3000, 200.0),
+            _candle(4000, 200.0),
+            _candle(5000, 200.0),
+            _candle(6000, 199.90),
+            _candle(7000, 199.80),
+            _candle(8000, 199.70),  # third
+        ]
+        r = validate_sequence(
+            candles, _pd_level(200.0), _break(), _disp(5),
+            _pd_config("LONG", "PREVIOUS_DAY_HIGH",
+                       level_invalidation_closes=3),
+        )
+        assert r["status"] == "INVALIDATED"
+        assert r["threshold"] == 3
+
+
+class TestInvalidConfig:
+    """Case 13: invalid configuration values."""
+
+    def test_threshold_zero_raises(self):
+        with pytest.raises(ValueError, match=">= 1"):
+            validate_sequence(
+                [_candle(1000, 200.0)] * 6,
+                _pd_level(200.0), _break(), _disp(5),
+                _pd_config("LONG", "PREVIOUS_DAY_HIGH",
+                           level_invalidation_closes=0),
+            )
+
+    def test_threshold_negative_raises(self):
+        with pytest.raises(ValueError, match=">= 1"):
+            validate_sequence(
+                [_candle(1000, 200.0)] * 6,
+                _pd_level(200.0), _break(), _disp(5),
+                _pd_config("LONG", "PREVIOUS_DAY_HIGH",
+                           level_invalidation_closes=-1),
+            )
+
+    def test_threshold_bool_raises(self):
+        with pytest.raises(TypeError, match="bool"):
+            validate_sequence(
+                [_candle(1000, 200.0)] * 6,
+                _pd_level(200.0), _break(), _disp(5),
+                _pd_config("LONG", "PREVIOUS_DAY_HIGH",
+                           level_invalidation_closes=True),
+            )
+
+    def test_threshold_float_raises(self):
+        with pytest.raises(TypeError, match="int"):
+            validate_sequence(
+                [_candle(1000, 200.0)] * 6,
+                _pd_level(200.0), _break(), _disp(5),
+                _pd_config("LONG", "PREVIOUS_DAY_HIGH",
+                           level_invalidation_closes=2.0),
+            )
+
+
+class TestUnsupportedSource:
+    """Case 14: unsupported level source."""
+
+    def test_unknown_source_not_applicable(self):
+        r = validate_sequence(
+            [_candle(1000, 200.0)] * 6,
+            _pd_level(200.0, "PIVOT_WICK"), _break(), _disp(5),
+            _pd_config("LONG", "PIVOT_WICK"),
+        )
+        assert r["status"] == "NOT_APPLICABLE"
+        assert r["max_valid_index"] == 5
+
+
+class TestOutputFields:
+    """Verify new output fields present in all modes."""
+
+    def test_line_ok_has_level_source(self):
+        candles = [_candle(1000, 200.0)] * 6 + [_candle(7000, 200.10)]
+        r = validate_sequence(
+            candles, _pd_level(200.0), _break(), _disp(5),
+            _pd_config("LONG", "PREVIOUS_DAY_HIGH"),
+        )
+        assert r["level_source"] == "PREVIOUS_DAY_HIGH"
+        assert r["invalidation_level"] == 200.0
+
+    def test_orb_ok_has_level_source(self):
+        candles = [_candle(1000, 101.0)] * 6 + [_candle(7000, 101.0)]
+        r = validate_sequence(
+            candles, _orb(100.5, 99.0), _break(), _disp(5),
+            {**_config("LONG", 2), "level_source": "ORB_HIGH"},
+        )
+        assert r["level_source"] == "ORB_HIGH"
+        assert r["invalidation_level"] == {"orb_high": 100.5, "orb_low": 99.0}

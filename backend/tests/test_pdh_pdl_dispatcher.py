@@ -165,32 +165,37 @@ class TestNoPreviousSession:
         assert result["failed_stage"] == "MISSING_SESSIONS_DATA"
 
 
-# ── 5. Sequence validator NOT_APPLICABLE ─────────────────────────────────────
+# ── 5. Sequence validator for PDH/PDL ────────────────────────────────────────
 
 class TestSequenceValidator:
-    def test_pdh_not_applicable(self):
+    def test_pdh_validated(self):
+        """PDH is now validated with line-level invalidation, not NOT_APPLICABLE."""
         config = {**BASE_CONFIG, "level_source": "PREVIOUS_DAY_HIGH",
-                  "consecutive_orb_closes": 2}
+                  "direction": "LONG", "level_invalidation_closes": 2}
         result = validate_sequence(
             TUESDAY_CANDLES,
-            {"status": "OK"},
+            {"status": "OK", "level_price": 103.0},
             {"status": "OK"},
             {"status": "OK", "first_retest_contact_index": 2},
             config,
         )
-        assert result["status"] == "NOT_APPLICABLE"
+        # With real candles, result is OK or INVALIDATED — no longer NOT_APPLICABLE
+        assert result["status"] in ("OK", "INVALIDATED")
+        assert result.get("level_source") == "PREVIOUS_DAY_HIGH"
 
-    def test_pdl_not_applicable(self):
+    def test_pdl_validated(self):
+        """PDL is now validated with line-level invalidation, not NOT_APPLICABLE."""
         config = {**BASE_CONFIG, "level_source": "PREVIOUS_DAY_LOW",
-                  "consecutive_orb_closes": 2}
+                  "direction": "SHORT", "level_invalidation_closes": 2}
         result = validate_sequence(
             TUESDAY_CANDLES,
-            {"status": "OK"},
+            {"status": "OK", "level_price": 97.0},
             {"status": "OK"},
             {"status": "OK", "first_retest_contact_index": 2},
             config,
         )
-        assert result["status"] == "NOT_APPLICABLE"
+        assert result["status"] in ("OK", "INVALIDATED")
+        assert result.get("level_source") == "PREVIOUS_DAY_LOW"
 
 
 # ── 6. ORB unchanged ────────────────────────────────────────────────────────

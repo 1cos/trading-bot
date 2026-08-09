@@ -260,16 +260,14 @@ class TestSequenceValidatorConditional:
         )
         assert result["status"] in ("OK", "INVALIDATED")
 
-    @pytest.mark.parametrize("source", ["PREVIOUS_DAY_HIGH", "PREVIOUS_DAY_LOW", "PMH", "PML", "PIVOT_WICK", "OCL"])
+    @pytest.mark.parametrize("source", ["PMH", "PML", "PIVOT_WICK", "OCL"])
     def test_non_orb_returns_not_applicable(self, source):
-        """Non-ORB sources must skip the ORB band check."""
+        """Non-ORB, non-PDH/PDL sources must skip validation."""
         candles = [
             {"time_ms": i, "open": 100, "high": 101, "low": 99, "close": 100}
             for i in range(5)
         ]
         config = {**BASE_CONFIG, "level_source": source, "consecutive_orb_closes": 2}
-        # The orb dict won't have orb_high/orb_low for non-ORB — but
-        # the guard should fire before those fields are read
         dummy_level = {"status": "OK"}
         result = validate_sequence(
             candles, dummy_level, self._break_ok(), self._disp_ok(), config
@@ -277,13 +275,32 @@ class TestSequenceValidatorConditional:
         assert result["status"] == "NOT_APPLICABLE"
         assert source in result["reason"]
 
+    @pytest.mark.parametrize("source,direction", [
+        ("PREVIOUS_DAY_HIGH", "LONG"),
+        ("PREVIOUS_DAY_LOW", "SHORT"),
+    ])
+    def test_pdh_pdl_now_validated(self, source, direction):
+        """PDH/PDL are now validated with line-level invalidation."""
+        candles = [
+            {"time_ms": i, "open": 100, "high": 101, "low": 99, "close": 100}
+            for i in range(5)
+        ]
+        config = {**BASE_CONFIG, "level_source": source, "direction": direction,
+                  "level_invalidation_closes": 2}
+        level = {"status": "OK", "level_price": 100.0}
+        result = validate_sequence(
+            candles, level, self._break_ok(), self._disp_ok(), config
+        )
+        assert result["status"] in ("OK", "INVALIDATED")
+        assert result.get("level_source") == source
+
     def test_not_applicable_max_valid_index(self):
-        """NOT_APPLICABLE must set max_valid_index to last candle."""
+        """NOT_APPLICABLE must set max_valid_index to last candle (unsupported source)."""
         candles = [
             {"time_ms": i, "open": 100, "high": 101, "low": 99, "close": 100}
             for i in range(10)
         ]
-        config = {**BASE_CONFIG, "level_source": "PREVIOUS_DAY_HIGH", "consecutive_orb_closes": 2}
+        config = {**BASE_CONFIG, "level_source": "PIVOT_WICK", "consecutive_orb_closes": 2}
         result = validate_sequence(
             candles, {"status": "OK"}, self._break_ok(), self._disp_ok(), config
         )
