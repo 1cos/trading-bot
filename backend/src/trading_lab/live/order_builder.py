@@ -1,5 +1,16 @@
 """Bracket order builder — broker-agnostic order specification for MaxBot v0.1.
 
+**DIRECT-INSTRUMENT execution model only.**
+
+This module builds bracket orders where the traded instrument IS the
+strategy instrument (e.g. buy/sell SPY shares directly).  All prices
+are direct instrument prices.
+
+For MaxBot v0.1 OPTIONS execution, use ``execution_intent.py`` instead.
+The option execution path treats TradePlan prices as underlying trigger
+levels and must NOT pass them to ``build_bracket_order()`` as if they
+were option premium prices.
+
 Translates a TradePlan into a deterministic BracketOrderSpec containing
 entry, take-profit, and stop-loss legs.  No broker connection, no order
 IDs, no submission.
