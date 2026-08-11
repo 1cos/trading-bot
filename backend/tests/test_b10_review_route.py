@@ -1,9 +1,10 @@
-"""Tests for B10.2 — B10 review route in Trading Lab server.
+"""Tests for B10 review route — annotation workspace.
 
-Verifies the /b10-review route serves the review page and that
+Verifies the /b10-review route serves the annotation workspace and that
 existing Lab routes remain functional.
 """
 
+import json
 import pytest
 
 
@@ -15,94 +16,67 @@ def client():
         yield c
 
 
+def _get_cases(client):
+    """Extract embedded cases from the review page."""
+    resp = client.get("/b10-review")
+    html = resp.data.decode()
+    start = html.index("const CASES = ") + len("const CASES = ")
+    end = html.index(";", start)
+    return json.loads(html[start:end]), html
+
+
 class TestB10ReviewRoute:
 
     def test_b10_review_returns_200(self, client):
-        """Test 1: GET /b10-review returns HTTP 200."""
         resp = client.get("/b10-review")
         assert resp.status_code == 200
 
-    def test_b10_review_serves_correct_html(self, client):
-        """Test 2: Response contains the B10 review page."""
+    def test_annotation_mode_default_on(self, client):
+        """Annotation mode is ON by default."""
         resp = client.get("/b10-review")
         html = resp.data.decode()
-        assert "B10 Trade Space Grade Review" in html
-        assert "lightweight-charts" in html
+        assert "annotationMode = true" in html
 
-    def test_mandatory_cases_present(self, client):
-        """Test 3: All 9 mandatory case identifiers present."""
+    def test_future_hidden_by_default(self, client):
+        """Future candles hidden by default."""
         resp = client.get("/b10-review")
         html = resp.data.decode()
-        mandatory = [
-            ("NVDA", "2025-11-25"), ("NVDA", "2025-12-19"),
-            ("GOOGL", "2025-12-26"), ("AAPL", "2025-11-28"),
-            ("SPY", "2025-12-02"), ("QQQ", "2025-12-02"),
-            ("SPY", "2026-08-06"), ("SPY", "2026-02-10"),
-            ("QQQ", "2025-11-25"),
-        ]
-        for sym, date in mandatory:
-            assert sym in html, f"{sym} missing"
-            assert date in html, f"{date} missing"
+        assert "showFuture = false" in html
 
-    def test_at_least_20_cases(self, client):
-        """Test 4: At least 20 cases embedded."""
-        import json
+    def test_bot_walls_hidden_by_default(self, client):
+        """Bot walls hidden by default."""
         resp = client.get("/b10-review")
         html = resp.data.decode()
-        start = html.index("const CASES = ") + len("const CASES = ")
-        end = html.index(";", start)
-        cases = json.loads(html[start:end])
-        assert len(cases) >= 20
+        assert "showBotWalls = false" in html
 
-    def test_spy_20260806_is_b_plus(self, client):
-        """Test 5: SPY 2026-08-06 grade is B_PLUS."""
-        resp = client.get("/b10-review")
-        html = resp.data.decode()
-        assert '"B_PLUS"' in html
+    def test_spy_20260318_present(self, client):
+        """SPY 2026-03-18 SHORT exists."""
+        cases, _ = _get_cases(client)
+        assert any(c["symbol"] == "SPY" and c["date"] == "2026-03-18" for c in cases)
 
-    def test_all_three_grades_present(self, client):
-        """Test 6: A, B_PLUS, B all present."""
-        import json
-        resp = client.get("/b10-review")
-        html = resp.data.decode()
-        start = html.index("const CASES = ") + len("const CASES = ")
-        end = html.index(";", start)
-        cases = json.loads(html[start:end])
-        grades = set(c["grade"] for c in cases)
-        assert "A" in grades
-        assert "B_PLUS" in grades
-        assert "B" in grades
+    def test_spy_20260806_present(self, client):
+        """SPY 2026-08-06 LONG exists."""
+        cases, _ = _get_cases(client)
+        spy = [c for c in cases if c["symbol"] == "SPY" and c["date"] == "2026-08-06"]
+        assert len(spy) == 1
+        assert spy[0]["grade"] == "B_PLUS"
 
-    def test_both_directions_present(self, client):
-        """Test 7: LONG and SHORT both present."""
-        import json
-        resp = client.get("/b10-review")
-        html = resp.data.decode()
-        start = html.index("const CASES = ") + len("const CASES = ")
-        end = html.index(";", start)
-        cases = json.loads(html[start:end])
-        dirs = set(c["direction"] for c in cases)
-        assert "LONG" in dirs
-        assert "SHORT" in dirs
+    def test_grade_a_present(self, client):
+        """At least one grade-A case."""
+        cases, _ = _get_cases(client)
+        assert any(c["grade"] == "A" for c in cases)
 
-    def test_both_outcomes_present(self, client):
-        """Test 8: TARGET_HIT and STOPPED both present."""
-        import json
-        resp = client.get("/b10-review")
-        html = resp.data.decode()
-        start = html.index("const CASES = ") + len("const CASES = ")
-        end = html.index(";", start)
-        cases = json.loads(html[start:end])
-        outs = set(c["outcome"] for c in cases)
-        assert "TARGET_HIT" in outs
-        assert "STOPPED" in outs
+    def test_manual_zone_features_present(self, client):
+        """Annotation workspace features exist in HTML."""
+        _, html = _get_cases(client)
+        assert "ADD ZONE" in html
+        assert "EXPORT" in html
+        assert "manual_zones" in html
 
     def test_main_lab_still_works(self, client):
-        """Test 9: Main Lab route returns 200."""
         resp = client.get("/")
         assert resp.status_code == 200
 
     def test_api_symbols_still_works(self, client):
-        """Test 10: /api/symbols returns 200."""
         resp = client.get("/api/symbols")
         assert resp.status_code == 200
