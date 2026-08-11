@@ -53,7 +53,7 @@ class TestPaperVerification:
 
 class TestUnderlyingQualification:
     def test_qualify_called(self):
-        runner = MaxBotRunner("QQQ", "LONG")
+        runner = MaxBotRunner("QQQ", "LONG", execution_mode="PAPER_EXECUTE")
         ib = MagicMock()
         ib.managedAccounts.return_value = ["DU123"]
         ib.qualifyContracts.return_value = [True]
@@ -68,7 +68,7 @@ class TestUnderlyingQualification:
 
 class TestBootstrap:
     def test_chronological_feed(self):
-        runner = MaxBotRunner("QQQ", "LONG")
+        runner = MaxBotRunner("QQQ", "LONG", execution_mode="PAPER_EXECUTE")
         ib = MagicMock()
         ib.managedAccounts.return_value = ["DU123"]
         ib.qualifyContracts.return_value = [True]
@@ -98,7 +98,7 @@ class TestBootstrap:
 
 class TestDuplicatePrevention:
     def test_no_duplicate(self):
-        runner = MaxBotRunner("QQQ", "LONG")
+        runner = MaxBotRunner("QQQ", "LONG", execution_mode="PAPER_EXECUTE")
         ib = MagicMock()
         ib.managedAccounts.return_value = ["DU123"]
         ib.qualifyContracts.return_value = [True]
@@ -124,7 +124,7 @@ class TestDuplicatePrevention:
 
 class TestFormingBar:
     def test_not_processed(self):
-        runner = MaxBotRunner("QQQ", "LONG")
+        runner = MaxBotRunner("QQQ", "LONG", execution_mode="PAPER_EXECUTE")
         ib = MagicMock()
         ib.managedAccounts.return_value = ["DU123"]
         runner._ib = ib
@@ -138,7 +138,7 @@ class TestFormingBar:
         assert len(runner._processed_times) == 0
 
     def test_callback_ignores_partial(self):
-        runner = MaxBotRunner("QQQ", "LONG")
+        runner = MaxBotRunner("QQQ", "LONG", execution_mode="PAPER_EXECUTE")
         ib = MagicMock()
         ib.managedAccounts.return_value = ["DU123"]
         runner._ib = ib
@@ -155,7 +155,7 @@ class TestFormingBar:
 
 class TestCompletedBar:
     def test_new_bar_processed(self):
-        runner = MaxBotRunner("QQQ", "LONG")
+        runner = MaxBotRunner("QQQ", "LONG", execution_mode="PAPER_EXECUTE")
         ib = MagicMock()
         ib.managedAccounts.return_value = ["DU123"]
         runner._ib = ib
@@ -220,7 +220,7 @@ class TestBarSchema:
 class TestPendingRefresh:
     def test_entry_submitted_refreshes(self):
         """Runner should call refresh_entry_status when ENTRY_SUBMITTED."""
-        runner = MaxBotRunner("QQQ", "LONG")
+        runner = MaxBotRunner("QQQ", "LONG", execution_mode="PAPER_EXECUTE")
         ib = MagicMock()
         ib.managedAccounts.return_value = ["DU123"]
         runner._ib = ib
@@ -233,7 +233,7 @@ class TestPendingRefresh:
         assert hasattr(runner._orchestrator, "refresh_entry_status")
 
     def test_exit_submitted_refreshes(self):
-        runner = MaxBotRunner("QQQ", "LONG")
+        runner = MaxBotRunner("QQQ", "LONG", execution_mode="PAPER_EXECUTE")
         ib = MagicMock()
         ib.managedAccounts.return_value = ["DU123"]
         runner._ib = ib
@@ -249,7 +249,7 @@ class TestPendingRefresh:
 class TestDoneForDay:
     def test_done_stops(self):
         """When orchestrator reaches DONE_FOR_DAY, runner should stop."""
-        runner = MaxBotRunner("QQQ", "LONG")
+        runner = MaxBotRunner("QQQ", "LONG", execution_mode="PAPER_EXECUTE")
         ib = MagicMock()
         ib.managedAccounts.return_value = ["DU123"]
         runner._ib = ib
@@ -264,7 +264,7 @@ class TestDoneForDay:
 
 class TestIBInjection:
     def test_same_ib_instance(self):
-        runner = MaxBotRunner("QQQ", "LONG")
+        runner = MaxBotRunner("QQQ", "LONG", execution_mode="PAPER_EXECUTE")
         ib = MagicMock()
         ib.managedAccounts.return_value = ["DU123"]
         runner._ib = ib
@@ -311,7 +311,7 @@ class TestNoRealConnection:
 
 class TestNoMultiSymbol:
     def test_single_symbol(self):
-        runner = MaxBotRunner("QQQ", "LONG")
+        runner = MaxBotRunner("QQQ", "LONG", execution_mode="PAPER_EXECUTE")
         assert runner._symbol == "QQQ"
 
 
@@ -319,7 +319,7 @@ class TestNoMultiSymbol:
 
 class TestUnresolvedShutdown:
     def test_position_open_warning(self):
-        runner = MaxBotRunner("QQQ", "LONG")
+        runner = MaxBotRunner("QQQ", "LONG", execution_mode="PAPER_EXECUTE")
         ib = MagicMock()
         ib.managedAccounts.return_value = ["DU123"]
         ib.isConnected.return_value = True
@@ -338,7 +338,7 @@ class TestUnresolvedShutdown:
 
 class TestCleanShutdown:
     def test_waiting_shutdown(self):
-        runner = MaxBotRunner("QQQ", "LONG")
+        runner = MaxBotRunner("QQQ", "LONG", execution_mode="PAPER_EXECUTE")
         ib = MagicMock()
         ib.isConnected.return_value = True
         runner._ib = ib

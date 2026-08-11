@@ -40,6 +40,11 @@ from trading_lab.live.trade_orchestrator import (
     MaxBotTradeOrchestrator,
     LifecycleState,
 )
+from trading_lab.live.observe_orchestrator import (
+    ExecutionMode,
+    ObserveOrchestrator,
+    ObserveLifecycle,
+)
 
 log = logging.getLogger("maxbot")
 
@@ -146,6 +151,7 @@ class MaxBotRunner:
         market_timezone: str = "America/New_York",
         session_open: str = "09:30",
         session_close: str = "16:00",
+        execution_mode: str = "OBSERVE_ONLY",
     ):
         self._symbol = symbol
         self._direction = direction
@@ -157,9 +163,11 @@ class MaxBotRunner:
         self._tz = ZoneInfo(market_timezone)
         self._session_open = session_open
         self._session_close = session_close
+        self._execution_mode = ExecutionMode(execution_mode)
 
         self._ib: IB | None = None
         self._orchestrator: MaxBotTradeOrchestrator | None = None
+        self._observe_orchestrator: ObserveOrchestrator | None = None
         self._bars = None  # BarDataList from reqHistoricalData
         self._processed_times: set[int] = set()
         self._running = False
@@ -205,6 +213,14 @@ class MaxBotRunner:
                     f"UNRESOLVED STATE at shutdown: {state}. "
                     f"Active position/order may remain open."
                 )
+        if self._observe_orchestrator:
+            log.info(
+                f"[OBSERVE] Session summary — "
+                f"trades={self._observe_orchestrator.trades_used} "
+                f"W={self._observe_orchestrator.wins} "
+                f"L={self._observe_orchestrator.losses} "
+                f"events={len(self._observe_orchestrator.events)}"
+            )
         if self._ib and self._ib.isConnected():
             self._ib.disconnect()
             log.info("Disconnected from IBKR")
@@ -220,23 +236,34 @@ class MaxBotRunner:
             market_timezone=self._tz_str,
             session_open=self._session_open,
         )
-        tm = DailyTradeManager()
         os_ = OptionContractSelector(self._ib)
-        ee = IBKROptionExecutor(self._ib)
-        xe = OptionExitExecutor(self._ib)
 
-        self._orchestrator = MaxBotTradeOrchestrator(
-            underlying_symbol=self._symbol,
-            direction=self._direction,
-            tick_size=self._tick_size,
-            session_builder=sb,
-            signal_detector=sd,
-            trade_manager=tm,
-            option_selector=os_,
-            entry_executor=ee,
-            exit_executor=xe,
-        )
-        log.info(f"Orchestrator ready: {self._symbol} {self._direction}")
+        if self._execution_mode == ExecutionMode.OBSERVE_ONLY:
+            self._observe_orchestrator = ObserveOrchestrator(
+                underlying_symbol=self._symbol,
+                direction=self._direction,
+                tick_size=self._tick_size,
+                session_builder=sb,
+                signal_detector=sd,
+                option_selector=os_,
+            )
+            log.info(f"Orchestrator ready [OBSERVE_ONLY]: {self._symbol} {self._direction}")
+        else:
+            tm = DailyTradeManager()
+            ee = IBKROptionExecutor(self._ib)
+            xe = OptionExitExecutor(self._ib)
+            self._orchestrator = MaxBotTradeOrchestrator(
+                underlying_symbol=self._symbol,
+                direction=self._direction,
+                tick_size=self._tick_size,
+                session_builder=sb,
+                signal_detector=sd,
+                trade_manager=tm,
+                option_selector=os_,
+                entry_executor=ee,
+                exit_executor=xe,
+            )
+            log.info(f"Orchestrator ready [PAPER_EXECUTE]: {self._symbol} {self._direction}")
 
     # ── Underlying ───────────────────────────────────────────────────────
 
@@ -311,39 +338,68 @@ class MaxBotRunner:
 
         self._processed_times.add(candle["time_ms"])
 
-        status = self._orchestrator.on_bar(candle)
-        log.info(
-            f"Bar {datetime.fromtimestamp(candle['time_ms']/1000, tz=self._tz).strftime('%H:%M')} "
-            f"O={candle['open']:.2f} H={candle['high']:.2f} "
-            f"L={candle['low']:.2f} C={candle['close']:.2f} "
-            f"→ {status.lifecycle}"
-        )
-
-        # Log significant state transitions
-        if status.lifecycle == LifecycleState.ENTRY_SUBMITTED:
-            log.info(f"ENTRY SUBMITTED — orderId={status.entry_order_id}")
-        elif status.lifecycle == LifecycleState.DONE_FOR_DAY:
+        if self._execution_mode == ExecutionMode.OBSERVE_ONLY:
+            event = self._observe_orchestrator.on_bar(candle)
+            state = self._observe_orchestrator.lifecycle
             log.info(
-                f"DONE FOR DAY — trades={status.trades_used} "
-                f"W={status.wins} L={status.losses}"
+                f"Bar {datetime.fromtimestamp(candle['time_ms']/1000, tz=self._tz).strftime('%H:%M')} "
+                f"O={candle['open']:.2f} H={candle['high']:.2f} "
+                f"L={candle['low']:.2f} C={candle['close']:.2f} "
+                f"→ {state}"
             )
+            if state == ObserveLifecycle.DONE_FOR_DAY:
+                log.info(
+                    f"[OBSERVE] DONE FOR DAY — trades={self._observe_orchestrator.trades_used} "
+                    f"W={self._observe_orchestrator.wins} L={self._observe_orchestrator.losses}"
+                )
+        else:
+            status = self._orchestrator.on_bar(candle)
+            log.info(
+                f"Bar {datetime.fromtimestamp(candle['time_ms']/1000, tz=self._tz).strftime('%H:%M')} "
+                f"O={candle['open']:.2f} H={candle['high']:.2f} "
+                f"L={candle['low']:.2f} C={candle['close']:.2f} "
+                f"→ {status.lifecycle}"
+            )
+            if status.lifecycle == LifecycleState.ENTRY_SUBMITTED:
+                log.info(f"ENTRY SUBMITTED — orderId={status.entry_order_id}")
+            elif status.lifecycle == LifecycleState.DONE_FOR_DAY:
+                log.info(
+                    f"DONE FOR DAY — trades={status.trades_used} "
+                    f"W={status.wins} L={status.losses}"
+                )
 
     # ── Main loop ────────────────────────────────────────────────────────
 
     def _run_loop(self) -> None:
         """Run the ib_insync event loop, refreshing pending state."""
         self._running = True
-        log.info("Entering main loop")
+        log.info(f"Entering main loop [{self._execution_mode}]")
 
         while self._running:
             self._ib.sleep(1)  # process events for 1 second
 
+            # Observe mode: simpler loop
+            if self._execution_mode == ExecutionMode.OBSERVE_ONLY:
+                if self._observe_orchestrator is None:
+                    break
+                if self._observe_orchestrator.lifecycle == ObserveLifecycle.DONE_FOR_DAY:
+                    log.info("[OBSERVE] Day complete — stopping")
+                    self._running = False
+                    break
+                now_et = datetime.now(self._tz)
+                close_h, close_m = int(self._session_close[:2]), int(self._session_close[3:])
+                if now_et.hour * 60 + now_et.minute >= close_h * 60 + close_m:
+                    log.info("[OBSERVE] Session close reached — stopping")
+                    self._running = False
+                    break
+                continue
+
+            # Paper execute mode
             if self._orchestrator is None:
                 break
 
             state = self._orchestrator.lifecycle
 
-            # Refresh pending broker state
             if state == LifecycleState.ENTRY_SUBMITTED:
                 prev = state
                 status = self._orchestrator.refresh_entry_status()
@@ -365,13 +421,11 @@ class MaxBotRunner:
                     elif status.lifecycle == LifecycleState.WAITING_FOR_SIGNAL:
                         log.info("EXIT FILLED — LOSS, waiting for next signal")
 
-            # Check for session end
             if state == LifecycleState.DONE_FOR_DAY:
                 log.info("Day complete — stopping")
                 self._running = False
                 break
 
-            # Check if past session close
             now_et = datetime.now(self._tz)
             close_h, close_m = int(self._session_close[:2]), int(self._session_close[3:])
             if now_et.hour * 60 + now_et.minute >= close_h * 60 + close_m:
@@ -395,6 +449,9 @@ def main():
     )
     parser.add_argument("--symbol", required=True, help="Underlying symbol (e.g. QQQ)")
     parser.add_argument("--direction", default="LONG", choices=["LONG", "SHORT"])
+    parser.add_argument("--execution-mode", default="OBSERVE_ONLY",
+                        choices=["OBSERVE_ONLY", "PAPER_EXECUTE"],
+                        help="OBSERVE_ONLY (default) or PAPER_EXECUTE")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=7497)
     parser.add_argument("--client-id", type=int, default=1)
@@ -420,6 +477,7 @@ def main():
         market_timezone=args.timezone,
         session_open=args.session_open,
         session_close=args.session_close,
+        execution_mode=args.execution_mode,
     )
     runner.run()
 
