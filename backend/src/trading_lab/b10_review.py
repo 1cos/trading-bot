@@ -45,6 +45,9 @@ class B10ReviewPayload:
     has_wall_within_1r: bool
     walls: list[dict]
     candles: list[dict]
+    break_candle_time: int | None
+    entry_candle_time: int | None
+    wall_contact_times: list[int]
 
     def to_dict(self) -> dict:
         return {
@@ -65,6 +68,9 @@ class B10ReviewPayload:
             "has_wall_within_1r": self.has_wall_within_1r,
             "walls": self.walls,
             "candles": self.candles,
+            "break_candle_time": self.break_candle_time,
+            "entry_candle_time": self.entry_candle_time,
+            "wall_contact_times": self.wall_contact_times,
         }
 
 
@@ -178,4 +184,12 @@ def build_b10_review(
         has_wall_within_1r=grade_result.has_wall_within_1r,
         walls=wall_summaries,
         candles=chart_candles,
+        break_candle_time=chart_candles[break_index]["time"] if break_index < len(chart_candles) else None,
+        entry_candle_time=chart_candles[confirmation_index]["time"] if confirmation_index < len(chart_candles) else None,
+        wall_contact_times=sorted(set(
+            chart_candles[c.candle_index]["time"]
+            for cw in classified
+            for c in cw.wall.contacts
+            if cw.is_active and c.candle_index < len(chart_candles)
+        )),
     )
