@@ -45,7 +45,7 @@ const sel = document.getElementById('case-select');
 CASES.forEach((c, i) => {
   const opt = document.createElement('option');
   opt.value = i;
-  opt.textContent = c.symbol + ' ' + c.date + ' ' + c.direction + ' [' + c.grade + '] ' + c.outcome;
+  opt.textContent = c.symbol + ' — ' + c.date + ' — ' + c.direction + ' — ' + c.grade.replace('_',' ') + ' — ' + c.outcome;
   sel.appendChild(opt);
 });
 

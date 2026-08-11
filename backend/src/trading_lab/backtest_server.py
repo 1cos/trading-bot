@@ -185,6 +185,7 @@ DATI_DIR = REPO_ROOT / "dati"
 FUTURES_DIR = DATI_DIR / "futures"
 STAGING_DIR = REPO_ROOT / "backend" / "runtime" / "futures_download_test"
 LAB_DIR = REPO_ROOT / "lab"
+MAXBOT_LAB_DIR = REPO_ROOT / "maxbot_lab"
 PRESETS_DIR = REPO_ROOT / "backend" / "runtime" / "presets"
 
 _preset_store = PresetStore(PRESETS_DIR)
@@ -720,6 +721,12 @@ def index():
 @app.route("/lab/<path:filename>")
 def lab_static(filename):
     return send_from_directory(str(LAB_DIR), filename)
+
+
+@app.route("/b10-review")
+def b10_review():
+    """Serve the B10 trade space grade visual review page."""
+    return send_from_directory(str(MAXBOT_LAB_DIR), "b10_review.html")
 
 
 @app.route("/api/symbols")
