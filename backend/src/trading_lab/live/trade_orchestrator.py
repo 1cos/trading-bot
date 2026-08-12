@@ -110,6 +110,7 @@ class MaxBotTradeOrchestrator:
         exit_executor,
         *,
         exit_target_r: int = 2,
+        emit=None,
     ):
         self._symbol = underlying_symbol
         self._direction = direction
@@ -121,6 +122,7 @@ class MaxBotTradeOrchestrator:
         self._entry_executor = entry_executor
         self._exit_executor = exit_executor
         self._exit_target_r = exit_target_r
+        self._emit_fn = emit  # optional callback(event_type, symbol, **kw)
 
         self._lifecycle = LifecycleState.WAITING_FOR_SIGNAL
         self._fill_activator = FillActivator(trade_manager)
@@ -141,6 +143,10 @@ class MaxBotTradeOrchestrator:
         self._signal_status: str | None = None
         self._underlying_triggers = None
         self._resolved_direction: str | None = None
+
+        # Per-trade telemetry context (events for TRADE_COMPLETED)
+        self._trade_events: dict[str, object] = {}
+        self._emitted_terminal: set[str] = set()
 
     # ── Public API ───────────────────────────────────────────────────────
 
@@ -188,19 +194,27 @@ class MaxBotTradeOrchestrator:
 
         if fill_result.state == FillState.FILLED:
             activated = self._fill_activator.apply_if_filled(fill_result)
-            # Create exit monitor with fill timestamp as activation
+            if self._emit_once("ENTRY_FILLED"):
+                fill_data = {
+                    "fill_price": fill_result.average_fill_price,
+                    "fill_quantity": fill_result.filled_quantity,
+                    "remaining": fill_result.remaining_quantity,
+                    "order_id": fill_result.order_id,
+                }
+                ev = self._do_emit("ENTRY_FILLED", direction=self._resolved_direction, data=fill_data)
+                self._trade_events["entry_filled"] = ev
+                self._do_emit("POSITION_OPEN", direction=self._resolved_direction)
+                self._emitted_terminal.add("POSITION_OPEN")
+
             activation_ms = 0
             if fill_result.fill_time is not None:
                 if hasattr(fill_result.fill_time, 'timestamp'):
                     activation_ms = int(fill_result.fill_time.timestamp() * 1000)
 
-            # Fall back to latest bar time if no fill time
             sess = self._session_builder.current_session()
             if activation_ms == 0 and sess and sess["candles"]:
                 activation_ms = sess["candles"][-1]["time_ms"]
 
-            intent = self._underlying_triggers
-            stop = float(intent.entry_price) if intent else 0.0  # unused fallback
             stop = float(self._underlying_triggers.stop_price) if self._underlying_triggers else 0.0
             target = float(self._underlying_triggers.target_price) if self._underlying_triggers else 0.0
 
@@ -213,6 +227,10 @@ class MaxBotTradeOrchestrator:
             self._lifecycle = LifecycleState.POSITION_OPEN
 
         elif fill_result.state in (FillState.CANCELLED, FillState.REJECTED):
+            cancel_type = "ENTRY_CANCELLED" if fill_result.state == FillState.CANCELLED else "ENTRY_REJECTED"
+            if self._emit_once(cancel_type):
+                self._do_emit(cancel_type, direction=self._resolved_direction,
+                              data={"order_id": fill_result.order_id})
             self._clear_active_trade()
             self._lifecycle = LifecycleState.WAITING_FOR_SIGNAL
 
@@ -235,6 +253,37 @@ class MaxBotTradeOrchestrator:
 
         if exit_fill.state == ExitFillState.FILLED:
             self._exit_activator.apply_if_filled(exit_fill)
+
+            if self._emit_once("EXIT_FILLED"):
+                fill_data = {
+                    "fill_price": exit_fill.average_exit_fill_price,
+                    "fill_quantity": exit_fill.filled_quantity,
+                    "remaining": exit_fill.remaining_quantity,
+                    "exit_reason": exit_fill.exit_reason,
+                }
+                ev = self._do_emit("EXIT_FILLED", direction=self._resolved_direction, data=fill_data)
+                self._trade_events["exit_filled"] = ev
+
+                # WIN/LOSS
+                result_str = "WIN" if exit_fill.exit_reason == "TARGET" else "LOSS"
+                result_type = "TRADE_WIN" if result_str == "WIN" else "TRADE_LOSS"
+                self._do_emit(result_type, direction=self._resolved_direction,
+                              data={"result": result_str, "exit_reason": exit_fill.exit_reason})
+
+                # TRADE_COMPLETED summary
+                from trading_lab.live.event_stream import build_trade_summary
+                summary = build_trade_summary(
+                    signal_event=self._trade_events.get("signal"),
+                    option_event=self._trade_events.get("option"),
+                    entry_submitted=self._trade_events.get("entry_submitted"),
+                    entry_filled=self._trade_events.get("entry_filled"),
+                    trigger_event=self._trade_events.get("trigger"),
+                    exit_filled=ev,
+                    result=result_str,
+                )
+                self._do_emit("TRADE_COMPLETED", direction=self._resolved_direction, data=summary)
+
+            saved_direction = self._resolved_direction
             self._exit_reason = exit_fill.exit_reason
             self._clear_active_trade()
 
@@ -244,6 +293,9 @@ class MaxBotTradeOrchestrator:
                 self._lifecycle = LifecycleState.DONE_FOR_DAY
 
         elif exit_fill.state in (ExitFillState.CANCELLED, ExitFillState.REJECTED):
+            cancel_type = "EXIT_CANCELLED" if exit_fill.state == ExitFillState.CANCELLED else "EXIT_REJECTED"
+            if self._emit_once(cancel_type):
+                self._do_emit(cancel_type, direction=self._resolved_direction)
             self._lifecycle = LifecycleState.EXIT_FAILED
 
         return self.status
@@ -285,8 +337,8 @@ class MaxBotTradeOrchestrator:
         if result.status != SignalStatus.SIGNAL:
             return
 
-        # Use resolved direction from signal (supports BOTH mode)
         resolved_direction = result.direction
+        triggers_data = {}
 
         # Build execution intent
         intent = build_option_execution_intent(
@@ -296,11 +348,19 @@ class MaxBotTradeOrchestrator:
             exit_target_r=self._exit_target_r,
             detection_result=result.detection_result,
         )
+        triggers = intent.underlying_triggers
+        triggers_data = {
+            "underlying_entry": float(triggers.entry_price),
+            "underlying_stop": float(triggers.stop_price),
+            "underlying_target": float(triggers.target_price),
+        }
+
+        sig_event = self._do_emit("SIGNAL", direction=resolved_direction, data=triggers_data)
+        self._trade_events = {"signal": sig_event}
 
         # Select option contract
         trading_date_yyyymmdd = sess["date"].replace("-", "")
         underlying_price = sess["candles"][-1]["close"]
-
         right = "C" if resolved_direction == "LONG" else "P"
 
         selection = self._option_selector.select(
@@ -311,11 +371,36 @@ class MaxBotTradeOrchestrator:
             fetch_market_data=True,
         )
 
+        opt_data = {
+            "right": selection.right, "expiration": selection.expiration,
+            "strike": selection.strike, "con_id": selection.con_id,
+            "exchange": selection.exchange, "multiplier": selection.multiplier,
+            "bid": selection.bid, "ask": selection.ask, "spread": selection.spread,
+        }
+        opt_event = self._do_emit("OPTION_SELECTED", direction=resolved_direction, data=opt_data)
+        self._trade_events["option"] = opt_event
+
         # Build entry order spec
         order_spec = build_option_entry_order(selection)
 
+        entry_built_data = {
+            "order_type": "LMT", "quantity": 1,
+            "limit_price": order_spec.limit_price,
+            "bid": order_spec.bid, "ask": order_spec.ask,
+            "spread": order_spec.spread,
+        }
+        self._do_emit("ENTRY_ORDER_BUILT", direction=resolved_direction, data=entry_built_data)
+
         # Submit entry
         submission = self._entry_executor.submit_entry(order_spec)
+
+        sub_data = {
+            "order_id": submission.order_id, "perm_id": submission.perm_id,
+            "status": submission.status, "quantity": 1,
+            "limit_price": order_spec.limit_price,
+        }
+        sub_event = self._do_emit("ENTRY_SUBMITTED", direction=resolved_direction, data=sub_data)
+        self._trade_events["entry_submitted"] = sub_event
 
         # Record state
         self._entry_submission = submission
@@ -337,6 +422,18 @@ class MaxBotTradeOrchestrator:
         result = self._exit_monitor.evaluate_bar(bar)
 
         if result.state in (ExitState.STOP_TRIGGERED, ExitState.TARGET_TRIGGERED):
+            trigger_type = "TARGET_TRIGGERED" if result.state == ExitState.TARGET_TRIGGERED else "STOP_TRIGGERED"
+            if self._emit_once(trigger_type):
+                trigger_data = {
+                    "exit_reason": "TARGET" if result.state == ExitState.TARGET_TRIGGERED else "STOP",
+                    "bar_time_ms": result.trigger_bar_time_ms,
+                    "bar_open": result.trigger_bar_open, "bar_high": result.trigger_bar_high,
+                    "bar_low": result.trigger_bar_low, "bar_close": result.trigger_bar_close,
+                    "same_bar_ambiguity": result.same_bar_ambiguity,
+                }
+                ev = self._do_emit(trigger_type, direction=self._resolved_direction, data=trigger_data)
+                self._trade_events["trigger"] = ev
+
             exit_sub = self._exit_executor.submit_exit(
                 qualified_contract=self._qualified_contract,
                 exit_trigger=result,
@@ -347,6 +444,13 @@ class MaxBotTradeOrchestrator:
                 strike=self._option_strike,
                 quantity=1,
             )
+            exit_data = {
+                "order_id": exit_sub.order_id, "exit_reason": exit_sub.exit_reason,
+                "con_id": self._entry_con_id, "quantity": 1, "status": exit_sub.status,
+            }
+            self._do_emit("EXIT_SUBMITTED", direction=self._resolved_direction, data=exit_data)
+            self._trade_events["exit_submitted"] = True
+
             self._exit_submission = exit_sub
             self._exit_order_id = exit_sub.order_id
             self._exit_reason = exit_sub.exit_reason
@@ -366,3 +470,19 @@ class MaxBotTradeOrchestrator:
         self._signal_status = None
         self._underlying_triggers = None
         self._resolved_direction = None
+        self._trade_events = {}
+        self._emitted_terminal = set()
+
+    def _do_emit(self, event_type, direction=None, data=None):
+        """Emit an event via the injected callback, if present."""
+        if self._emit_fn:
+            return self._emit_fn(event_type, symbol=self._symbol,
+                                 direction=direction, data=data)
+        return None
+
+    def _emit_once(self, key: str) -> bool:
+        """Return True only the first time this key is checked."""
+        if key in self._emitted_terminal:
+            return False
+        self._emitted_terminal.add(key)
+        return True

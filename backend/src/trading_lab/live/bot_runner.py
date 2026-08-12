@@ -358,6 +358,7 @@ class MaxBotRunner:
                 underlying_symbol=sym, direction=self._direction,
                 tick_size=self._tick_size, session_builder=sb,
                 signal_detector=sd, option_selector=os_,
+                emit=self._emit,
             )
         else:
             unlimited = not self._trade_limits_enabled
@@ -370,7 +371,7 @@ class MaxBotRunner:
                 tick_size=self._tick_size, session_builder=sb,
                 signal_detector=sd, trade_manager=tm,
                 option_selector=os_, entry_executor=ee,
-                exit_executor=xe,
+                exit_executor=xe, emit=self._emit,
             )
 
     def _qualify_all(self) -> None:

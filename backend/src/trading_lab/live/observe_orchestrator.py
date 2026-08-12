@@ -131,6 +131,7 @@ class ObserveOrchestrator:
         *,
         exit_target_r: int = 2,
         max_trades: int = 2,
+        emit=None,
     ):
         self._symbol = underlying_symbol
         self._direction = direction
@@ -139,6 +140,7 @@ class ObserveOrchestrator:
         self._signal_detector = signal_detector
         self._option_selector = option_selector
         self._exit_target_r = exit_target_r
+        self._emit_fn = emit
 
         self._lifecycle = ObserveLifecycle.WAITING_FOR_SIGNAL
         self._exit_monitor: UnderlyingExitMonitor | None = None
@@ -290,6 +292,24 @@ class ObserveOrchestrator:
         self._events.append(event)
         self._current_signal_event = event
 
+        # Emit to shared session log
+        self._do_emit("SIGNAL", direction=resolved_direction, data={
+            "underlying_entry": entry_f, "underlying_stop": stop_f,
+            "underlying_target": target_f,
+        })
+        self._do_emit("OPTION_SELECTED", direction=resolved_direction, data={
+            "right": selection.right, "expiration": selection.expiration,
+            "strike": selection.strike, "con_id": selection.con_id,
+            "exchange": selection.exchange, "multiplier": selection.multiplier,
+            "bid": selection.bid, "ask": selection.ask, "spread": selection.spread,
+        })
+        self._do_emit("ENTRY_ORDER_BUILT", direction=resolved_direction, data={
+            "order_type": "LMT", "quantity": 1, "limit_price": order_spec.limit_price,
+        })
+        self._do_emit("OBSERVE_ENTRY", direction=resolved_direction, data={
+            "order_submitted": False, "limit_price": order_spec.limit_price,
+        })
+
         # Start exit monitoring
         self._exit_monitor = UnderlyingExitMonitor(
             direction=resolved_direction,
@@ -356,6 +376,12 @@ class ObserveOrchestrator:
             theoretical_losses=self._losses,
         )
         self._events.append(event)
+
+        # Emit to shared session log
+        observe_type = "OBSERVE_TARGET" if event_type == "TARGET_TRIGGERED" else "OBSERVE_STOP"
+        self._do_emit(observe_type, direction=self._resolved_direction or self._direction,
+                      data={"exit_reason": "TARGET" if "TARGET" in event_type else "STOP"})
+
         self._exit_monitor = None
         self._current_signal_event = None
 
@@ -382,3 +408,9 @@ class ObserveOrchestrator:
         self._current_signal_event = None
         self._resolved_direction = None
         self._lifecycle = ObserveLifecycle.WAITING_FOR_SIGNAL
+
+    def _do_emit(self, event_type, direction=None, data=None):
+        if self._emit_fn:
+            return self._emit_fn(event_type, symbol=self._symbol,
+                                 direction=direction, data=data)
+        return None
