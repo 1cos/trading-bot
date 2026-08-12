@@ -37,7 +37,8 @@ class DualSignalDetector:
         """Evaluate the session for both LONG and SHORT setups.
 
         Returns the first valid SIGNAL found (LONG checked first).
-        If neither direction has a signal, returns NO_SETUP.
+        If neither direction has a signal, returns the result from
+        whichever direction progressed further in the pipeline.
         """
         long_result = self._long.evaluate(session)
         if long_result.status == SignalStatus.SIGNAL:
@@ -47,5 +48,9 @@ class DualSignalDetector:
         if short_result.status == SignalStatus.SIGNAL:
             return short_result
 
-        # Return the LONG result (NO_SETUP) — arbitrary, both are NO_SETUP
+        # Return whichever progressed further (more stage context = further)
+        long_depth = len(long_result.stage_context or {})
+        short_depth = len(short_result.stage_context or {})
+        if short_depth > long_depth:
+            return short_result
         return long_result

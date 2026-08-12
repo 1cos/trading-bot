@@ -87,10 +87,45 @@ class SignalResult:
     detection_result: object | None = None
     trade_plan: object | None = None
     failed_stage: str | None = None
+    pipeline_stage: str | None = None   # human-readable stage label
+    stage_context: dict | None = None   # key data from reached stages
 
 
-def _no_setup(failed_stage: str | None = None) -> SignalResult:
-    return SignalResult(status=SignalStatus.NO_SETUP, failed_stage=failed_stage)
+# ── Stage label mapping ──────────────────────────────────────────────────────
+
+_STAGE_LABELS = {
+    "NO_SESSION": "NO SESSION",
+    "NO_CANDLES": "NO CANDLES",
+    "INVALID_SESSION_INPUT": "SESSION ERROR",
+    "LEVEL_NOT_FOUND": "BUILDING ORB",
+    "UNSUPPORTED_CONFIGURATION": "CONFIG ERROR",
+    "INVALID_INPUT": "INPUT ERROR",
+    "BREAK_NOT_FOUND": "ORB COMPLETE — NO BREAK",
+    "DISPLACEMENT_TOO_SHORT": "BREAK — DISPLACEMENT BUILDING",
+    "RETEST_NOT_FOUND": "DISPLACEMENT — NO RETEST",
+    "RETEST_BEFORE_DISPLACEMENT": "RETEST TOO EARLY",
+    "SEQUENCE_INVALIDATED": "SEQUENCE INVALIDATED",
+    "NO_QUALIFYING_REJECTION_CANDLE": "RETEST — NO ENTRY CANDLE",
+    "PROVIDER_NOT_IMPLEMENTED": "LEVEL NOT IMPLEMENTED",
+    "MISSING_SESSIONS_DATA": "NO HISTORICAL DATA",
+    "NO_PREVIOUS_SESSION": "NO PREVIOUS SESSION",
+}
+
+
+def _stage_label(failed_stage: str | None) -> str:
+    if failed_stage is None:
+        return "UNKNOWN"
+    return _STAGE_LABELS.get(failed_stage, failed_stage)
+
+
+def _no_setup(failed_stage: str | None = None,
+              stage_context: dict | None = None) -> SignalResult:
+    return SignalResult(
+        status=SignalStatus.NO_SETUP,
+        failed_stage=failed_stage,
+        pipeline_stage=_stage_label(failed_stage),
+        stage_context=stage_context,
+    )
 
 
 # ── Helper ───────────────────────────────────────────────────────────────────
@@ -230,18 +265,43 @@ class LiveSignalDetector:
         # ── Stage 1b: Level (ORB) ────────────────────────────────────────
         level_result = build_level(sc_candles, sc, self._engine_config)
         if level_result.get("status") != "OK":
-            return _no_setup(level_result.get("failed_stage"))
+            ctx = {"candle_count": len(sc_candles)}
+            return _no_setup(level_result.get("failed_stage"), stage_context=ctx)
+
+        orb_high = level_result.get("orb_high")
+        orb_low = level_result.get("orb_low")
+        level_price = level_result.get("level_price")
+        orb_ctx = {
+            "orb_high": float(orb_high) if orb_high else None,
+            "orb_low": float(orb_low) if orb_low else None,
+            "level": float(level_price) if level_price else None,
+            "level_source": self._engine_config.get("level_source"),
+        }
 
         # ── Stage 2: Break ───────────────────────────────────────────────
         brk = find_break(sc_candles, level_result, self._engine_config)
         if brk.get("status") != "OK":
-            return _no_setup(brk.get("failed_stage"))
+            return _no_setup(brk.get("failed_stage"), stage_context=orb_ctx)
+
+        break_idx = brk.get("break_candle_index")
+        break_ctx = {**orb_ctx,
+                     "break_bar_index": break_idx,
+                     "break_close": float(sc_candles[break_idx]["close"]) if break_idx else None}
 
         # ── Stage 3: Displacement ────────────────────────────────────────
         engine_config = self._engine_config  # may be shadowed below
         disp = find_displacement(sc_candles, level_result, brk, engine_config)
         if disp.get("status") != "OK":
-            return _no_setup(disp.get("failed_stage"))
+            disp_count = disp.get("displacement_bar_count", 0)
+            min_req = engine_config.get("min_displacement_bars", 3)
+            return _no_setup(disp.get("failed_stage"),
+                             stage_context={**break_ctx,
+                                            "displacement_bars": disp_count,
+                                            "displacement_required": min_req})
+
+        disp_ctx = {**break_ctx,
+                    "displacement_bars": disp.get("displacement_bar_count"),
+                    "displacement_end_index": disp.get("displacement_end_index")}
 
         # ── Stage 3b: Sequence validation ────────────────────────────────
         seq_val = validate_sequence(sc_candles, level_result, brk, disp, engine_config)
@@ -249,14 +309,17 @@ class LiveSignalDetector:
             max_vi = seq_val["max_valid_index"]
             first_retest = disp["first_retest_contact_index"]
             if max_vi < first_retest:
-                return _no_setup("SEQUENCE_INVALIDATED")
+                return _no_setup("SEQUENCE_INVALIDATED",
+                                 stage_context={**disp_ctx,
+                                                "invalidation_index": max_vi})
             else:
                 engine_config = {**engine_config, "_max_valid_index": max_vi}
 
         # ── Stage 4: Retest window ───────────────────────────────────────
         retest = find_retest_window(sc_candles, level_result, brk, disp, engine_config)
         if retest.get("status") != "OK":
-            return _no_setup(retest.get("failed_stage"))
+            return _no_setup(retest.get("failed_stage"),
+                             stage_context=disp_ctx)
 
         # ── Stage 5: Rejection / Entry candle ────────────────────────────
         warmed_atr_cache = None
@@ -272,7 +335,11 @@ class LiveSignalDetector:
             _atr_cache=warmed_atr_cache,
         )
         if rej.get("status") != "OK":
-            return _no_setup(rej.get("failed_stage"))
+            retest_ctx = {**disp_ctx,
+                          "retest_start_index": retest.get("retest_window_start_index"),
+                          "retest_end_index": retest.get("retest_window_end_index")}
+            return _no_setup(rej.get("failed_stage"),
+                             stage_context=retest_ctx)
 
         # ── DetectionResult/v1 ───────────────────────────────────────────
         tf_seconds = timeframe_to_seconds(session.get("timeframe", "1m"))

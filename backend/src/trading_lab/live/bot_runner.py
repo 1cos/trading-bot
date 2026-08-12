@@ -526,6 +526,24 @@ class MaxBotRunner:
 
             rt.processed_times.add(candle["time_ms"])
             rt.processed_bar_count += 1
+
+            # Evaluate signal (for both modes, we want stage info)
+            sess = rt.session_builder.current_session() if rt.session_builder else None
+            stage_info = ""
+            if rt.signal_detector:
+                sig = rt.signal_detector.evaluate(sess)
+                if sig.pipeline_stage:
+                    stage_info = f" [{sig.pipeline_stage}]"
+                    ctx = sig.stage_context or {}
+                    if ctx.get("orb_high") and sig.failed_stage == "BREAK_NOT_FOUND":
+                        stage_info += f" H={ctx['orb_high']:.2f} L={ctx['orb_low']:.2f}"
+                    elif ctx.get("break_close") and "DISPLACEMENT" in (sig.pipeline_stage or ""):
+                        bars_done = ctx.get("displacement_bars", 0)
+                        bars_req = ctx.get("displacement_required", 3)
+                        stage_info += f" ({bars_done}/{bars_req} bars)"
+                    elif ctx.get("displacement_bars") and "RETEST" in (sig.pipeline_stage or ""):
+                        stage_info += f" disp={ctx['displacement_bars']} bars"
+
             result = rt.orchestrator.on_bar(candle)
             time_str = datetime.fromtimestamp(
                 candle["time_ms"] / 1000, tz=self._tz
@@ -533,11 +551,11 @@ class MaxBotRunner:
 
             if self._execution_mode == ExecutionMode.OBSERVE_ONLY:
                 state = rt.orchestrator.lifecycle
-                log.info(f"[{rt.symbol}] {time_str} C={candle['close']:.2f} → {state}")
+                log.info(f"[{rt.symbol}] {time_str} C={candle['close']:.2f} → {state}{stage_info}")
             else:
                 log.info(
                     f"[{rt.symbol}] {time_str} C={candle['close']:.2f} → "
-                    f"{result.lifecycle if result else '?'}"
+                    f"{result.lifecycle if result else '?'}{stage_info}"
                 )
         except Exception as e:
             log.error(f"[{rt.symbol}] Bar callback error: {e}", exc_info=True)
