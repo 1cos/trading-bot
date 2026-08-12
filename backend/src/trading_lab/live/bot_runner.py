@@ -51,6 +51,7 @@ from trading_lab.live.event_stream import EventFactory, SessionEventLog, EventTy
 from trading_lab.live.context_levels import (
     ContextLevels,
     fetch_previous_session_bars,
+    fetch_premarket_bars,
     compute_live_context_levels,
 )
 
@@ -399,7 +400,7 @@ class MaxBotRunner:
                            data={"error": str(e)})
 
     def _compute_context_levels(self) -> None:
-        """Fetch previous RTH session and compute PDH/PDL for each symbol."""
+        """Fetch previous RTH session and premarket, compute PDH/PDL + PMH/PML."""
         from datetime import datetime as dt_cls
         today = dt_cls.now(self._tz).strftime("%Y-%m-%d")
 
@@ -407,24 +408,37 @@ class MaxBotRunner:
             if not rt.enabled or rt.underlying_contract is None:
                 continue
             try:
+                # PDH/PDL from previous RTH session
                 sessions = fetch_previous_session_bars(
                     self._ib, rt.underlying_contract, self._tz,
                 )
-                ctx = compute_live_context_levels(sym, today, sessions)
+
+                # PMH/PML from today's premarket
+                pm_bars = fetch_premarket_bars(
+                    self._ib, rt.underlying_contract, self._tz, today,
+                )
+
+                ctx = compute_live_context_levels(
+                    sym, today, sessions, premarket_bars=pm_bars,
+                )
                 rt.context_levels = ctx
 
-                if ctx.status == "OK":
-                    log.info(
-                        f"CONTEXT {sym}: PDH={ctx.pdh:.2f} PDL={ctx.pdl:.2f} "
-                        f"(from {ctx.prev_date})"
-                    )
-                    self._emit(EventType.SYMBOL_ENABLED, symbol=sym,
-                               data={"pdh": ctx.pdh, "pdl": ctx.pdl,
-                                     "prev_date": ctx.prev_date})
+                parts = []
+                if ctx.pdh is not None:
+                    parts.append(f"PDH={ctx.pdh:.2f} PDL={ctx.pdl:.2f} (from {ctx.prev_date})")
+                if ctx.pmh is not None:
+                    parts.append(f"PMH={ctx.pmh:.2f} PML={ctx.pml:.2f} ({ctx.pm_bar_count} bars)")
                 else:
-                    log.warning(f"CONTEXT {sym}: PDH/PDL unavailable ({ctx.status})")
+                    parts.append("PMH/PML=unavailable")
+
+                if parts:
+                    log.info(f"CONTEXT {sym}: {' | '.join(parts)}")
+
+                ctx_data = ctx.to_dict()
+                self._emit(EventType.SYMBOL_ENABLED, symbol=sym, data=ctx_data)
+
             except Exception as e:
-                log.warning(f"CONTEXT {sym}: PDH/PDL error: {e}")
+                log.warning(f"CONTEXT {sym}: error: {e}")
                 rt.context_levels = ContextLevels(symbol=sym, status=f"ERROR: {e}")
 
     def _subscribe_all(self) -> None:

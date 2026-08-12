@@ -256,3 +256,181 @@ class TestRunnerWiring:
         assert rt.context_levels is None  # default
         rt.context_levels = ContextLevels(symbol="QQQ", pdh=585.0, pdl=583.0)
         assert rt.context_levels.pdh == 585.0
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PMH / PML TESTS
+# ══════════════════════════════════════════════════════════════════════════════
+
+from trading_lab.live.context_levels import (
+    _is_premarket_bar,
+    compute_pmh_pml,
+    PREMARKET_START_ET,
+    PREMARKET_END_ET,
+)
+
+ET_TZ = ZoneInfo("America/New_York")
+
+
+def _make_pm_bar(hour, minute, high=101.0, low=99.0, date="2026-08-12"):
+    """Create a premarket bar at the given ET hour:minute."""
+    dt = datetime(2026, 8, 12, hour, minute, 0, tzinfo=ET_TZ)
+    ms = int(dt.timestamp() * 1000)
+    return {"time_ms": ms, "open": 100.0, "high": high, "low": low,
+            "close": 100.5, "volume": 1000}
+
+
+# ── Premarket window filtering ───────────────────────────────────────────────
+
+class TestPremarketWindow:
+    def test_4am_et_is_premarket(self):
+        bar = _make_pm_bar(4, 0)
+        assert _is_premarket_bar(bar["time_ms"], ET_TZ) is True
+
+    def test_8am_et_is_premarket(self):
+        bar = _make_pm_bar(8, 0)
+        assert _is_premarket_bar(bar["time_ms"], ET_TZ) is True
+
+    def test_929_et_is_premarket(self):
+        bar = _make_pm_bar(9, 29)
+        assert _is_premarket_bar(bar["time_ms"], ET_TZ) is True
+
+    def test_930_et_is_NOT_premarket(self):
+        """09:30 ET is market open — NOT premarket."""
+        bar = _make_pm_bar(9, 30)
+        assert _is_premarket_bar(bar["time_ms"], ET_TZ) is False
+
+    def test_359_et_is_NOT_premarket(self):
+        """03:59 ET is before the premarket window."""
+        bar = _make_pm_bar(3, 59)
+        assert _is_premarket_bar(bar["time_ms"], ET_TZ) is False
+
+    def test_10am_et_is_NOT_premarket(self):
+        bar = _make_pm_bar(10, 0)
+        assert _is_premarket_bar(bar["time_ms"], ET_TZ) is False
+
+    def test_1600_et_is_NOT_premarket(self):
+        bar = _make_pm_bar(16, 0)
+        assert _is_premarket_bar(bar["time_ms"], ET_TZ) is False
+
+
+# ── compute_pmh_pml ──────────────────────────────────────────────────────────
+
+class TestComputePmhPml:
+    def test_basic(self):
+        bars = [
+            _make_pm_bar(4, 0, high=101.5, low=99.5),
+            _make_pm_bar(5, 0, high=102.0, low=99.0),
+            _make_pm_bar(8, 0, high=101.0, low=100.0),
+        ]
+        result = compute_pmh_pml(bars)
+        assert result["status"] == "OK"
+        assert result["pmh"] == 102.0
+        assert result["pml"] == 99.0
+        assert result["bar_count"] == 3
+
+    def test_single_bar(self):
+        bars = [_make_pm_bar(7, 30, high=585.50, low=584.20)]
+        result = compute_pmh_pml(bars)
+        assert result["pmh"] == 585.50
+        assert result["pml"] == 584.20
+
+    def test_empty_returns_no_data(self):
+        result = compute_pmh_pml([])
+        assert result["status"] == "NO_PREMARKET_DATA"
+
+
+# ── ContextLevels with PMH/PML ──────────────────────────────────────────────
+
+class TestContextLevelsPmhPml:
+    def test_all_fields(self):
+        ctx = ContextLevels(
+            symbol="QQQ", pdh=585.0, pdl=583.0, prev_date="2026-08-11",
+            pmh=584.5, pml=583.2, pm_bar_count=45,
+        )
+        assert ctx.pmh == 584.5
+        assert ctx.pml == 583.2
+        assert ctx.pm_bar_count == 45
+
+    def test_to_dict_includes_pm(self):
+        ctx = ContextLevels(
+            symbol="QQQ", pdh=585.0, pdl=583.0, prev_date="2026-08-11",
+            pmh=584.5, pml=583.2, pm_bar_count=45,
+        )
+        d = ctx.to_dict()
+        assert d["pmh"] == 584.5
+        assert d["pml"] == 583.2
+        assert d["pm_bar_count"] == 45
+
+    def test_to_dict_omits_none_pm(self):
+        ctx = ContextLevels(symbol="QQQ", pdh=585.0, pdl=583.0)
+        d = ctx.to_dict()
+        assert "pmh" not in d
+        assert "pml" not in d
+        assert "pm_bar_count" not in d
+
+    def test_pdh_only_no_pm(self):
+        ctx = ContextLevels(symbol="QQQ", pdh=585.0, pdl=583.0)
+        assert ctx.pmh is None
+        assert ctx.pml is None
+        assert ctx.pm_bar_count == 0
+
+
+# ── compute_live_context_levels with premarket ───────────────────────────────
+
+class TestComputeLiveWithPremarket:
+    def test_both_pdh_and_pmh(self):
+        sessions = [{"date": "2026-08-11", "candles": [
+            {"high": 585.0, "low": 583.0, "open": 584.0, "close": 584.5,
+             "time_ms": 1},
+        ]}]
+        pm_bars = [_make_pm_bar(7, 0, high=584.8, low=583.5)]
+
+        ctx = compute_live_context_levels(
+            "QQQ", "2026-08-12", sessions, premarket_bars=pm_bars,
+        )
+        assert ctx.pdh == 585.0
+        assert ctx.pdl == 583.0
+        assert ctx.pmh == 584.8
+        assert ctx.pml == 583.5
+        assert ctx.pm_bar_count == 1
+
+    def test_pdh_only_no_premarket(self):
+        sessions = [{"date": "2026-08-11", "candles": [
+            {"high": 585.0, "low": 583.0, "open": 584.0, "close": 584.5,
+             "time_ms": 1},
+        ]}]
+        ctx = compute_live_context_levels(
+            "QQQ", "2026-08-12", sessions, premarket_bars=None,
+        )
+        assert ctx.pdh == 585.0
+        assert ctx.pmh is None
+
+    def test_premarket_only_no_pdh(self):
+        pm_bars = [_make_pm_bar(7, 0, high=584.8, low=583.5)]
+        ctx = compute_live_context_levels(
+            "QQQ", "2026-08-12", [], premarket_bars=pm_bars,
+        )
+        assert ctx.pdh is None
+        assert ctx.pmh == 584.8
+        assert ctx.status == "NO_PREVIOUS_SESSION"
+
+
+# ── Premarket bars never reach strategy ──────────────────────────────────────
+
+class TestPremarketNeverStrategy:
+    def test_no_signal_detector_import(self):
+        import inspect
+        import trading_lab.live.context_levels as mod
+        source = inspect.getsource(mod)
+        assert "LiveSignalDetector" not in source
+        assert "find_break" not in source
+        assert "find_displacement" not in source
+
+    def test_no_session_builder_contamination(self):
+        """Premarket bars are NOT added to the session builder."""
+        import inspect
+        import trading_lab.live.context_levels as mod
+        source = inspect.getsource(mod)
+        assert "add_bar" not in source
+        assert "LiveSessionBuilder" not in source

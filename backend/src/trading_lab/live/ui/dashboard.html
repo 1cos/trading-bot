@@ -353,7 +353,10 @@ function updateSymbols(symbols) {
     if (s.underlying_entry) levels = `E ${s.underlying_entry.toFixed(2)} · S ${s.underlying_stop.toFixed(2)} · T ${s.underlying_target.toFixed(2)}`;
 
     let ctx = '';
-    if (s.pdh != null && s.pdl != null) ctx = `PDH ${s.pdh.toFixed(2)} · PDL ${s.pdl.toFixed(2)}`;
+    let parts = [];
+    if (s.pdh != null && s.pdl != null) parts.push(`PDH ${s.pdh.toFixed(2)} · PDL ${s.pdl.toFixed(2)}`);
+    if (s.pmh != null && s.pml != null) parts.push(`PMH ${s.pmh.toFixed(2)} · PML ${s.pml.toFixed(2)}`);
+    ctx = parts.join(' | ');
 
     const stateClass = s.lifecycle === 'DONE_FOR_DAY' ? 'color:var(--dim)' :
                        isActive ? 'color:var(--accent)' : '';

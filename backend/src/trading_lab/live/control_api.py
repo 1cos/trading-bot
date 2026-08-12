@@ -231,11 +231,21 @@ class MaxBotController:
                         entry["underlying_target"] = float(orch._underlying_triggers.target_price)
                     if orch._exit_reason:
                         entry["exit_reason"] = orch._exit_reason
-            # Context levels (PDH/PDL) — always included if available
-            if rt.context_levels and rt.context_levels.status == "OK":
-                entry["pdh"] = rt.context_levels.pdh
-                entry["pdl"] = rt.context_levels.pdl
-                entry["pdh_pdl_date"] = rt.context_levels.prev_date
+            # Context levels — always included if available
+            if rt.context_levels:
+                ctx = rt.context_levels
+                if ctx.pdh is not None:
+                    entry["pdh"] = ctx.pdh
+                if ctx.pdl is not None:
+                    entry["pdl"] = ctx.pdl
+                if ctx.prev_date is not None:
+                    entry["pdh_pdl_date"] = ctx.prev_date
+                if ctx.pmh is not None:
+                    entry["pmh"] = ctx.pmh
+                if ctx.pml is not None:
+                    entry["pml"] = ctx.pml
+                if ctx.pm_bar_count > 0:
+                    entry["pm_bar_count"] = ctx.pm_bar_count
             result.append(entry)
         return result
 
