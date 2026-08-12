@@ -436,19 +436,14 @@ def run_server(
     ib_port: int | None = None,
     ib_client_id: int | None = None,
 ):
-    """Start the MaxBot control API / PWA server.
+    """Start the MaxBot control API / PWA server."""
+    import sys as _sys
+    if _sys.version_info >= (3, 14):
+        print(f"\n  ❌ MaxBot requires Python 3.11–3.13 for ib_insync.")
+        print(f"     Current: Python {_sys.version_info.major}.{_sys.version_info.minor}")
+        print(f"     Recreate venv with: /opt/homebrew/bin/python3.12 -m venv venv\n")
+        _sys.exit(1)
 
-    Configuration via environment or arguments:
-        MAXBOT_BIND_HOST  (default 0.0.0.0)
-        MAXBOT_API_PORT   (default 8765)
-        MAXBOT_IB_HOST    (default 127.0.0.1)
-        MAXBOT_IB_PORT    (default 7497)
-        MAXBOT_IB_CLIENT_ID (default 1)
-        MAXBOT_API_TOKEN  (optional)
-
-    Trading does NOT start automatically.
-    The PWA Start button is the explicit trading start action.
-    """
     host = bind_host or os.environ.get("MAXBOT_BIND_HOST", "0.0.0.0")
     port = api_port or int(os.environ.get("MAXBOT_API_PORT", "8765"))
     ibh = ib_host or os.environ.get("MAXBOT_IB_HOST", "127.0.0.1")

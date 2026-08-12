@@ -1,5 +1,34 @@
 # MaxBot v0.1 — Daily Operation Guide
 
+## Python Environment Setup (one-time)
+
+MaxBot requires **Python 3.12 or 3.13** for `ib_insync` compatibility.
+Python 3.14+ is not supported (eventkit/asyncio breaking change).
+
+```bash
+# Install Python 3.12 via Homebrew
+brew install python@3.12
+
+# Create venv (from repository root)
+cd ~/trading_bot
+
+# Back up old venv if it exists
+mv venv venv_old_backup 2>/dev/null || true
+
+# Create new venv with Python 3.12
+/opt/homebrew/bin/python3.12 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+pip install -e backend/
+
+# Verify
+python --version          # should show 3.12.x
+python -c "from ib_insync import IB; print('OK')"
+```
+
 ## Every Morning
 
 1. **Open TWS** on Mac mini

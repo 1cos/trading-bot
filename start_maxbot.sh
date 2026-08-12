@@ -26,8 +26,34 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Activate venv if present
+if [ -f "${SCRIPT_DIR}/venv/bin/activate" ]; then
+    source "${SCRIPT_DIR}/venv/bin/activate"
+fi
+
 # Ensure Python can find the trading_lab package
 export PYTHONPATH="${SCRIPT_DIR}/backend/src:${PYTHONPATH:-}"
+
+# ── Python version guard ────────────────────────────────────────────────
+PY_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "?")
+PY_MAJOR=$(python3 -c "import sys; print(sys.version_info.major)" 2>/dev/null || echo "0")
+PY_MINOR=$(python3 -c "import sys; print(sys.version_info.minor)" 2>/dev/null || echo "0")
+
+if [ "$PY_MAJOR" -ge 3 ] && [ "$PY_MINOR" -ge 14 ]; then
+    echo ""
+    echo "  ❌ MAXBOT requires Python 3.11–3.13 for ib_insync."
+    echo "     Current Python: ${PY_VERSION}"
+    echo ""
+    echo "  Fix: recreate venv with Python 3.12:"
+    echo "     brew install python@3.12"
+    echo "     mv venv venv_py${PY_VERSION}_backup"
+    echo "     /opt/homebrew/bin/python3.12 -m venv venv"
+    echo "     source venv/bin/activate"
+    echo "     pip install -r requirements.txt"
+    echo "     pip install -e backend/"
+    echo ""
+    exit 1
+fi
 
 echo ""
 echo "  ╔═══════════════════════════════════╗"
@@ -37,4 +63,4 @@ echo "  ╚═══════════════════════
 echo ""
 
 # Launch the control API server
-exec python -m trading_lab.live.control_api
+exec python3 -m trading_lab.live.control_api

@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "trading-lab"
 version = "0.1.0"
 description = "BDRR trading laboratory — Python backend"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 dependencies = []
 
 [project.optional-dependencies]

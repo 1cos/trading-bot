@@ -19,6 +19,19 @@ import time
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
+# ── Python version guard ─────────────────────────────────────────────────────
+if sys.version_info >= (3, 14):
+    print(f"\n  ❌ MaxBot requires Python 3.11–3.13 for ib_insync.")
+    print(f"     Current: Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
+    print(f"\n  Fix: recreate venv with Python 3.12:")
+    print(f"     brew install python@3.12")
+    print(f"     mv venv venv_backup")
+    print(f"     /opt/homebrew/bin/python3.12 -m venv venv")
+    print(f"     source venv/bin/activate")
+    print(f"     pip install -r requirements.txt")
+    print(f"     pip install -e backend/\n")
+    sys.exit(1)
+
 # ── Configuration ────────────────────────────────────────────────────────────
 
 IB_HOST = "127.0.0.1"
