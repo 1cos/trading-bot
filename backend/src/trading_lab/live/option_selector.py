@@ -187,48 +187,124 @@ class OptionSelectionResult:
     bid: float | None = None
     ask: float | None = None
     spread: float | None = None
+    preferred_strike: float | None = None
+    fallback_attempts: int = 0
 
 
 # ── IBKR adapter ─────────────────────────────────────────────────────────────
 
-def _pick_chain(chains: list, prefer_exchange: str = "SMART") -> dict | None:
-    """Select the best option chain from IBKR results.
+def _pick_chain(chains: list, underlying_symbol: str = "",
+                underlying_price: float = 0.0, trading_date: str = "",
+                prefer_exchange: str = "SMART") -> dict | None:
+    """Select the best standard option chain from IBKR results.
 
-    Prefers the chain whose exchange matches ``prefer_exchange``.
-    Falls back to the first chain if no match.
+    Prefers the standard chain whose tradingClass matches the underlying
+    symbol, has multiplier "100", and brackets the underlying price.
+
+    Ranking:
+      1. tradingClass == underlying_symbol (case-insensitive)
+      2. multiplier == "100"
+      3. exchange == prefer_exchange
+      4. strikes bracket underlying_price (at least 1 below + 1 above)
+      5. at least 1 expiration >= trading_date
+      6. among ties: more expirations and strikes win
+
+    Adjusted classes (e.g. 2QQQ, 2SPY) never beat the standard class.
 
     Parameters
     ----------
     chains : list
-        List of OptionChain objects from reqSecDefOptParams.
+        OptionChain objects from reqSecDefOptParams.
+    underlying_symbol : str
+        The underlying symbol for tradingClass matching.
+    underlying_price : float
+        Current underlying price for strike-bracket validation.
+    trading_date : str
+        YYYYMMDD for expiration validation.
     prefer_exchange : str
         Preferred exchange (default "SMART").
 
     Returns
     -------
     dict or None
-        Selected chain as a dict with keys: exchange, tradingClass,
-        multiplier, expirations, strikes.  None if chains is empty.
     """
     if not chains:
         return None
 
-    selected = None
-    for chain in chains:
-        if chain.exchange == prefer_exchange:
-            selected = chain
-            break
+    def _score(chain):
+        tc = chain.tradingClass.upper()
+        sym = underlying_symbol.upper()
+        mult = str(chain.multiplier)
+        strikes = list(chain.strikes)
+        expirations = list(chain.expirations)
 
-    if selected is None:
-        selected = chains[0]
+        # Hard filter: must have multiplier 100
+        if mult != "100":
+            return (-1,)
+
+        # Must have at least one future expiration
+        future_exps = [e for e in expirations if e >= trading_date]
+        if not future_exps:
+            return (-1,)
+
+        # Must bracket underlying price
+        has_below = any(s < underlying_price for s in strikes)
+        has_above = any(s > underlying_price for s in strikes)
+        if not (has_below and has_above):
+            return (-1,)
+
+        # Score components (higher = better)
+        tc_match = 1 if tc == sym else 0
+        exch_match = 1 if chain.exchange == prefer_exchange else 0
+        exp_count = len(future_exps)
+        strike_count = len(strikes)
+
+        return (tc_match, exch_match, exp_count, strike_count)
+
+    scored = []
+    for chain in chains:
+        s = _score(chain)
+        if s[0] >= 0:  # passed hard filters
+            scored.append((s, chain))
+
+    if not scored:
+        return None
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    best = scored[0][1]
 
     return {
-        "exchange": selected.exchange,
-        "tradingClass": selected.tradingClass,
-        "multiplier": selected.multiplier,
-        "expirations": list(selected.expirations),
-        "strikes": list(selected.strikes),
+        "exchange": best.exchange,
+        "tradingClass": best.tradingClass,
+        "multiplier": best.multiplier,
+        "expirations": list(best.expirations),
+        "strikes": list(best.strikes),
     }
+
+
+def _fallback_strikes(right: str, preferred: float, underlying_price: float,
+                       available_strikes: list[float]) -> list[float]:
+    """Generate fallback ITM strikes deeper than preferred.
+
+    Never crosses the ATM/OTM boundary.
+
+    CALL: strikes progressively lower than preferred, all < underlying_price.
+    PUT:  strikes progressively higher than preferred, all > underlying_price.
+
+    Returns list sorted by proximity to preferred (nearest first).
+    """
+    if right == "C":
+        candidates = sorted(
+            (s for s in available_strikes if s < preferred),
+            reverse=True,
+        )
+    elif right == "P":
+        candidates = sorted(
+            s for s in available_strikes if s > preferred
+        )
+    else:
+        return []
+    return candidates
 
 
 class OptionContractSelector:
@@ -286,7 +362,7 @@ class OptionContractSelector:
         RuntimeError
             On IBKR failures (qualification, chain retrieval).
         """
-        from ib_insync import Stock, Option
+        from ib_insync import Stock
 
         # 1. Qualify underlying
         stock = Stock(underlying_symbol, exchange, currency)
@@ -306,41 +382,71 @@ class OptionContractSelector:
                 f"No option chains returned for {underlying_symbol}"
             )
 
-        chain = _pick_chain(chains, prefer_exchange=exchange)
+        chain = _pick_chain(
+            chains,
+            underlying_symbol=underlying_symbol,
+            underlying_price=underlying_price,
+            trading_date=trading_date,
+            prefer_exchange=exchange,
+        )
         if chain is None:
             raise RuntimeError(
-                f"No usable option chain for {underlying_symbol}"
+                f"No usable standard option chain for {underlying_symbol}"
             )
 
         # 3. Apply pure policy
         expiration = select_expiration(trading_date, chain["expirations"])
-        strike = select_strike(right, underlying_price, chain["strikes"])
+        preferred_strike = select_strike(right, underlying_price, chain["strikes"])
 
-        # 4. Construct and qualify option contract
-        option = Option(
-            underlying_symbol,
-            expiration,
-            strike,
-            right,
-            chain["exchange"],
-            chain["multiplier"],
-            currency,
+        # 4. Construct and qualify option contract with fallback
+        from ib_insync import Option
+
+        fallback_attempts = 0
+        strike = preferred_strike
+        option = None
+
+        # Try preferred strike first, then fallback deeper ITM
+        strikes_to_try = [preferred_strike] + _fallback_strikes(
+            right, preferred_strike, underlying_price, chain["strikes"],
         )
-        option.tradingClass = chain["tradingClass"]
 
-        qual_result = self._ib.qualifyContracts(option)
-        if not qual_result:
+        for candidate_strike in strikes_to_try:
+            opt = Option(
+                underlying_symbol,
+                expiration,
+                candidate_strike,
+                right,
+                chain["exchange"],
+                chain["multiplier"],
+                currency,
+            )
+            opt.tradingClass = chain["tradingClass"]
+
+            try:
+                qual_result = self._ib.qualifyContracts(opt)
+                if qual_result and opt.conId:
+                    option = opt
+                    strike = candidate_strike
+                    break
+            except Exception:
+                pass
+
+            if candidate_strike != preferred_strike:
+                fallback_attempts += 1
+
+        if option is None:
             raise RuntimeError(
-                f"Failed to qualify option: {underlying_symbol} "
-                f"{expiration} {strike} {right}"
+                f"Failed to qualify any ITM option: {underlying_symbol} "
+                f"{expiration} {right}, preferred={preferred_strike}, "
+                f"tried {fallback_attempts} fallbacks"
             )
 
-        # 5. Optional market data
+        # 5. Optional market data (snapshot, no generic ticks)
         bid = None
         ask = None
         spread = None
         if fetch_market_data:
-            ticker = self._ib.reqMktData(option, "106", snapshot=True)
+            ticker = self._ib.reqMktData(option, "", snapshot=True)
             self._ib.sleep(2)  # allow snapshot to arrive
             if ticker.bid is not None and ticker.bid > 0:
                 bid = float(ticker.bid)
@@ -365,4 +471,6 @@ class OptionContractSelector:
             bid=bid,
             ask=ask,
             spread=spread,
+            preferred_strike=preferred_strike,
+            fallback_attempts=fallback_attempts,
         )

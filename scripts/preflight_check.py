@@ -347,7 +347,7 @@ else:
     for key, opt in list(qualified_options.items())[:2]:  # test 2 contracts
         sel = selected_options[key]
         try:
-            ticker = ib.reqMktData(opt, "106", snapshot=True)
+            ticker = ib.reqMktData(opt, "", snapshot=True)
             ib.sleep(3)  # wait for snapshot
 
             bid = ticker.bid if ticker.bid and ticker.bid > 0 else None

@@ -11,6 +11,7 @@ from trading_lab.live.option_selector import (
     select_expiration,
     select_strike,
     _pick_chain,
+    _fallback_strikes,
 )
 
 
@@ -312,26 +313,96 @@ class TestPickChain:
         chains = [
             SimpleNamespace(exchange="CBOE", tradingClass="SPY",
                             multiplier="100", expirations=["20260811"],
-                            strikes=[585.0]),
+                            strikes=[580.0, 585.0, 590.0]),
             SimpleNamespace(exchange="SMART", tradingClass="SPY",
                             multiplier="100", expirations=["20260811"],
-                            strikes=[585.0]),
+                            strikes=[580.0, 585.0, 590.0]),
         ]
-        result = _pick_chain(chains, "SMART")
+        result = _pick_chain(chains, "SPY", 585.0, "20260811", "SMART")
         assert result["exchange"] == "SMART"
 
-    def test_falls_back_to_first(self):
+    def test_falls_back_to_valid(self):
         from types import SimpleNamespace
         chains = [
             SimpleNamespace(exchange="CBOE", tradingClass="SPY",
                             multiplier="100", expirations=["20260811"],
-                            strikes=[585.0]),
+                            strikes=[580.0, 585.0, 590.0]),
         ]
-        result = _pick_chain(chains, "SMART")
+        result = _pick_chain(chains, "SPY", 585.0, "20260811", "SMART")
         assert result["exchange"] == "CBOE"
 
     def test_empty_chains(self):
         assert _pick_chain([]) is None
+
+    def test_standard_beats_adjusted(self):
+        from types import SimpleNamespace
+        chains = [
+            SimpleNamespace(exchange="SMART", tradingClass="2QQQ",
+                            multiplier="100", expirations=["20260914"],
+                            strikes=[625.0]),
+            SimpleNamespace(exchange="SMART", tradingClass="QQQ",
+                            multiplier="100", expirations=["20260811", "20260812"],
+                            strikes=[710.0, 715.0, 718.0, 720.0, 725.0]),
+        ]
+        result = _pick_chain(chains, "QQQ", 718.33, "20260811", "SMART")
+        assert result["tradingClass"] == "QQQ"
+        assert len(result["strikes"]) > 1
+
+    def test_adjusted_2spy_rejected(self):
+        from types import SimpleNamespace
+        chains = [
+            SimpleNamespace(exchange="SMART", tradingClass="2SPY",
+                            multiplier="100", expirations=["20260904"],
+                            strikes=[682.0]),
+            SimpleNamespace(exchange="SMART", tradingClass="SPY",
+                            multiplier="100", expirations=["20260811", "20260812", "20260813"],
+                            strikes=[765.0, 770.0, 775.0, 780.0]),
+        ]
+        result = _pick_chain(chains, "SPY", 770.42, "20260811", "SMART")
+        assert result["tradingClass"] == "SPY"
+
+    def test_no_bracket_rejected(self):
+        from types import SimpleNamespace
+        chains = [
+            SimpleNamespace(exchange="SMART", tradingClass="QQQ",
+                            multiplier="100", expirations=["20260811"],
+                            strikes=[500.0, 510.0]),  # all below underlying 718
+        ]
+        result = _pick_chain(chains, "QQQ", 718.33, "20260811", "SMART")
+        assert result is None
+
+    def test_no_future_expiration_rejected(self):
+        from types import SimpleNamespace
+        chains = [
+            SimpleNamespace(exchange="SMART", tradingClass="QQQ",
+                            multiplier="100", expirations=["20260101"],
+                            strikes=[710.0, 720.0]),
+        ]
+        result = _pick_chain(chains, "QQQ", 718.33, "20260811", "SMART")
+        assert result is None
+
+    def test_non_100_multiplier_rejected(self):
+        from types import SimpleNamespace
+        chains = [
+            SimpleNamespace(exchange="SMART", tradingClass="QQQ",
+                            multiplier="10", expirations=["20260811"],
+                            strikes=[710.0, 720.0]),
+        ]
+        result = _pick_chain(chains, "QQQ", 718.33, "20260811", "SMART")
+        assert result is None
+
+    def test_richer_chain_wins_tie(self):
+        from types import SimpleNamespace
+        chains = [
+            SimpleNamespace(exchange="SMART", tradingClass="QQQ",
+                            multiplier="100", expirations=["20260811"],
+                            strikes=[715.0, 720.0]),
+            SimpleNamespace(exchange="SMART", tradingClass="QQQ",
+                            multiplier="100", expirations=["20260811", "20260812", "20260813"],
+                            strikes=[710.0, 715.0, 718.0, 720.0, 725.0]),
+        ]
+        result = _pick_chain(chains, "QQQ", 718.33, "20260811", "SMART")
+        assert len(result["strikes"]) == 5
 
 
 # ── Test: Bid/ask metadata ───────────────────────────────────────────────────
@@ -371,3 +442,105 @@ class TestBidAskMetadata:
         assert result.bid == 2.50
         assert result.ask == 2.70
         assert result.spread == 0.20
+
+
+# ── Test: Strike fallback ────────────────────────────────────────────────────
+
+class TestFallbackStrikes:
+    def test_call_fallback_deeper_itm(self):
+        result = _fallback_strikes("C", 217.0, 217.48, [215.0, 216.0, 217.0, 218.0])
+        assert result == [216.0, 215.0]  # deeper ITM, all < 217.0
+
+    def test_put_fallback_deeper_itm(self):
+        result = _fallback_strikes("P", 218.0, 217.48, [216.0, 217.0, 218.0, 219.0, 220.0])
+        assert result == [219.0, 220.0]  # deeper ITM, all > 218.0
+
+    def test_call_never_crosses_otm(self):
+        result = _fallback_strikes("C", 217.0, 217.48, [218.0, 219.0, 220.0])
+        assert result == []  # all >= 217.0, none deeper ITM
+
+    def test_put_never_crosses_otm(self):
+        result = _fallback_strikes("P", 218.0, 217.48, [215.0, 216.0, 217.0])
+        assert result == []  # all <= 218.0, none deeper ITM
+
+    def test_no_qualifying_itm(self):
+        """No fallback candidates at all."""
+        result = _fallback_strikes("C", 100.0, 100.5, [])
+        assert result == []
+
+
+class TestFallbackFields:
+    def test_preferred_strike_preserved(self):
+        r = OptionSelectionResult(
+            underlying_symbol="QQQ", underlying_price=718.33,
+            right="C", expiration="20260811", strike=715.0,
+            exchange="SMART", trading_class="QQQ", multiplier="100",
+            quantity=1, preferred_strike=718.0, fallback_attempts=1,
+        )
+        assert r.preferred_strike == 718.0
+        assert r.strike == 715.0
+        assert r.fallback_attempts == 1
+
+
+# ── Test: Quote request correction ───────────────────────────────────────────
+
+class TestQuoteRequest:
+    def test_no_106_in_selector(self):
+        import inspect
+        import trading_lab.live.option_selector as mod
+        source = inspect.getsource(mod)
+        assert '"106"' not in source
+        assert "'106'" not in source
+
+    def test_snapshot_used(self):
+        import inspect
+        import trading_lab.live.option_selector as mod
+        source = inspect.getsource(mod)
+        assert 'snapshot=True' in source
+
+    def test_empty_generic_tick(self):
+        import inspect
+        import trading_lab.live.option_selector as mod
+        source = inspect.getsource(mod)
+        assert 'reqMktData(option, ""' in source
+
+    def test_no_106_in_preflight(self):
+        with open("scripts/preflight_check.py") as f:
+            source = f.read()
+        assert '"106"' not in source
+
+
+# ── Test: No order submission ────────────────────────────────────────────────
+
+class TestNoOrderSubmission:
+    def test_no_place_order(self):
+        import inspect
+        import trading_lab.live.option_selector as mod
+        source = inspect.getsource(mod)
+        assert "placeOrder" not in source
+
+
+# ── Test: Bid/ask validation regression ──────────────────────────────────────
+
+class TestBidAskRegression:
+    def test_none_bid_fails(self):
+        from trading_lab.live.option_order_builder import build_option_entry_order
+        r = OptionSelectionResult(
+            underlying_symbol="QQQ", underlying_price=718.33,
+            right="C", expiration="20260811", strike=718.0,
+            exchange="SMART", trading_class="QQQ", multiplier="100",
+            quantity=1, bid=None, ask=2.70,
+        )
+        with pytest.raises(ValueError, match="bid"):
+            build_option_entry_order(r)
+
+    def test_none_ask_fails(self):
+        from trading_lab.live.option_order_builder import build_option_entry_order
+        r = OptionSelectionResult(
+            underlying_symbol="QQQ", underlying_price=718.33,
+            right="C", expiration="20260811", strike=718.0,
+            exchange="SMART", trading_class="QQQ", multiplier="100",
+            quantity=1, bid=2.50, ask=None,
+        )
+        with pytest.raises(ValueError, match="ask"):
+            build_option_entry_order(r)
