@@ -69,7 +69,8 @@ except ImportError as e:
     sys.exit(1)
 
 try:
-    from trading_lab.live.control_api import create_app, verify_paper_account
+    from trading_lab.live.control_api import create_app
+    from trading_lab.live.bot_runner import verify_paper_account
     from trading_lab.live.option_selector import (
         OptionContractSelector, select_expiration, select_strike,
     )
