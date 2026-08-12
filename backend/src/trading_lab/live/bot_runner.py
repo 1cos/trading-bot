@@ -468,13 +468,18 @@ class MaxBotRunner:
                 )
                 rt.bars = bars
                 self._bootstrap_symbol(rt)
-                # Create closure to bind rt
+                # Create closure to bind rt — with error protection
                 def make_callback(runtime):
                     def cb(bars_list, has_new_bar):
-                        self._on_bar_update(runtime, bars_list, has_new_bar)
+                        try:
+                            self._on_bar_update(runtime, bars_list, has_new_bar)
+                        except Exception as e:
+                            log.error(f"[{runtime.symbol}] Callback exception: {e}",
+                                      exc_info=True)
                     return cb
                 bars.updateEvent += make_callback(rt)
-                log.info(f"STREAM ACTIVE: {sym}")
+                log.info(f"STREAM ACTIVE: {sym} ({len(bars)} bars, "
+                         f"updateEvent listeners: {len(bars.updateEvent)})")
             except Exception as e:
                 rt.enabled = False
                 rt.error = str(e)
@@ -498,34 +503,37 @@ class MaxBotRunner:
         log.info(f"Bootstrap {rt.symbol}: {fed} bars")
 
     def _on_bar_update(self, rt: SymbolRuntime, bars, has_new_bar) -> None:
-        if not has_new_bar:
-            return
-        if len(bars) < 2:
-            return
+        try:
+            if not has_new_bar:
+                return
+            if len(bars) < 2:
+                return
 
-        completed_bar = bars[-2]
-        candle = ibkr_bar_to_candle(completed_bar, self._tz)
+            completed_bar = bars[-2]
+            candle = ibkr_bar_to_candle(completed_bar, self._tz)
 
-        if not is_rth_bar(candle["time_ms"], self._tz,
-                          self._session_open, self._session_close):
-            return
-        if candle["time_ms"] in rt.processed_times:
-            return
+            if not is_rth_bar(candle["time_ms"], self._tz,
+                              self._session_open, self._session_close):
+                return
+            if candle["time_ms"] in rt.processed_times:
+                return
 
-        rt.processed_times.add(candle["time_ms"])
-        result = rt.orchestrator.on_bar(candle)
-        time_str = datetime.fromtimestamp(
-            candle["time_ms"] / 1000, tz=self._tz
-        ).strftime("%H:%M")
+            rt.processed_times.add(candle["time_ms"])
+            result = rt.orchestrator.on_bar(candle)
+            time_str = datetime.fromtimestamp(
+                candle["time_ms"] / 1000, tz=self._tz
+            ).strftime("%H:%M")
 
-        if self._execution_mode == ExecutionMode.OBSERVE_ONLY:
-            state = rt.orchestrator.lifecycle
-            log.info(f"[{rt.symbol}] {time_str} C={candle['close']:.2f} → {state}")
-        else:
-            log.info(
-                f"[{rt.symbol}] {time_str} C={candle['close']:.2f} → "
-                f"{result.lifecycle if result else '?'}"
-            )
+            if self._execution_mode == ExecutionMode.OBSERVE_ONLY:
+                state = rt.orchestrator.lifecycle
+                log.info(f"[{rt.symbol}] {time_str} C={candle['close']:.2f} → {state}")
+            else:
+                log.info(
+                    f"[{rt.symbol}] {time_str} C={candle['close']:.2f} → "
+                    f"{result.lifecycle if result else '?'}"
+                )
+        except Exception as e:
+            log.error(f"[{rt.symbol}] Bar callback error: {e}", exc_info=True)
 
     # ── Main loop ────────────────────────────────────────────────────────
 
@@ -536,8 +544,31 @@ class MaxBotRunner:
             f"{self.enabled_count} symbols active"
         )
 
+        loop_count = 0
         while self._running:
             self._ib.sleep(1)
+            loop_count += 1
+
+            # Periodic heartbeat (every 60 iterations ≈ 1 minute)
+            if loop_count % 60 == 0:
+                bar_counts = {}
+                for sym, rt in self._runtimes.items():
+                    if rt.enabled and rt.bars is not None:
+                        bar_counts[sym] = len(rt.bars)
+                log.info(f"Heartbeat: loop={loop_count}, bars={bar_counts}")
+
+            # Finalize premarket levels after market open (once)
+            now_et = datetime.now(self._tz)
+            open_h, open_m = int(self._session_open[:2]), int(self._session_open[3:])
+            now_minutes = now_et.hour * 60 + now_et.minute
+            if now_minutes >= open_h * 60 + open_m:
+                for sym, rt in self._runtimes.items():
+                    if (rt.enabled and rt.context_levels
+                            and not rt.context_levels.premarket_final):
+                        # Replace with finalized version
+                        ctx = rt.context_levels
+                        from dataclasses import replace
+                        rt.context_levels = replace(ctx, premarket_final=True)
 
             all_done = True
             for sym, rt in self._runtimes.items():
