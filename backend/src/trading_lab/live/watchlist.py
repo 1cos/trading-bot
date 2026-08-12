@@ -57,6 +57,7 @@ class SymbolRuntime:
     processed_times: set = field(default_factory=set)
     enabled: bool = True
     error: str | None = None
+    context_levels: object | None = None  # ContextLevels (PDH/PDL)
 
 
 def parse_symbols(symbols_str: str) -> list[str]:

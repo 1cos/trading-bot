@@ -48,6 +48,11 @@ from trading_lab.live.observe_orchestrator import (
 )
 from trading_lab.live.watchlist import SymbolRuntime, parse_symbols
 from trading_lab.live.event_stream import EventFactory, SessionEventLog, EventType
+from trading_lab.live.context_levels import (
+    ContextLevels,
+    fetch_previous_session_bars,
+    compute_live_context_levels,
+)
 
 log = logging.getLogger("maxbot")
 
@@ -195,6 +200,7 @@ class MaxBotRunner:
             self._verify_paper()
             self._setup_all_symbols()
             self._qualify_all()
+            self._compute_context_levels()
             self._subscribe_all()
             self._run_loop()
         except KeyboardInterrupt:
@@ -391,6 +397,35 @@ class MaxBotRunner:
                 log.error(f"DISABLED {sym}: {e}")
                 self._emit(EventType.SYMBOL_DISABLED, symbol=sym,
                            data={"error": str(e)})
+
+    def _compute_context_levels(self) -> None:
+        """Fetch previous RTH session and compute PDH/PDL for each symbol."""
+        from datetime import datetime as dt_cls
+        today = dt_cls.now(self._tz).strftime("%Y-%m-%d")
+
+        for sym, rt in self._runtimes.items():
+            if not rt.enabled or rt.underlying_contract is None:
+                continue
+            try:
+                sessions = fetch_previous_session_bars(
+                    self._ib, rt.underlying_contract, self._tz,
+                )
+                ctx = compute_live_context_levels(sym, today, sessions)
+                rt.context_levels = ctx
+
+                if ctx.status == "OK":
+                    log.info(
+                        f"CONTEXT {sym}: PDH={ctx.pdh:.2f} PDL={ctx.pdl:.2f} "
+                        f"(from {ctx.prev_date})"
+                    )
+                    self._emit(EventType.SYMBOL_ENABLED, symbol=sym,
+                               data={"pdh": ctx.pdh, "pdl": ctx.pdl,
+                                     "prev_date": ctx.prev_date})
+                else:
+                    log.warning(f"CONTEXT {sym}: PDH/PDL unavailable ({ctx.status})")
+            except Exception as e:
+                log.warning(f"CONTEXT {sym}: PDH/PDL error: {e}")
+                rt.context_levels = ContextLevels(symbol=sym, status=f"ERROR: {e}")
 
     def _subscribe_all(self) -> None:
         for sym, rt in self._runtimes.items():
