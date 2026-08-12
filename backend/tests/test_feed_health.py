@@ -49,6 +49,77 @@ class TestStaleDetection:
         assert rt.feed_status == "STALE"
 
 
+# ── Test: INITIALIZING timeout ───────────────────────────────────────────────
+
+class TestInitializingTimeout:
+    def test_no_first_bar_times_out(self):
+        rt = SymbolRuntime(symbol="SPY")
+        rt.enabled = True
+        rt.bars = MagicMock()
+        rt.feed_status = "INITIALIZING"
+        rt.last_bar_time_ms = 0  # never received
+        rt.subscription_start_time = time.monotonic() - 200  # 200s ago
+        rt.last_resubscribe_time = time.monotonic()  # cooldown active → no immediate resub
+
+        runner = _make_runner()
+        runner._runtimes = {"SPY": rt}
+
+        now_et = datetime(2026, 8, 12, 10, 0, 0, tzinfo=ET)
+        runner._check_feed_health(now_et)
+
+        assert rt.feed_status == "STALE"
+
+    def test_within_timeout_stays_initializing(self):
+        rt = SymbolRuntime(symbol="SPY")
+        rt.enabled = True
+        rt.bars = MagicMock()
+        rt.feed_status = "INITIALIZING"
+        rt.last_bar_time_ms = 0
+        rt.subscription_start_time = time.monotonic() - 30  # 30s ago, under threshold
+
+        runner = _make_runner()
+        runner._runtimes = {"SPY": rt}
+
+        now_et = datetime(2026, 8, 12, 10, 0, 0, tzinfo=ET)
+        runner._check_feed_health(now_et)
+
+        assert rt.feed_status == "INITIALIZING"
+
+    def test_first_bar_before_timeout_goes_live(self):
+        rt = SymbolRuntime(symbol="SPY")
+        rt.enabled = True
+        rt.bars = MagicMock()
+        rt.feed_status = "INITIALIZING"
+        rt.last_bar_time_ms = int(datetime(2026, 8, 12, 10, 0, 0, tzinfo=ET).timestamp() * 1000)
+        rt.subscription_start_time = time.monotonic() - 60
+
+        runner = _make_runner()
+        runner._runtimes = {"SPY": rt}
+
+        now_et = datetime(2026, 8, 12, 10, 0, 0, tzinfo=ET)
+        runner._check_feed_health(now_et)
+
+        assert rt.feed_status == "LIVE"
+
+    def test_first_bar_after_resubscribe_goes_live(self):
+        rt = SymbolRuntime(symbol="SPY")
+        rt.enabled = True
+        rt.bars = MagicMock()
+        rt.feed_status = "INITIALIZING"
+        rt.resubscribe_count = 1
+        rt.last_bar_time_ms = int(datetime(2026, 8, 12, 10, 5, 0, tzinfo=ET).timestamp() * 1000)
+        rt.subscription_start_time = time.monotonic() - 30
+
+        runner = _make_runner()
+        runner._runtimes = {"SPY": rt}
+
+        now_et = datetime(2026, 8, 12, 10, 5, 0, tzinfo=ET)
+        runner._check_feed_health(now_et)
+
+        assert rt.feed_status == "LIVE"
+        assert rt.resubscribe_count == 1  # count preserved
+
+
 # ── Test 2: Active feed stays LIVE ───────────────────────────────────────────
 
 class TestLiveFeed:

@@ -65,6 +65,7 @@ class SymbolRuntime:
     feed_status: str = "INITIALIZING"  # INITIALIZING / LIVE / STALE
     last_resubscribe_time: float = 0.0  # monotonic time of last resubscribe
     resubscribe_count: int = 0
+    subscription_start_time: float = 0.0  # monotonic time of subscription creation
 
 
 def parse_symbols(symbols_str: str) -> list[str]:

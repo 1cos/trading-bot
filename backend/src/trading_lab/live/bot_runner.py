@@ -452,6 +452,7 @@ class MaxBotRunner:
                 rt.context_levels = ContextLevels(symbol=sym, status=f"ERROR: {e}")
 
     def _subscribe_all(self) -> None:
+        import time as _time
         for sym, rt in self._runtimes.items():
             if not rt.enabled:
                 continue
@@ -478,6 +479,7 @@ class MaxBotRunner:
                                       exc_info=True)
                     return cb
                 bars.updateEvent += make_callback(rt)
+                rt.subscription_start_time = _time.monotonic()
                 log.info(f"STREAM ACTIVE: {sym} ({len(bars)} bars, "
                          f"updateEvent listeners: {len(bars.updateEvent)})")
             except Exception as e:
@@ -554,17 +556,35 @@ class MaxBotRunner:
         for sym, rt in self._runtimes.items():
             if not rt.enabled or rt.bars is None:
                 continue
+
             if rt.feed_status == "INITIALIZING":
-                # Give new subscriptions time to deliver first bar
+                # First bar received → transition to LIVE
                 if rt.last_bar_time_ms > 0:
                     rt.feed_status = "LIVE"
+                    continue
+
+                # No first bar yet — check if subscription has timed out
+                if rt.subscription_start_time != 0.0:
+                    elapsed = mono_now - rt.subscription_start_time
+                    if elapsed > self.STALE_THRESHOLD_SECS:
+                        rt.feed_status = "STALE"
+                        log.warning(
+                            f"[{sym}] INITIALIZING TIMEOUT — "
+                            f"no bar after {elapsed:.0f}s"
+                        )
+                        self._emit(EventType.ERROR, symbol=sym,
+                                   data={"error": "initializing_timeout",
+                                         "elapsed_secs": round(elapsed)})
+                        # Attempt resubscribe with cooldown
+                        since_last = mono_now - rt.last_resubscribe_time
+                        if since_last >= self.RESUBSCRIBE_COOLDOWN_SECS:
+                            self._resubscribe_symbol(rt, mono_now)
                 continue
 
-            # Check staleness: no new bar for > threshold during RTH
+            # Check staleness for LIVE/STALE feeds
             if rt.last_bar_time_ms > 0:
                 age_secs = (now_ms - rt.last_bar_time_ms) / 1000
             else:
-                # Never received a bar — check how long since subscribe
                 age_secs = self.STALE_THRESHOLD_SECS + 1
 
             if age_secs > self.STALE_THRESHOLD_SECS:
@@ -613,6 +633,8 @@ class MaxBotRunner:
                 keepUpToDate=True,
             )
             rt.bars = bars
+            rt.subscription_start_time = _time.monotonic()
+            rt.feed_status = "INITIALIZING"  # wait for first live bar
 
             # Bootstrap new bars (dedup via processed_times)
             self._bootstrap_symbol(rt)
