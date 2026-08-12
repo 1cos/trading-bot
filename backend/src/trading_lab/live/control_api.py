@@ -246,6 +246,9 @@ class MaxBotController:
                     entry["pml"] = ctx.pml
                 if ctx.pm_bar_count > 0:
                     entry["pm_bar_count"] = ctx.pm_bar_count
+                entry["premarket_final"] = ctx.premarket_final
+                if ctx.premarket_date is not None:
+                    entry["premarket_date"] = ctx.premarket_date
             result.append(entry)
         return result
 

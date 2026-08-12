@@ -402,7 +402,14 @@ class MaxBotRunner:
     def _compute_context_levels(self) -> None:
         """Fetch previous RTH session and premarket, compute PDH/PDL + PMH/PML."""
         from datetime import datetime as dt_cls
-        today = dt_cls.now(self._tz).strftime("%Y-%m-%d")
+        now = dt_cls.now(self._tz)
+        today = now.strftime("%Y-%m-%d")
+
+        # Determine if premarket window is complete
+        # Market open: parse session_open (e.g. "09:30" ET)
+        open_h, open_m = int(self._session_open[:2]), int(self._session_open[3:])
+        now_minutes = now.hour * 60 + now.minute
+        pm_final = now_minutes >= open_h * 60 + open_m
 
         for sym, rt in self._runtimes.items():
             if not rt.enabled or rt.underlying_contract is None:
@@ -419,7 +426,9 @@ class MaxBotRunner:
                 )
 
                 ctx = compute_live_context_levels(
-                    sym, today, sessions, premarket_bars=pm_bars,
+                    sym, today, sessions,
+                    premarket_bars=pm_bars,
+                    premarket_final=pm_final,
                 )
                 rt.context_levels = ctx
 
@@ -427,7 +436,8 @@ class MaxBotRunner:
                 if ctx.pdh is not None:
                     parts.append(f"PDH={ctx.pdh:.2f} PDL={ctx.pdl:.2f} (from {ctx.prev_date})")
                 if ctx.pmh is not None:
-                    parts.append(f"PMH={ctx.pmh:.2f} PML={ctx.pml:.2f} ({ctx.pm_bar_count} bars)")
+                    pm_label = "FINAL" if pm_final else "BUILDING"
+                    parts.append(f"PMH={ctx.pmh:.2f} PML={ctx.pml:.2f} ({ctx.pm_bar_count} bars, {pm_label})")
                 else:
                     parts.append("PMH/PML=unavailable")
 

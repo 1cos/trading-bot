@@ -434,3 +434,139 @@ class TestPremarketNeverStrategy:
         source = inspect.getsource(mod)
         assert "add_bar" not in source
         assert "LiveSessionBuilder" not in source
+
+
+# ── T17E2C2 additional tests: premarket_final, premarket_date, boundaries ────
+
+class TestPremarketFinalFlag:
+    def test_final_when_after_open(self):
+        pm_bars = [_make_pm_bar(8, 0, high=586.0, low=582.0)]
+        ctx = compute_live_context_levels(
+            "QQQ", "2026-08-11", [], premarket_bars=pm_bars, premarket_final=True,
+        )
+        assert ctx.premarket_final is True
+
+    def test_provisional_before_open(self):
+        pm_bars = [_make_pm_bar(8, 0, high=586.0, low=582.0)]
+        ctx = compute_live_context_levels(
+            "QQQ", "2026-08-11", [], premarket_bars=pm_bars, premarket_final=False,
+        )
+        assert ctx.premarket_final is False
+
+    def test_default_not_final(self):
+        ctx = compute_live_context_levels("QQQ", "2026-08-11", [])
+        assert ctx.premarket_final is False
+
+
+class TestPremarketDate:
+    def test_date_set_when_pmh_available(self):
+        pm_bars = [_make_pm_bar(8, 0, high=586.0, low=582.0)]
+        ctx = compute_live_context_levels(
+            "QQQ", "2026-08-11", [], premarket_bars=pm_bars,
+        )
+        assert ctx.premarket_date == "2026-08-11"
+
+    def test_date_none_when_no_pm(self):
+        ctx = compute_live_context_levels("QQQ", "2026-08-11", [])
+        assert ctx.premarket_date is None
+
+
+class TestToDictNewFields:
+    def test_includes_premarket_final(self):
+        pm_bars = [_make_pm_bar(8, 0, high=586.0, low=582.0)]
+        ctx = compute_live_context_levels(
+            "QQQ", "2026-08-11", [], premarket_bars=pm_bars, premarket_final=True,
+        )
+        d = ctx.to_dict()
+        assert d["premarket_final"] is True
+        assert d["premarket_date"] == "2026-08-11"
+
+    def test_building_state(self):
+        pm_bars = [_make_pm_bar(8, 0, high=586.0, low=582.0)]
+        ctx = compute_live_context_levels(
+            "QQQ", "2026-08-11", [], premarket_bars=pm_bars, premarket_final=False,
+        )
+        d = ctx.to_dict()
+        assert d["premarket_final"] is False
+
+
+class TestBoundary0300CT:
+    """03:00 CT = 04:00 ET — first included premarket bar."""
+    def test_0400_et_included(self):
+        bar = _make_pm_bar(4, 0)
+        assert _is_premarket_bar(bar["time_ms"], ET_TZ) is True
+
+    def test_0359_et_excluded(self):
+        """03:59 ET = 02:59 CT — before premarket window."""
+        bar = _make_pm_bar(3, 59)
+        assert _is_premarket_bar(bar["time_ms"], ET_TZ) is False
+
+
+class TestBoundary0829CT:
+    """08:29 CT = 09:29 ET — last included premarket bar."""
+    def test_0929_et_included(self):
+        bar = _make_pm_bar(9, 29)
+        assert _is_premarket_bar(bar["time_ms"], ET_TZ) is True
+
+    def test_0930_et_excluded(self):
+        """08:30 CT = 09:30 ET — market open, NOT premarket."""
+        bar = _make_pm_bar(9, 30)
+        assert _is_premarket_bar(bar["time_ms"], ET_TZ) is False
+
+
+class TestAPIExposesPremarketFinal:
+    def test_api_premarket_final(self):
+        from trading_lab.live.control_api import MaxBotController
+        ctrl = MaxBotController()
+        runner = MagicMock()
+        runner._execution_mode = SimpleNamespace(__eq__=lambda s, o: True)
+
+        rt = SymbolRuntime(symbol="QQQ")
+        rt.enabled = True
+        rt.orchestrator = MagicMock()
+        rt.orchestrator.lifecycle = "WAITING_FOR_SIGNAL"
+        rt.context_levels = ContextLevels(
+            symbol="QQQ", pmh=586.10, pml=582.75,
+            premarket_final=False, premarket_date="2026-08-11",
+            pm_bar_count=5,
+        )
+        runner._runtimes = {"QQQ": rt}
+        ctrl._runner = runner
+        ctrl._state = "RUNNING"
+
+        symbols = ctrl.get_symbols()
+        assert symbols[0]["pmh"] == 586.10
+        assert symbols[0]["pml"] == 582.75
+        assert symbols[0]["premarket_final"] is False
+        assert symbols[0]["premarket_date"] == "2026-08-11"
+
+
+class TestPWAShowsBuilding:
+    def test_building_in_html(self):
+        from trading_lab.live.control_api import create_app
+        app = create_app()
+        client = app.test_client()
+        html = client.get("/").data.decode()
+        assert "BUILDING" in html
+
+
+class TestNewDateReset:
+    def test_different_date_resets(self):
+        """On new date, PMH/PML should only use today's premarket."""
+        pm_bars_today = [_make_pm_bar(8, 0, high=590.0, low=585.0)]
+        ctx = compute_live_context_levels(
+            "QQQ", "2026-08-12", [], premarket_bars=pm_bars_today,
+        )
+        assert ctx.pmh == 590.0
+        assert ctx.premarket_date == "2026-08-12"
+
+
+class TestStartedAfterOpen:
+    def test_final_immediately(self):
+        """If started after open, premarket_final should be True."""
+        pm_bars = [_make_pm_bar(8, 0, high=586.0, low=582.0)]
+        ctx = compute_live_context_levels(
+            "QQQ", "2026-08-11", [], premarket_bars=pm_bars, premarket_final=True,
+        )
+        assert ctx.premarket_final is True
+        assert ctx.pmh == 586.0

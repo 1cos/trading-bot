@@ -67,6 +67,8 @@ class ContextLevels:
     pmh: float | None = None
     pml: float | None = None
     pm_bar_count: int = 0
+    premarket_final: bool = False
+    premarket_date: str | None = None
     status: str = "OK"
 
     def to_dict(self) -> dict:
@@ -83,6 +85,9 @@ class ContextLevels:
             d["pml"] = self.pml
         if self.pm_bar_count > 0:
             d["pm_bar_count"] = self.pm_bar_count
+        if self.premarket_date is not None:
+            d["premarket_date"] = self.premarket_date
+        d["premarket_final"] = self.premarket_final
         return d
 
 
@@ -293,6 +298,7 @@ def compute_live_context_levels(
     current_date: str,
     previous_sessions: list[dict],
     premarket_bars: list[dict] | None = None,
+    premarket_final: bool = False,
 ) -> ContextLevels:
     """Compute PDH/PDL + PMH/PML from session and premarket data.
 
@@ -306,6 +312,8 @@ def compute_live_context_levels(
         Sessions list for PDH/PDL.
     premarket_bars : list[dict] or None
         Today's premarket candles for PMH/PML. None = skip.
+    premarket_final : bool
+        True if premarket window is complete (market open or after).
 
     Returns
     -------
@@ -351,5 +359,7 @@ def compute_live_context_levels(
         pmh=pmh,
         pml=pml,
         pm_bar_count=pm_bar_count,
+        premarket_final=premarket_final,
+        premarket_date=current_date if pmh is not None else None,
         status=status,
     )

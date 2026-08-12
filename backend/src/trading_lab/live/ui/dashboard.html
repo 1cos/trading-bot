@@ -355,7 +355,11 @@ function updateSymbols(symbols) {
     let ctx = '';
     let parts = [];
     if (s.pdh != null && s.pdl != null) parts.push(`PDH ${s.pdh.toFixed(2)} · PDL ${s.pdl.toFixed(2)}`);
-    if (s.pmh != null && s.pml != null) parts.push(`PMH ${s.pmh.toFixed(2)} · PML ${s.pml.toFixed(2)}`);
+    if (s.pmh != null && s.pml != null) {
+      let pmLabel = `PMH ${s.pmh.toFixed(2)} · PML ${s.pml.toFixed(2)}`;
+      if (s.premarket_final === false) pmLabel += ' · BUILDING';
+      parts.push(pmLabel);
+    }
     ctx = parts.join(' | ');
 
     const stateClass = s.lifecycle === 'DONE_FOR_DAY' ? 'color:var(--dim)' :
