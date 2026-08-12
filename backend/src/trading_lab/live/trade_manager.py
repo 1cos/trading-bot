@@ -59,8 +59,9 @@ class DailyTradeManager:
         Maximum trades per day (default 2).
     """
 
-    def __init__(self, max_trades: int = MAX_DAILY_TRADES):
+    def __init__(self, max_trades: int = MAX_DAILY_TRADES, *, unlimited: bool = False):
         self._max_trades = max_trades
+        self._unlimited = unlimited
         self._trading_date: str | None = None
         self._trades_used: int = 0
         self._wins: int = 0
@@ -101,9 +102,11 @@ class DailyTradeManager:
         """Whether a new trade is currently allowed."""
         if self._trading_date is None:
             return False
-        if self._day_finished:
-            return False
         if self._active:
+            return False
+        if self._unlimited:
+            return True
+        if self._day_finished:
             return False
         if self._trades_used >= self._max_trades:
             return False
@@ -139,12 +142,13 @@ class DailyTradeManager:
             raise RuntimeError("No trading date set — call ensure_date() first")
         if self._active:
             raise RuntimeError("Cannot open a trade while another is active")
-        if self._day_finished:
-            raise RuntimeError("Trading is finished for the day")
-        if self._trades_used >= self._max_trades:
-            raise RuntimeError(
-                f"Daily trade limit reached ({self._max_trades})"
-            )
+        if not self._unlimited:
+            if self._day_finished:
+                raise RuntimeError("Trading is finished for the day")
+            if self._trades_used >= self._max_trades:
+                raise RuntimeError(
+                    f"Daily trade limit reached ({self._max_trades})"
+                )
 
         self._trades_used += 1
         self._active = True

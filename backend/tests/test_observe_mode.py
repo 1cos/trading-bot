@@ -337,9 +337,9 @@ class TestObserveWiring:
         ib.managedAccounts.return_value = ["DU123"]
         runner._ib = ib
         runner._verify_paper()
-        runner._setup_orchestrator()
-        assert runner._observe_orchestrator is not None
-        assert runner._orchestrator is None
+        runner._setup_all_symbols()
+        assert runner._runtimes["QQQ"].orchestrator is not None
+        # multi-symbol: no single _orchestrator
 
     def test_paper_setup(self):
         runner = MaxBotRunner("QQQ", "LONG", execution_mode="PAPER_EXECUTE")
@@ -347,9 +347,9 @@ class TestObserveWiring:
         ib.managedAccounts.return_value = ["DU123"]
         runner._ib = ib
         runner._verify_paper()
-        runner._setup_orchestrator()
-        assert runner._orchestrator is not None
-        assert runner._observe_orchestrator is None
+        runner._setup_all_symbols()
+        assert runner._runtimes["QQQ"].orchestrator is not None
+        # multi-symbol: no single _observe_orchestrator
 
 
 # ── Test: ObservationEvent immutable ─────────────────────────────────────────

@@ -1,34 +1,33 @@
-"""MaxBot v0.1 IBKR Paper live runner — single-symbol OPTIONS bot.
+"""MaxBot v0.1 IBKR Paper live runner — multi-symbol OPTIONS bot.
 
-Connects to IBKR Paper TWS/Gateway, subscribes to underlying 1m bars,
-feeds completed bars into MaxBotTradeOrchestrator, and refreshes
-pending broker state.
+Connects to IBKR Paper TWS/Gateway, subscribes to underlying 1m bars
+for each symbol in the watchlist, feeds completed bars into per-symbol
+orchestrators, and refreshes pending broker state.
 
-PAPER ONLY — the runner verifies paper-account status before allowing
-any order-capable lifecycle.
+PAPER ONLY — verifies paper-account status before any order submission.
 
-Usage:
+Usage (multi-symbol):
     python -m trading_lab.live.bot_runner \\
-        --symbol QQQ --direction LONG \\
-        --host 127.0.0.1 --port 7497 --client-id 1
+        --symbols QQQ,SPY,NVDA,AMD \\
+        --direction BOTH \\
+        --execution-mode OBSERVE_ONLY
 
-Does NOT:
-    - support live-money accounts
-    - support multiple symbols concurrently
-    - implement automatic reconnect
-    - implement persistent state recovery
-    - implement overnight position management
+Usage (single symbol, backward compatible):
+    python -m trading_lab.live.bot_runner \\
+        --symbol QQQ --direction LONG
+
+One IB connection shared across all symbols.
+Each symbol has independent strategy/session/lifecycle state.
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
-import sys
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from ib_insync import IB, Stock, util
+from ib_insync import IB, Stock
 
 from trading_lab.live.session_builder_live import LiveSessionBuilder
 from trading_lab.live.signal_detector import LiveSignalDetector
@@ -46,6 +45,7 @@ from trading_lab.live.observe_orchestrator import (
     ObserveOrchestrator,
     ObserveLifecycle,
 )
+from trading_lab.live.watchlist import SymbolRuntime, parse_symbols
 
 log = logging.getLogger("maxbot")
 
@@ -58,8 +58,7 @@ def verify_paper_account(ib: IB) -> str:
     IBKR paper accounts have IDs starting with 'D' (e.g. 'DU1234567').
 
     Returns the paper account ID.
-
-    Raises RuntimeError if the account cannot be verified as paper.
+    Raises RuntimeError if not paper.
     """
     accounts = ib.managedAccounts()
     if not accounts:
@@ -67,11 +66,9 @@ def verify_paper_account(ib: IB) -> str:
             "No managed accounts found — cannot verify paper status. "
             "Ensure TWS/Gateway is running and API access is enabled."
         )
-
     for acct in accounts:
         if acct.startswith("D"):
             return acct
-
     raise RuntimeError(
         f"No paper account found. Managed accounts: {accounts}. "
         f"MaxBot v0.1 is PAPER ONLY — refusing to proceed."
@@ -89,9 +86,7 @@ def ibkr_bar_to_candle(bar, tz: ZoneInfo) -> dict:
         dt_utc = dt.replace(tzinfo=timezone.utc)
     else:
         dt_utc = datetime.fromisoformat(str(dt)).replace(tzinfo=timezone.utc)
-
     time_ms = int(dt_utc.timestamp() * 1000)
-
     return {
         "time_ms": time_ms,
         "open": float(bar.open),
@@ -117,34 +112,28 @@ def is_rth_bar(time_ms: int, tz: ZoneInfo, open_hhmm: str, close_hhmm: str) -> b
 
 
 class MaxBotRunner:
-    """IBKR Paper live runner for MaxBot v0.1.
+    """IBKR Paper live runner for MaxBot v0.1 — multi-symbol.
 
     Parameters
     ----------
-    symbol : str
-        Underlying symbol (e.g. "QQQ").
+    symbols : list[str]
+        List of underlying symbols.
     direction : str
-        "LONG" or "SHORT".
-    host : str
-        IBKR TWS/Gateway host.
-    port : int
-        IBKR TWS/Gateway port.
-    client_id : int
-        IBKR API client ID.
+        "LONG", "SHORT", or "BOTH".
+    host, port, client_id : connection config.
     tick_size : float
-        Underlying tick size (default 0.01 for equities).
-    market_timezone : str
-        IANA timezone (default "America/New_York").
-    session_open : str
-        Session open HH:MM (default "09:30").
-    session_close : str
-        Session close HH:MM (default "16:00").
+        Default tick size for all symbols.
+    market_timezone, session_open, session_close : session config.
+    execution_mode : str
+        "OBSERVE_ONLY" (default) or "PAPER_EXECUTE".
+    trade_limits_enabled : bool
+        If False, DailyTradeManager uses unlimited mode (test phase).
     """
 
     def __init__(
         self,
-        symbol: str,
-        direction: str,
+        symbols: list[str] | str,
+        direction: str = "BOTH",
         host: str = "127.0.0.1",
         port: int = 7497,
         client_id: int = 1,
@@ -153,8 +142,14 @@ class MaxBotRunner:
         session_open: str = "09:30",
         session_close: str = "16:00",
         execution_mode: str = "OBSERVE_ONLY",
+        trade_limits_enabled: bool = False,
     ):
-        self._symbol = symbol
+        # Normalize symbols
+        if isinstance(symbols, str):
+            self._symbols = [symbols.upper()]
+        else:
+            self._symbols = [s.upper() for s in symbols]
+
         self._direction = direction
         self._host = host
         self._port = port
@@ -165,23 +160,23 @@ class MaxBotRunner:
         self._session_open = session_open
         self._session_close = session_close
         self._execution_mode = ExecutionMode(execution_mode)
+        self._trade_limits_enabled = trade_limits_enabled
 
         self._ib: IB | None = None
-        self._orchestrator: MaxBotTradeOrchestrator | None = None
-        self._observe_orchestrator: ObserveOrchestrator | None = None
-        self._bars = None  # BarDataList from reqHistoricalData
-        self._processed_times: set[int] = set()
+        self._runtimes: dict[str, SymbolRuntime] = {}
         self._running = False
         self._paper_account: str | None = None
+
+    # ── Public API ───────────────────────────────────────────────────────
 
     def run(self) -> None:
         """Connect to IBKR Paper and run the trading session."""
         self._connect()
         try:
             self._verify_paper()
-            self._setup_orchestrator()
-            self._qualify_underlying()
-            self._subscribe_bars()
+            self._setup_all_symbols()
+            self._qualify_all()
+            self._subscribe_all()
             self._run_loop()
         except KeyboardInterrupt:
             log.info("Keyboard interrupt — shutting down")
@@ -190,6 +185,46 @@ class MaxBotRunner:
             raise
         finally:
             self._shutdown()
+
+    @property
+    def symbol_statuses(self) -> dict[str, str]:
+        """Aggregate status for all symbols."""
+        result = {}
+        for sym, rt in self._runtimes.items():
+            if not rt.enabled:
+                result[sym] = f"DISABLED: {rt.error}"
+            elif rt.orchestrator is None:
+                result[sym] = "NOT_INITIALIZED"
+            elif self._execution_mode == ExecutionMode.OBSERVE_ONLY:
+                result[sym] = str(rt.orchestrator.lifecycle)
+            else:
+                result[sym] = str(rt.orchestrator.lifecycle)
+        return result
+
+    @property
+    def enabled_count(self) -> int:
+        return sum(1 for rt in self._runtimes.values() if rt.enabled)
+
+    @property
+    def disabled_symbols(self) -> list[str]:
+        return [sym for sym, rt in self._runtimes.items() if not rt.enabled]
+
+    @property
+    def total_open_positions(self) -> int:
+        count = 0
+        for rt in self._runtimes.values():
+            if not rt.enabled or rt.orchestrator is None:
+                continue
+            if self._execution_mode == ExecutionMode.OBSERVE_ONLY:
+                if rt.orchestrator.lifecycle == ObserveLifecycle.TRACKING_EXIT:
+                    count += 1
+            else:
+                if rt.orchestrator.lifecycle in (
+                    LifecycleState.POSITION_OPEN,
+                    LifecycleState.EXIT_SUBMITTED,
+                ):
+                    count += 1
+        return count
 
     # ── Connection ───────────────────────────────────────────────────────
 
@@ -204,254 +239,233 @@ class MaxBotRunner:
         log.info(f"PAPER VERIFIED — account: {self._paper_account}")
 
     def _shutdown(self) -> None:
-        if self._orchestrator:
-            state = self._orchestrator.lifecycle
-            if state in (LifecycleState.POSITION_OPEN,
-                         LifecycleState.ENTRY_SUBMITTED,
-                         LifecycleState.EXIT_SUBMITTED,
-                         LifecycleState.EXIT_FAILED):
-                log.warning(
-                    f"UNRESOLVED STATE at shutdown: {state}. "
-                    f"Active position/order may remain open."
-                )
-        if self._observe_orchestrator:
-            log.info(
-                f"[OBSERVE] Session summary — "
-                f"trades={self._observe_orchestrator.trades_used} "
-                f"W={self._observe_orchestrator.wins} "
-                f"L={self._observe_orchestrator.losses} "
-                f"events={len(self._observe_orchestrator.events)}"
-            )
+        unresolved = []
+        for sym, rt in self._runtimes.items():
+            if not rt.enabled or rt.orchestrator is None:
+                continue
+            if self._execution_mode == ExecutionMode.OBSERVE_ONLY:
+                state = rt.orchestrator.lifecycle
+            else:
+                state = rt.orchestrator.lifecycle
+                if state in (LifecycleState.POSITION_OPEN,
+                             LifecycleState.ENTRY_SUBMITTED,
+                             LifecycleState.EXIT_SUBMITTED,
+                             LifecycleState.EXIT_FAILED):
+                    unresolved.append((sym, state))
+        if unresolved:
+            for sym, state in unresolved:
+                log.warning(f"UNRESOLVED {sym}: {state}")
         if self._ib and self._ib.isConnected():
             self._ib.disconnect()
             log.info("Disconnected from IBKR")
 
-    # ── Orchestrator setup ───────────────────────────────────────────────
+    # ── Per-symbol setup ─────────────────────────────────────────────────
 
-    def _setup_orchestrator(self) -> None:
-        sb = LiveSessionBuilder(self._symbol, self._tz_str)
+    def _setup_all_symbols(self) -> None:
+        for sym in self._symbols:
+            rt = SymbolRuntime(symbol=sym)
+            self._setup_symbol(rt)
+            self._runtimes[sym] = rt
+        enabled = self.enabled_count
+        log.info(f"Symbols configured: {len(self._symbols)}, enabled: {enabled}")
 
-        # Build signal detector(s)
+    def _setup_symbol(self, rt: SymbolRuntime) -> None:
+        sym = rt.symbol
+        sb = LiveSessionBuilder(sym, self._tz_str)
+        rt.session_builder = sb
+
+        # Signal detector
         if self._direction == "BOTH":
             long_sd = LiveSignalDetector(
-                symbol=self._symbol, direction="LONG", tick_size=self._tick_size,
+                symbol=sym, direction="LONG", tick_size=self._tick_size,
                 market_timezone=self._tz_str, session_open=self._session_open,
             )
             short_sd = LiveSignalDetector(
-                symbol=self._symbol, direction="SHORT", tick_size=self._tick_size,
+                symbol=sym, direction="SHORT", tick_size=self._tick_size,
                 market_timezone=self._tz_str, session_open=self._session_open,
             )
             sd = DualSignalDetector(long_sd, short_sd)
         else:
             sd = LiveSignalDetector(
-                symbol=self._symbol, direction=self._direction,
+                symbol=sym, direction=self._direction,
                 tick_size=self._tick_size, market_timezone=self._tz_str,
                 session_open=self._session_open,
             )
+        rt.signal_detector = sd
 
         os_ = OptionContractSelector(self._ib)
 
         if self._execution_mode == ExecutionMode.OBSERVE_ONLY:
-            self._observe_orchestrator = ObserveOrchestrator(
-                underlying_symbol=self._symbol,
-                direction=self._direction,
-                tick_size=self._tick_size,
-                session_builder=sb,
-                signal_detector=sd,
-                option_selector=os_,
+            rt.orchestrator = ObserveOrchestrator(
+                underlying_symbol=sym, direction=self._direction,
+                tick_size=self._tick_size, session_builder=sb,
+                signal_detector=sd, option_selector=os_,
             )
-            log.info(f"Orchestrator ready [OBSERVE_ONLY]: {self._symbol} {self._direction}")
         else:
-            tm = DailyTradeManager()
+            unlimited = not self._trade_limits_enabled
+            tm = DailyTradeManager(unlimited=unlimited)
+            rt.trade_manager = tm
             ee = IBKROptionExecutor(self._ib)
             xe = OptionExitExecutor(self._ib)
-            self._orchestrator = MaxBotTradeOrchestrator(
-                underlying_symbol=self._symbol,
-                direction=self._direction,
-                tick_size=self._tick_size,
-                session_builder=sb,
-                signal_detector=sd,
-                trade_manager=tm,
-                option_selector=os_,
-                entry_executor=ee,
+            rt.orchestrator = MaxBotTradeOrchestrator(
+                underlying_symbol=sym, direction=self._direction,
+                tick_size=self._tick_size, session_builder=sb,
+                signal_detector=sd, trade_manager=tm,
+                option_selector=os_, entry_executor=ee,
                 exit_executor=xe,
             )
-            log.info(f"Orchestrator ready [PAPER_EXECUTE]: {self._symbol} {self._direction}")
 
-    # ── Underlying ───────────────────────────────────────────────────────
+    def _qualify_all(self) -> None:
+        for sym, rt in self._runtimes.items():
+            try:
+                stock = Stock(sym, "SMART", "USD")
+                qualified = self._ib.qualifyContracts(stock)
+                if not qualified:
+                    raise RuntimeError(f"qualifyContracts returned empty for {sym}")
+                rt.underlying_contract = stock
+                log.info(f"QUALIFIED: {sym} (conId={stock.conId})")
+            except Exception as e:
+                rt.enabled = False
+                rt.error = str(e)
+                log.error(f"DISABLED {sym}: {e}")
 
-    def _qualify_underlying(self) -> None:
-        self._stock = Stock(self._symbol, "SMART", "USD")
-        qualified = self._ib.qualifyContracts(self._stock)
-        if not qualified:
-            raise RuntimeError(f"Failed to qualify underlying: {self._symbol}")
-        log.info(f"UNDERLYING QUALIFIED: {self._symbol} (conId={self._stock.conId})")
+    def _subscribe_all(self) -> None:
+        for sym, rt in self._runtimes.items():
+            if not rt.enabled:
+                continue
+            try:
+                bars = self._ib.reqHistoricalData(
+                    rt.underlying_contract,
+                    endDateTime="",
+                    durationStr="1 D",
+                    barSizeSetting="1 min",
+                    whatToShow="TRADES",
+                    useRTH=True,
+                    formatDate=2,
+                    keepUpToDate=True,
+                )
+                rt.bars = bars
+                self._bootstrap_symbol(rt)
+                # Create closure to bind rt
+                def make_callback(runtime):
+                    def cb(bars_list, has_new_bar):
+                        self._on_bar_update(runtime, bars_list, has_new_bar)
+                    return cb
+                bars.updateEvent += make_callback(rt)
+                log.info(f"STREAM ACTIVE: {sym}")
+            except Exception as e:
+                rt.enabled = False
+                rt.error = str(e)
+                log.error(f"SUBSCRIPTION FAILED {sym}: {e}")
 
-    # ── Bar subscription ─────────────────────────────────────────────────
-
-    def _subscribe_bars(self) -> None:
-        self._bars = self._ib.reqHistoricalData(
-            self._stock,
-            endDateTime="",
-            durationStr="1 D",
-            barSizeSetting="1 min",
-            whatToShow="TRADES",
-            useRTH=True,
-            formatDate=2,
-            keepUpToDate=True,
-        )
-        # Bootstrap: feed existing completed bars
-        self._bootstrap_bars()
-        # Subscribe to updates
-        self._bars.updateEvent += self._on_bar_update
-        log.info("STREAM ACTIVE — receiving 1m bars")
-
-    def _bootstrap_bars(self) -> None:
-        """Feed already-elapsed bars from the current session."""
-        if not self._bars:
+    def _bootstrap_symbol(self, rt: SymbolRuntime) -> None:
+        if not rt.bars:
             return
-        # All bars except the last one (which may be forming)
-        completed = list(self._bars)[:-1] if len(self._bars) > 1 else []
+        completed = list(rt.bars)[:-1] if len(rt.bars) > 1 else []
         fed = 0
         for bar in completed:
             candle = ibkr_bar_to_candle(bar, self._tz)
             if not is_rth_bar(candle["time_ms"], self._tz,
                               self._session_open, self._session_close):
                 continue
-            if candle["time_ms"] in self._processed_times:
+            if candle["time_ms"] in rt.processed_times:
                 continue
-            self._processed_times.add(candle["time_ms"])
-            self._orchestrator.on_bar(candle)
+            rt.processed_times.add(candle["time_ms"])
+            rt.orchestrator.on_bar(candle)
             fed += 1
-        log.info(f"Bootstrap: fed {fed} historical bars")
+        log.info(f"Bootstrap {rt.symbol}: {fed} bars")
 
-    def _on_bar_update(self, bars, has_new_bar) -> None:
-        """Callback from ib_insync when bar data updates.
-
-        has_new_bar is True when a new completed bar has been added
-        to the BarDataList. When False, the last bar is still forming.
-        """
+    def _on_bar_update(self, rt: SymbolRuntime, bars, has_new_bar) -> None:
         if not has_new_bar:
-            return  # partial/forming bar — ignore
-
+            return
         if len(bars) < 2:
             return
 
-        # The newly completed bar is the second-to-last
-        # (last bar is the currently forming one)
         completed_bar = bars[-2]
         candle = ibkr_bar_to_candle(completed_bar, self._tz)
 
         if not is_rth_bar(candle["time_ms"], self._tz,
                           self._session_open, self._session_close):
             return
+        if candle["time_ms"] in rt.processed_times:
+            return
 
-        if candle["time_ms"] in self._processed_times:
-            return  # duplicate prevention
-
-        self._processed_times.add(candle["time_ms"])
+        rt.processed_times.add(candle["time_ms"])
+        result = rt.orchestrator.on_bar(candle)
+        time_str = datetime.fromtimestamp(
+            candle["time_ms"] / 1000, tz=self._tz
+        ).strftime("%H:%M")
 
         if self._execution_mode == ExecutionMode.OBSERVE_ONLY:
-            event = self._observe_orchestrator.on_bar(candle)
-            state = self._observe_orchestrator.lifecycle
-            log.info(
-                f"Bar {datetime.fromtimestamp(candle['time_ms']/1000, tz=self._tz).strftime('%H:%M')} "
-                f"O={candle['open']:.2f} H={candle['high']:.2f} "
-                f"L={candle['low']:.2f} C={candle['close']:.2f} "
-                f"→ {state}"
-            )
-            if state == ObserveLifecycle.DONE_FOR_DAY:
-                log.info(
-                    f"[OBSERVE] DONE FOR DAY — trades={self._observe_orchestrator.trades_used} "
-                    f"W={self._observe_orchestrator.wins} L={self._observe_orchestrator.losses}"
-                )
+            state = rt.orchestrator.lifecycle
+            log.info(f"[{rt.symbol}] {time_str} C={candle['close']:.2f} → {state}")
         else:
-            status = self._orchestrator.on_bar(candle)
             log.info(
-                f"Bar {datetime.fromtimestamp(candle['time_ms']/1000, tz=self._tz).strftime('%H:%M')} "
-                f"O={candle['open']:.2f} H={candle['high']:.2f} "
-                f"L={candle['low']:.2f} C={candle['close']:.2f} "
-                f"→ {status.lifecycle}"
+                f"[{rt.symbol}] {time_str} C={candle['close']:.2f} → "
+                f"{result.lifecycle if result else '?'}"
             )
-            if status.lifecycle == LifecycleState.ENTRY_SUBMITTED:
-                log.info(f"ENTRY SUBMITTED — orderId={status.entry_order_id}")
-            elif status.lifecycle == LifecycleState.DONE_FOR_DAY:
-                log.info(
-                    f"DONE FOR DAY — trades={status.trades_used} "
-                    f"W={status.wins} L={status.losses}"
-                )
 
     # ── Main loop ────────────────────────────────────────────────────────
 
     def _run_loop(self) -> None:
-        """Run the ib_insync event loop, refreshing pending state."""
         self._running = True
-        log.info(f"Entering main loop [{self._execution_mode}]")
+        log.info(
+            f"Main loop [{self._execution_mode}] — "
+            f"{self.enabled_count} symbols active"
+        )
 
         while self._running:
-            self._ib.sleep(1)  # process events for 1 second
+            self._ib.sleep(1)
 
-            # Observe mode: simpler loop
-            if self._execution_mode == ExecutionMode.OBSERVE_ONLY:
-                if self._observe_orchestrator is None:
-                    break
-                if self._observe_orchestrator.lifecycle == ObserveLifecycle.DONE_FOR_DAY:
-                    log.info("[OBSERVE] Day complete — stopping")
-                    self._running = False
-                    break
-                now_et = datetime.now(self._tz)
-                close_h, close_m = int(self._session_close[:2]), int(self._session_close[3:])
-                if now_et.hour * 60 + now_et.minute >= close_h * 60 + close_m:
-                    log.info("[OBSERVE] Session close reached — stopping")
-                    self._running = False
-                    break
-                continue
+            all_done = True
+            for sym, rt in self._runtimes.items():
+                if not rt.enabled or rt.orchestrator is None:
+                    continue
 
-            # Paper execute mode
-            if self._orchestrator is None:
-                break
+                if self._execution_mode == ExecutionMode.OBSERVE_ONLY:
+                    if rt.orchestrator.lifecycle != ObserveLifecycle.DONE_FOR_DAY:
+                        all_done = False
+                else:
+                    state = rt.orchestrator.lifecycle
+                    if state == LifecycleState.ENTRY_SUBMITTED:
+                        all_done = False
+                        prev = state
+                        status = rt.orchestrator.refresh_entry_status()
+                        if status.lifecycle != prev:
+                            log.info(f"[{sym}] Entry: {prev} → {status.lifecycle}")
+                    elif state == LifecycleState.EXIT_SUBMITTED:
+                        all_done = False
+                        prev = state
+                        status = rt.orchestrator.refresh_exit_status()
+                        if status.lifecycle != prev:
+                            log.info(f"[{sym}] Exit: {prev} → {status.lifecycle}")
+                    elif state != LifecycleState.DONE_FOR_DAY:
+                        all_done = False
 
-            state = self._orchestrator.lifecycle
-
-            if state == LifecycleState.ENTRY_SUBMITTED:
-                prev = state
-                status = self._orchestrator.refresh_entry_status()
-                if status.lifecycle != prev:
-                    log.info(f"Entry status: {prev} → {status.lifecycle}")
-                    if status.lifecycle == LifecycleState.POSITION_OPEN:
-                        log.info("ENTRY FILLED — position open")
-
-            elif state == LifecycleState.EXIT_SUBMITTED:
-                prev = state
-                status = self._orchestrator.refresh_exit_status()
-                if status.lifecycle != prev:
-                    log.info(f"Exit status: {prev} → {status.lifecycle}")
-                    if status.lifecycle == LifecycleState.DONE_FOR_DAY:
-                        log.info(
-                            f"EXIT FILLED — {status.exit_reason} → "
-                            f"{'WIN' if status.wins > 0 else 'LOSS'}"
-                        )
-                    elif status.lifecycle == LifecycleState.WAITING_FOR_SIGNAL:
-                        log.info("EXIT FILLED — LOSS, waiting for next signal")
-
-            if state == LifecycleState.DONE_FOR_DAY:
-                log.info("Day complete — stopping")
+            if all_done and self.enabled_count > 0:
+                log.info("All symbols done for day — stopping")
                 self._running = False
                 break
 
             now_et = datetime.now(self._tz)
             close_h, close_m = int(self._session_close[:2]), int(self._session_close[3:])
             if now_et.hour * 60 + now_et.minute >= close_h * 60 + close_m:
-                if state in (LifecycleState.WAITING_FOR_SIGNAL,
-                             LifecycleState.DONE_FOR_DAY):
+                has_active = any(
+                    rt.enabled and rt.orchestrator and
+                    (rt.orchestrator.lifecycle if self._execution_mode == ExecutionMode.OBSERVE_ONLY
+                     else rt.orchestrator.lifecycle) in (
+                        LifecycleState.POSITION_OPEN,
+                        LifecycleState.ENTRY_SUBMITTED,
+                        LifecycleState.EXIT_SUBMITTED,
+                    )
+                    for rt in self._runtimes.values()
+                )
+                if not has_active:
                     log.info("Session close reached — stopping")
                     self._running = False
                     break
                 else:
-                    log.warning(
-                        f"Session close reached but state is {state} — "
-                        f"waiting for resolution"
-                    )
+                    log.warning("Session close reached but active positions remain")
 
 
 # ── CLI entry point ──────────────────────────────────────────────────────────
@@ -460,11 +474,12 @@ def main():
     parser = argparse.ArgumentParser(
         description="MaxBot v0.1 IBKR Paper OPTIONS runner"
     )
-    parser.add_argument("--symbol", required=True, help="Underlying symbol (e.g. QQQ)")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--symbol", help="Single underlying symbol (e.g. QQQ)")
+    group.add_argument("--symbols", help="Comma-separated symbols (e.g. QQQ,SPY,NVDA)")
     parser.add_argument("--direction", default="BOTH", choices=["LONG", "SHORT", "BOTH"])
     parser.add_argument("--execution-mode", default="OBSERVE_ONLY",
-                        choices=["OBSERVE_ONLY", "PAPER_EXECUTE"],
-                        help="OBSERVE_ONLY (default) or PAPER_EXECUTE")
+                        choices=["OBSERVE_ONLY", "PAPER_EXECUTE"])
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=7497)
     parser.add_argument("--client-id", type=int, default=1)
@@ -472,6 +487,8 @@ def main():
     parser.add_argument("--timezone", default="America/New_York")
     parser.add_argument("--session-open", default="09:30")
     parser.add_argument("--session-close", default="16:00")
+    parser.add_argument("--trade-limits", action="store_true", default=False,
+                        help="Enable daily trade limits (disabled by default for test phase)")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -480,8 +497,13 @@ def main():
         datefmt="%H:%M:%S",
     )
 
+    if args.symbol:
+        symbols = [args.symbol]
+    else:
+        symbols = parse_symbols(args.symbols)
+
     runner = MaxBotRunner(
-        symbol=args.symbol,
+        symbols=symbols,
         direction=args.direction,
         host=args.host,
         port=args.port,
@@ -491,6 +513,7 @@ def main():
         session_open=args.session_open,
         session_close=args.session_close,
         execution_mode=args.execution_mode,
+        trade_limits_enabled=args.trade_limits,
     )
     runner.run()
 

@@ -78,7 +78,7 @@ class TestBothValidation:
         ib.managedAccounts.return_value = ["DU123"]
         runner._ib = ib
         runner._verify_paper()
-        runner._setup_orchestrator()  # should not raise
+        runner._setup_all_symbols()  # should not raise
 
 
 # ── Test 3: BOTH can resolve a LONG signal ───────────────────────────────────
@@ -189,8 +189,8 @@ class TestObserveBoth:
         ib.managedAccounts.return_value = ["DU123"]
         runner._ib = ib
         runner._verify_paper()
-        runner._setup_orchestrator()
-        assert runner._observe_orchestrator is not None
+        runner._setup_all_symbols()
+        assert runner._runtimes["QQQ"].orchestrator is not None
 
 
 # ── Test 9: PAPER_EXECUTE supports BOTH ──────────────────────────────────────
@@ -202,8 +202,8 @@ class TestPaperBoth:
         ib.managedAccounts.return_value = ["DU123"]
         runner._ib = ib
         runner._verify_paper()
-        runner._setup_orchestrator()
-        assert runner._orchestrator is not None
+        runner._setup_all_symbols()
+        assert runner._runtimes["QQQ"].orchestrator is not None
 
 
 # ── Test 10: Existing LONG-only behavior ─────────────────────────────────────
@@ -215,8 +215,8 @@ class TestLongOnly:
         ib.managedAccounts.return_value = ["DU123"]
         runner._ib = ib
         runner._verify_paper()
-        runner._setup_orchestrator()
-        assert runner._orchestrator is not None
+        runner._setup_all_symbols()
+        assert runner._runtimes["QQQ"].orchestrator is not None
 
 
 # ── Test 11: Existing SHORT-only behavior ────────────────────────────────────
@@ -228,8 +228,8 @@ class TestShortOnly:
         ib.managedAccounts.return_value = ["DU123"]
         runner._ib = ib
         runner._verify_paper()
-        runner._setup_orchestrator()
-        assert runner._orchestrator is not None
+        runner._setup_all_symbols()
+        assert runner._runtimes["QQQ"].orchestrator is not None
 
 
 # ── Test 12: No strategy logic duplicated ────────────────────────────────────
