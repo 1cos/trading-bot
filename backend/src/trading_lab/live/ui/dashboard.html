@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="manifest" href="/manifest.json">
+<title>MaxBot</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0a0a0f;--surface:#14141f;--card:#1a1a2a;--border:#2a2a3a;
+  --text:#e8e8f0;--dim:#7a7a8f;--accent:#4f8cff;
+  --green:#22c55e;--red:#ef4444;--amber:#f59e0b;--cyan:#06b6d4;
+  --safe-top:env(safe-area-inset-top,0px);
+  --safe-bottom:env(safe-area-inset-bottom,0px);
+}
+html,body{background:var(--bg);color:var(--text);font-family:-apple-system,system-ui,sans-serif;font-size:15px;line-height:1.5;overflow-x:hidden;-webkit-text-size-adjust:100%}
+body{padding-top:var(--safe-top);padding-bottom:var(--safe-bottom)}
+
+/* Header */
+.header{position:sticky;top:0;z-index:10;background:var(--surface);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;justify-content:space-between}
+.header h1{font-size:18px;font-weight:700;letter-spacing:1px}
+.header .mode-badge{font-size:11px;font-weight:600;padding:3px 8px;border-radius:4px;text-transform:uppercase}
+.mode-paper{background:#22c55e22;color:var(--green)}
+.mode-observe{background:#06b6d422;color:var(--cyan)}
+.mode-stopped{background:#7a7a8f22;color:var(--dim)}
+
+/* State chip */
+.state-chip{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:3px;text-transform:uppercase}
+.state-running{background:#22c55e22;color:var(--green)}
+.state-stopped{background:#7a7a8f22;color:var(--dim)}
+.state-starting,.state-stopping{background:#f59e0b22;color:var(--amber)}
+.state-error{background:#ef444422;color:var(--red)}
+
+/* Sections */
+.section{padding:12px 16px}
+.section-title{font-size:12px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
+
+/* Cards */
+.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px}
+
+/* Symbol cards */
+.sym-card{display:flex;justify-content:space-between;align-items:center}
+.sym-name{font-weight:700;font-size:15px}
+.sym-state{font-size:12px;font-weight:500}
+.sym-detail{font-size:12px;color:var(--dim);margin-top:4px}
+.sym-levels{font-size:11px;color:var(--dim);margin-top:2px;font-variant-numeric:tabular-nums}
+
+/* Active trade card */
+.active-card{border-left:3px solid var(--accent)}
+.active-card .sym-name{color:var(--accent)}
+
+/* Timeline */
+.timeline{max-height:50vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.event{padding:6px 0;border-bottom:1px solid var(--border);font-size:13px}
+.event:last-child{border-bottom:none}
+.event-time{color:var(--dim);font-size:11px;font-variant-numeric:tabular-nums;margin-right:6px}
+.event-sym{font-weight:600;margin-right:4px}
+.event-high{font-weight:600}
+.event-win{color:var(--green)}
+.event-loss{color:var(--red)}
+.event-signal{color:var(--accent)}
+.event-trigger{color:var(--amber)}
+
+/* Controls */
+.controls{padding:12px 16px}
+.btn{display:block;width:100%;padding:14px;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer;text-align:center;margin-bottom:8px}
+.btn-start{background:var(--green);color:#000}
+.btn-stop{background:var(--red);color:#fff}
+.btn-secondary{background:var(--card);color:var(--text);border:1px solid var(--border)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* Config form */
+.config{padding:0 16px}
+.field{margin-bottom:10px}
+.field label{display:block;font-size:12px;color:var(--dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
+.field select,.field input{width:100%;padding:10px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;font-size:14px}
+
+/* Summary bar */
+.summary{display:flex;gap:12px;flex-wrap:wrap;padding:8px 16px}
+.stat{text-align:center;flex:1;min-width:60px}
+.stat-value{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.stat-label{font-size:10px;color:var(--dim);text-transform:uppercase}
+
+/* Connection lost */
+.conn-lost{background:var(--red);color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:600}
+
+/* Confirm modal */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;display:flex;align-items:center;justify-content:center;padding:24px}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;max-width:320px;width:100%}
+.modal h3{font-size:16px;margin-bottom:12px}
+.modal p{font-size:14px;color:var(--dim);margin-bottom:16px}
+.modal .btn{margin-bottom:6px}
+
+/* Settings */
+.settings-row{display:flex;align-items:center;justify-content:space-between;padding:8px 16px}
+.settings-row label{font-size:12px;color:var(--dim)}
+.settings-row input{width:180px;padding:6px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px}
+
+.hidden{display:none !important}
+</style>
+</head>
+<body>
+
+<div id="conn-lost" class="conn-lost hidden">CONNECTION LOST — retrying…</div>
+
+<div class="header">
+  <h1>MAXBOT</h1>
+  <span id="mode-badge" class="mode-badge mode-stopped">STOPPED</span>
+</div>
+
+<!-- Bot state + summary -->
+<div class="section">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+    <span id="state-chip" class="state-chip state-stopped">STOPPED</span>
+    <span id="conn-info" style="font-size:11px;color:var(--dim)"></span>
+  </div>
+</div>
+
+<div id="summary-bar" class="summary hidden">
+  <div class="stat"><div id="stat-symbols" class="stat-value">0</div><div class="stat-label">Symbols</div></div>
+  <div class="stat"><div id="stat-trades" class="stat-value">0</div><div class="stat-label">Trades</div></div>
+  <div class="stat"><div id="stat-wins" class="stat-value">0</div><div class="stat-label">Wins</div></div>
+  <div class="stat"><div id="stat-losses" class="stat-value">0</div><div class="stat-label">Losses</div></div>
+  <div class="stat"><div id="stat-open" class="stat-value">0</div><div class="stat-label">Open</div></div>
+</div>
+
+<!-- Test mode label -->
+<div id="test-label" class="hidden" style="text-align:center;padding:4px;font-size:11px;color:var(--amber);background:#f59e0b11">TEST MODE — TRADE LIMITS OFF</div>
+
+<!-- Active trades -->
+<div id="active-section" class="section hidden">
+  <div class="section-title">Active Trades</div>
+  <div id="active-trades"></div>
+</div>
+
+<!-- Config (when stopped) -->
+<div id="config-section">
+  <div class="config">
+    <div class="field">
+      <label>Execution Mode</label>
+      <select id="cfg-mode"><option value="PAPER_EXECUTE">PAPER EXECUTE</option><option value="OBSERVE_ONLY">OBSERVE ONLY</option></select>
+    </div>
+    <div class="field">
+      <label>Direction</label>
+      <select id="cfg-dir"><option value="BOTH" selected>BOTH</option><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select>
+    </div>
+    <div class="field">
+      <label>Watchlist (comma separated)</label>
+      <input id="cfg-symbols" type="text" value="QQQ,SPY,NVDA,AMD,GOOGL,TSLA,AMZN,META,AAPL">
+    </div>
+  </div>
+  <div class="controls">
+    <button id="btn-start" class="btn btn-start" onclick="confirmStart()">START MAXBOT</button>
+  </div>
+</div>
+
+<!-- Stop button (when running) -->
+<div id="stop-section" class="controls hidden">
+  <button id="btn-stop" class="btn btn-stop" onclick="doStop()">STOP MAXBOT</button>
+</div>
+
+<!-- Symbols -->
+<div id="symbols-section" class="section hidden">
+  <div class="section-title">Watchlist</div>
+  <div id="symbol-cards"></div>
+</div>
+
+<!-- Event timeline -->
+<div id="timeline-section" class="section hidden">
+  <div class="section-title">Live Events</div>
+  <div id="timeline" class="timeline"></div>
+</div>
+
+<!-- Export -->
+<div id="export-section" class="section hidden">
+  <div class="section-title">Session</div>
+  <div style="display:flex;gap:8px">
+    <button class="btn btn-secondary" style="flex:1" onclick="exportJSON()">Export JSON</button>
+    <button class="btn btn-secondary" style="flex:1" onclick="exportMD()">Export Report</button>
+  </div>
+</div>
+
+<!-- Settings -->
+<div class="settings-row">
+  <label>API Token</label>
+  <input id="cfg-token" type="password" placeholder="optional" oninput="saveToken()">
+</div>
+
+<!-- Confirm modal -->
+<div id="confirm-modal" class="modal-bg hidden">
+  <div class="modal">
+    <h3>Start MaxBot?</h3>
+    <p id="confirm-text"></p>
+    <button class="btn btn-start" onclick="doStart()">Confirm Start</button>
+    <button class="btn btn-secondary" onclick="hideModal()">Cancel</button>
+  </div>
+</div>
+
+<script>
+const API = '';
+let lastSeq = 0;
+let botState = 'STOPPED';
+let pollTimer = null;
+let connOk = true;
+
+// Token
+function getToken() { return localStorage.getItem('maxbot_token') || ''; }
+function saveToken() { localStorage.setItem('maxbot_token', document.getElementById('cfg-token').value); }
+document.getElementById('cfg-token').value = getToken();
+
+function authHeaders() {
+  const t = getToken();
+  const h = {'Content-Type':'application/json'};
+  if (t) h['Authorization'] = 'Bearer ' + t;
+  return h;
+}
+
+// Start flow
+function confirmStart() {
+  const mode = document.getElementById('cfg-mode').value;
+  const dir = document.getElementById('cfg-dir').value;
+  const syms = document.getElementById('cfg-symbols').value;
+  const modeLabel = mode === 'PAPER_EXECUTE' ? 'PAPER' : 'OBSERVE ONLY';
+  document.getElementById('confirm-text').innerHTML =
+    `<b>${modeLabel}</b><br>${syms.split(',').length} symbols<br>Direction: ${dir}<br>${mode === 'PAPER_EXECUTE' ? 'Orders: PAPER only' : 'No orders will be placed'}`;
+  document.getElementById('confirm-modal').classList.remove('hidden');
+}
+function hideModal() { document.getElementById('confirm-modal').classList.add('hidden'); }
+
+async function doStart() {
+  hideModal();
+  const symbols = document.getElementById('cfg-symbols').value.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+  const body = {
+    symbols,
+    direction: document.getElementById('cfg-dir').value,
+    execution_mode: document.getElementById('cfg-mode').value,
+    trade_limits_enabled: false,
+  };
+  try {
+    const r = await fetch(API + '/api/bot/start', {method:'POST', headers:authHeaders(), body:JSON.stringify(body)});
+    const d = await r.json();
+    if (!r.ok) alert(d.error || 'Start failed');
+  } catch(e) { alert('Start error: ' + e.message); }
+}
+
+async function doStop() {
+  try {
+    const r = await fetch(API + '/api/bot/stop', {method:'POST', headers:authHeaders()});
+    const d = await r.json();
+    if (!r.ok) alert(d.error || 'Stop failed');
+  } catch(e) { alert('Stop error: ' + e.message); }
+}
+
+// Polling
+async function pollStatus() {
+  try {
+    const r = await fetch(API + '/api/bot/status');
+    if (!r.ok) throw new Error('status ' + r.status);
+    const d = await r.json();
+    connOk = true;
+    document.getElementById('conn-lost').classList.add('hidden');
+    updateStatus(d);
+  } catch(e) {
+    connOk = false;
+    document.getElementById('conn-lost').classList.remove('hidden');
+  }
+}
+
+async function pollSymbols() {
+  if (!connOk || botState === 'STOPPED') return;
+  try {
+    const r = await fetch(API + '/api/bot/symbols');
+    if (r.ok) updateSymbols(await r.json());
+  } catch(e) {}
+}
+
+async function pollEvents() {
+  if (!connOk || botState === 'STOPPED') return;
+  try {
+    const r = await fetch(API + '/api/events?since=' + lastSeq);
+    if (r.ok) {
+      const events = await r.json();
+      appendEvents(events);
+    }
+  } catch(e) {}
+}
+
+async function pollSession() {
+  if (!connOk || botState === 'STOPPED') return;
+  try {
+    const r = await fetch(API + '/api/session');
+    if (r.ok) updateSession(await r.json());
+  } catch(e) {}
+}
+
+// Render
+function updateStatus(d) {
+  const prev = botState;
+  botState = d.state || 'STOPPED';
+  const chip = document.getElementById('state-chip');
+  chip.textContent = botState;
+  chip.className = 'state-chip state-' + botState.toLowerCase();
+
+  const badge = document.getElementById('mode-badge');
+  const mode = d.execution_mode;
+  if (botState === 'RUNNING' || botState === 'STARTING') {
+    badge.textContent = mode === 'PAPER_EXECUTE' ? 'PAPER' : 'OBSERVE';
+    badge.className = 'mode-badge ' + (mode === 'PAPER_EXECUTE' ? 'mode-paper' : 'mode-observe');
+  } else {
+    badge.textContent = botState;
+    badge.className = 'mode-badge mode-stopped';
+  }
+
+  const running = botState === 'RUNNING' || botState === 'STARTING';
+  document.getElementById('config-section').classList.toggle('hidden', running);
+  document.getElementById('stop-section').classList.toggle('hidden', !running);
+  document.getElementById('symbols-section').classList.toggle('hidden', !running);
+  document.getElementById('timeline-section').classList.toggle('hidden', !running);
+  document.getElementById('export-section').classList.toggle('hidden', !running);
+  document.getElementById('summary-bar').classList.toggle('hidden', !running);
+  document.getElementById('test-label').classList.toggle('hidden', !running || d.trade_limits_enabled);
+
+  const connInfo = [];
+  if (d.ibkr_connected) connInfo.push('IBKR');
+  if (d.paper_verified) connInfo.push('Paper ✓');
+  document.getElementById('conn-info').textContent = connInfo.join(' · ');
+
+  if (d.enabled_symbols !== undefined) document.getElementById('stat-symbols').textContent = d.enabled_symbols;
+  if (d.total_open_positions !== undefined) document.getElementById('stat-open').textContent = d.total_open_positions;
+}
+
+function updateSymbols(symbols) {
+  const container = document.getElementById('symbol-cards');
+  const activeContainer = document.getElementById('active-trades');
+  let html = '';
+  let activeHtml = '';
+  let hasActive = false;
+
+  for (const s of symbols) {
+    const isActive = s.lifecycle === 'POSITION_OPEN' || s.lifecycle === 'EXIT_SUBMITTED' || s.lifecycle === 'ENTRY_SUBMITTED';
+    const cls = isActive ? 'card active-card' : 'card';
+    let detail = '';
+    if (s.direction) detail += s.direction;
+    if (s.option_right) detail += ' / ' + (s.option_right === 'C' ? 'CALL' : 'PUT');
+    if (s.option_expiration) detail += ' ' + s.option_expiration;
+    if (s.option_strike) detail += ' ' + s.option_strike;
+
+    let levels = '';
+    if (s.underlying_entry) levels = `E ${s.underlying_entry.toFixed(2)} · S ${s.underlying_stop.toFixed(2)} · T ${s.underlying_target.toFixed(2)}`;
+
+    const stateClass = s.lifecycle === 'DONE_FOR_DAY' ? 'color:var(--dim)' :
+                       isActive ? 'color:var(--accent)' : '';
+
+    html += `<div class="${cls}"><div class="sym-card"><span class="sym-name">${s.symbol}</span><span class="sym-state" style="${stateClass}">${s.enabled ? (s.lifecycle || '—').replace(/_/g,' ') : 'DISABLED'}</span></div>`;
+    if (detail) html += `<div class="sym-detail">${detail}</div>`;
+    if (levels) html += `<div class="sym-levels">${levels}</div>`;
+    if (!s.enabled && s.error) html += `<div class="sym-detail" style="color:var(--red)">${s.error}</div>`;
+    html += '</div>';
+
+    if (isActive) {
+      hasActive = true;
+      activeHtml += `<div class="card active-card"><div class="sym-card"><span class="sym-name">${s.symbol}</span><span class="sym-state" style="color:var(--accent)">${s.lifecycle.replace(/_/g,' ')}</span></div>`;
+      if (detail) activeHtml += `<div class="sym-detail">${detail}</div>`;
+      if (levels) activeHtml += `<div class="sym-levels">${levels}</div>`;
+      activeHtml += '</div>';
+    }
+  }
+  container.innerHTML = html;
+  activeContainer.innerHTML = activeHtml;
+  document.getElementById('active-section').classList.toggle('hidden', !hasActive);
+}
+
+function appendEvents(events) {
+  if (!events.length) return;
+  const container = document.getElementById('timeline');
+  for (const e of events) {
+    if (e.seq > lastSeq) lastSeq = e.seq;
+    const div = document.createElement('div');
+    div.className = 'event';
+    const ts = e.timestamp_utc ? e.timestamp_utc.split('T')[1]?.substring(0,8) || '' : '';
+    const sym = e.symbol ? `<span class="event-sym">${e.symbol}</span>` : '';
+    let cls = '';
+    let text = e.event_type.replace(/_/g,' ');
+    const d = e.data || {};
+
+    if (e.event_type === 'SIGNAL' || e.event_type === 'OBSERVE_ENTRY') cls = 'event-signal';
+    if (e.event_type === 'TRADE_WIN' || e.event_type === 'OBSERVE_TARGET') cls = 'event-win';
+    if (e.event_type === 'TRADE_LOSS' || e.event_type === 'OBSERVE_STOP') cls = 'event-loss';
+    if (e.event_type.includes('TRIGGERED')) cls = 'event-trigger';
+
+    // Enrich display
+    if (e.event_type === 'SIGNAL' && e.direction) text += ' ' + e.direction;
+    if (e.event_type === 'OPTION_SELECTED' && d.strike) text = `${d.right === 'C' ? 'CALL' : 'PUT'} ${d.strike} selected — Bid ${d.bid} / Ask ${d.ask}`;
+    if (e.event_type === 'ENTRY_ORDER_BUILT' && d.limit_price) text = `BUY 1 LMT @ ${d.limit_price}`;
+    if (e.event_type === 'ENTRY_SUBMITTED') text = 'ENTRY SUBMITTED';
+    if (e.event_type === 'ENTRY_FILLED' && d.fill_price) text = `FILLED @ ${d.fill_price}`;
+    if (e.event_type === 'EXIT_FILLED' && d.fill_price) text = `EXIT FILLED @ ${d.fill_price}`;
+    if (e.event_type === 'TRADE_COMPLETED') {
+      text = `${d.result} — PnL $${d.gross_pnl !== undefined ? d.gross_pnl.toFixed(0) : '?'}`;
+      cls = d.result === 'WIN' ? 'event-win' : 'event-loss';
+    }
+
+    div.innerHTML = `<span class="event-time">${ts}</span>${sym}<span class="event-high ${cls}">${text}</span>`;
+    container.insertBefore(div, container.firstChild);
+  }
+}
+
+function updateSession(d) {
+  document.getElementById('stat-trades').textContent = d.trade_completed_count || 0;
+  document.getElementById('stat-wins').textContent = d.wins || 0;
+  document.getElementById('stat-losses').textContent = d.losses || 0;
+  if (d.total_open_positions !== undefined) document.getElementById('stat-open').textContent = d.total_open_positions;
+}
+
+// Export
+function exportJSON() { window.open(API + '/api/session/export.json', '_blank'); }
+function exportMD() { window.open(API + '/api/session/export.md', '_blank'); }
+
+// Service worker
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+
+// Start polling
+setInterval(pollStatus, 2000);
+setInterval(pollSymbols, 2000);
+setInterval(pollEvents, 1000);
+setInterval(pollSession, 3000);
+pollStatus();
+</script>
+</body>
+</html>

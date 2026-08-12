@@ -1,0 +1,10 @@
+{
+  "name": "MaxBot",
+  "short_name": "MaxBot",
+  "description": "MaxBot v0.1 Paper Trading Dashboard",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#0a0a0f",
+  "icons": []
+}

@@ -305,22 +305,40 @@ def create_app(controller: MaxBotController | None = None) -> Flask:
     controller : MaxBotController or None
         If None, a default controller is created.
     """
+    from pathlib import Path
+    from flask import send_from_directory
+
     app = Flask(__name__)
     CORS(app)
 
     ctrl = controller or MaxBotController()
     api_token = os.environ.get("MAXBOT_API_TOKEN", "")
+    ui_dir = str(Path(__file__).parent / "ui")
 
     def _check_token():
         """Check control token for state-changing endpoints."""
         if not api_token:
-            return None  # no token configured, allow (localhost-only recommended)
+            return None
         token = request.headers.get("Authorization", "").replace("Bearer ", "")
         if not token:
             token = request.args.get("token", "")
         if token != api_token:
             return jsonify({"error": "Invalid or missing API token"}), 401
         return None
+
+    # ── PWA serving ──────────────────────────────────────────────────────
+
+    @app.route("/")
+    def index():
+        return send_from_directory(ui_dir, "dashboard.html")
+
+    @app.route("/manifest.json")
+    def manifest():
+        return send_from_directory(ui_dir, "manifest.json")
+
+    @app.route("/sw.js")
+    def service_worker():
+        return send_from_directory(ui_dir, "sw.js")
 
     # ── Status ───────────────────────────────────────────────────────────
 
