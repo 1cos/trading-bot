@@ -102,13 +102,16 @@ class MaxBotController:
     ) -> None:
         """Start the bot in a background thread.
 
+        All IBKR/ib_insync objects are constructed in the worker thread
+        to avoid asyncio event-loop errors in Flask request threads.
+
         Raises RuntimeError if already running.
         """
         with self._lock:
             if self._state in (BotState.RUNNING, BotState.STARTING):
                 raise RuntimeError("Bot is already running")
 
-            # Validate
+            # Validate (no ib_insync imports here)
             if execution_mode not in ("OBSERVE_ONLY", "PAPER_EXECUTE"):
                 raise ValueError(
                     f"Invalid execution_mode: {execution_mode!r}. "
@@ -128,22 +131,25 @@ class MaxBotController:
                 "trade_limits_enabled": trade_limits_enabled,
             }
 
-        # Import here to avoid circular dependency at module level
-        from trading_lab.live.bot_runner import MaxBotRunner
-
-        runner = MaxBotRunner(
-            symbols=symbols,
-            direction=direction,
-            host=self._ibkr_host,
-            port=self._ibkr_port,
-            client_id=self._ibkr_client_id,
-            execution_mode=execution_mode,
-            trade_limits_enabled=trade_limits_enabled,
-        )
-        self._runner = runner
-
+        # Worker thread owns the event loop and all IBKR objects
         def _run_thread():
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             try:
+                # Import and construct runner INSIDE worker thread
+                from trading_lab.live.bot_runner import MaxBotRunner
+
+                runner = MaxBotRunner(
+                    symbols=symbols,
+                    direction=direction,
+                    host=self._ibkr_host,
+                    port=self._ibkr_port,
+                    client_id=self._ibkr_client_id,
+                    execution_mode=execution_mode,
+                    trade_limits_enabled=trade_limits_enabled,
+                )
+                self._runner = runner
                 self._state = BotState.RUNNING
                 runner.run()
             except Exception as e:
@@ -153,6 +159,11 @@ class MaxBotController:
             finally:
                 if self._state not in (BotState.ERROR,):
                     self._state = BotState.STOPPED
+                self._runner = None
+                try:
+                    loop.close()
+                except Exception:
+                    pass
 
         self._thread = threading.Thread(target=_run_thread, daemon=True)
         self._thread.start()
@@ -175,12 +186,18 @@ class MaxBotController:
             "error": self._error,
         }
 
-        if runner and self._config:
+        # Always include config if available
+        if self._config:
             result["execution_mode"] = self._config.get("execution_mode")
             result["direction"] = self._config.get("direction")
             result["watchlist"] = self._config.get("symbols", [])
             result["trade_limits_enabled"] = self._config.get("trade_limits_enabled", False)
+        else:
+            result["execution_mode"] = None
+            result["watchlist"] = []
 
+        # Runner-specific live data
+        if runner:
             try:
                 result["enabled_symbols"] = runner.enabled_count
                 result["disabled_symbols"] = runner.disabled_symbols
@@ -191,9 +208,6 @@ class MaxBotController:
                 result["paper_verified"] = runner._paper_account is not None
             except Exception:
                 pass
-        else:
-            result["execution_mode"] = None
-            result["watchlist"] = []
 
         return result
 

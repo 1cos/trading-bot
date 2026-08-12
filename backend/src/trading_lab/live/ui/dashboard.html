@@ -118,6 +118,7 @@ body{padding-top:var(--safe-top);padding-bottom:var(--safe-bottom)}
     <span id="state-chip" class="state-chip state-stopped">STOPPED</span>
     <span id="conn-info" style="font-size:11px;color:var(--dim)"></span>
   </div>
+  <div id="error-msg" class="hidden" style="padding:8px 12px;margin-top:4px;background:#ef444422;border:1px solid var(--red);border-radius:6px;color:var(--red);font-size:13px"></div>
 </div>
 
 <div id="summary-bar" class="summary hidden">
@@ -243,7 +244,11 @@ async function doStart() {
   try {
     const r = await fetch(API + '/api/bot/start', {method:'POST', headers:authHeaders(), body:JSON.stringify(body)});
     const d = await r.json();
-    if (!r.ok) alert(d.error || 'Start failed');
+    if (!r.ok) {
+      alert(d.error || 'Start failed');
+    }
+    // Always refresh status after start attempt
+    setTimeout(pollStatus, 500);
   } catch(e) { alert('Start error: ' + e.message); }
 }
 
@@ -316,13 +321,23 @@ function updateStatus(d) {
   }
 
   const running = botState === 'RUNNING' || botState === 'STARTING';
+  const stopped = botState === 'STOPPED' || botState === 'ERROR';
   document.getElementById('config-section').classList.toggle('hidden', running);
   document.getElementById('stop-section').classList.toggle('hidden', !running);
-  document.getElementById('symbols-section').classList.toggle('hidden', !running);
-  document.getElementById('timeline-section').classList.toggle('hidden', !running);
-  document.getElementById('export-section').classList.toggle('hidden', !running);
-  document.getElementById('summary-bar').classList.toggle('hidden', !running);
-  document.getElementById('test-label').classList.toggle('hidden', !running || d.trade_limits_enabled);
+  document.getElementById('symbols-section').classList.toggle('hidden', stopped);
+  document.getElementById('timeline-section').classList.toggle('hidden', stopped);
+  document.getElementById('export-section').classList.toggle('hidden', stopped);
+  document.getElementById('summary-bar').classList.toggle('hidden', stopped);
+  document.getElementById('test-label').classList.toggle('hidden', stopped || d.trade_limits_enabled);
+
+  // Show error message
+  const errEl = document.getElementById('error-msg');
+  if (d.error && botState === 'ERROR') {
+    errEl.textContent = d.error;
+    errEl.classList.remove('hidden');
+  } else {
+    errEl.classList.add('hidden');
+  }
 
   const connInfo = [];
   if (d.ibkr_connected) connInfo.push('IBKR');
