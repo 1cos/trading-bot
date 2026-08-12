@@ -412,3 +412,83 @@ def create_app(controller: MaxBotController | None = None) -> Flask:
             return jsonify({"error": str(e)}), 400
 
     return app
+
+
+# ── Server entry point ──────────────────────────────────────────────────────
+
+def get_lan_ip() -> str:
+    """Best-effort LAN IPv4 discovery."""
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "?"
+
+
+def run_server(
+    bind_host: str | None = None,
+    api_port: int | None = None,
+    ib_host: str | None = None,
+    ib_port: int | None = None,
+    ib_client_id: int | None = None,
+):
+    """Start the MaxBot control API / PWA server.
+
+    Configuration via environment or arguments:
+        MAXBOT_BIND_HOST  (default 0.0.0.0)
+        MAXBOT_API_PORT   (default 8765)
+        MAXBOT_IB_HOST    (default 127.0.0.1)
+        MAXBOT_IB_PORT    (default 7497)
+        MAXBOT_IB_CLIENT_ID (default 1)
+        MAXBOT_API_TOKEN  (optional)
+
+    Trading does NOT start automatically.
+    The PWA Start button is the explicit trading start action.
+    """
+    host = bind_host or os.environ.get("MAXBOT_BIND_HOST", "0.0.0.0")
+    port = api_port or int(os.environ.get("MAXBOT_API_PORT", "8765"))
+    ibh = ib_host or os.environ.get("MAXBOT_IB_HOST", "127.0.0.1")
+    ibp = ib_port or int(os.environ.get("MAXBOT_IB_PORT", "7497"))
+    ibc = ib_client_id or int(os.environ.get("MAXBOT_IB_CLIENT_ID", "1"))
+    token = os.environ.get("MAXBOT_API_TOKEN", "")
+
+    lan_ip = get_lan_ip()
+
+    print()
+    print("MAXBOT CONTROL SERVER")
+    print("=" * 40)
+    print(f"Dashboard:  http://{lan_ip}:{port}")
+    print(f"IBKR target: {ibh}:{ibp} (clientId={ibc})")
+    print(f"Mode:       PAPER_EXECUTE / OBSERVE_ONLY")
+    if token:
+        print(f"API token:  configured (protected)")
+    else:
+        if host != "127.0.0.1":
+            print(f"⚠ WARNING: No MAXBOT_API_TOKEN set and binding to {host}")
+            print(f"  Set MAXBOT_API_TOKEN for control protection")
+    print()
+    print("Waiting for iPhone START command...")
+    print()
+
+    ctrl = MaxBotController(
+        default_host=ibh,
+        default_port=ibp,
+        default_client_id=ibc,
+    )
+    app = create_app(ctrl)
+    app.run(host=host, port=port, debug=False, use_reloader=False)
+
+
+if __name__ == "__main__":
+    import logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    run_server()
+
