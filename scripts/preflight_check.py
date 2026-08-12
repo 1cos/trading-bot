@@ -256,11 +256,13 @@ for sym in OPTION_TEST_SYMBOLS:
 
     try:
         exp = select_expiration(today_str, expirations)
+        is_0dte = (exp == today_str)
     except ValueError as e:
         warn(f"{sym} expiration: {e}")
         continue
 
-    print(f"\n   {sym} — underlying={und_price:.2f}, expiration={exp}")
+    dte_label = "0DTE" if is_0dte else f"+{int(exp) - int(today_str)}d"
+    print(f"\n   {sym} — underlying={und_price:.2f}, expiration={exp} ({dte_label})")
 
     for right, label in [("C", "CALL"), ("P", "PUT")]:
         try:
@@ -286,61 +288,89 @@ print()
 print("9. OPTION QUALIFICATION")
 
 qualified_options = {}
-# Qualify a subset
-test_keys = list(selected_options.keys())[:4]  # max 4 contracts
+qual_failures = 0
+test_keys = list(selected_options.keys())[:6]  # test up to 6 contracts
 for key in test_keys:
     sel = selected_options[key]
-    try:
-        opt = Option(
-            sel["symbol"], sel["expiration"], sel["strike"],
-            sel["right"], sel["exchange"], sel["multiplier"], "USD",
-        )
-        opt.tradingClass = sel["trading_class"]
-        result = ib.qualifyContracts(opt)
-        if result and opt.conId:
-            qualified_options[key] = opt
-            local_sym = getattr(opt, "localSymbol", "?")
-            print(f"   ✅ {sel['symbol']} {sel['right']} {sel['strike']} "
-                  f"exp={sel['expiration']} conId={opt.conId} local={local_sym}")
-        else:
-            print(f"   ❌ {sel['symbol']} {sel['right']} {sel['strike']} — qualification empty")
-            warn(f"Option qualification empty: {sel}")
-    except Exception as e:
-        print(f"   ❌ {sel['symbol']} {sel['right']} {sel['strike']} — {e}")
-        warn(f"Option qualification error: {e}")
+    qualified = False
+
+    # Try with chain exchange first, then SMART fallback
+    exchanges_to_try = [sel["exchange"]]
+    if sel["exchange"] != "SMART":
+        exchanges_to_try.append("SMART")
+
+    for exch in exchanges_to_try:
+        try:
+            opt = Option(
+                sel["symbol"], sel["expiration"], sel["strike"],
+                sel["right"], exch, sel["multiplier"], "USD",
+            )
+            opt.tradingClass = sel["trading_class"]
+            result = ib.qualifyContracts(opt)
+            if result and opt.conId:
+                qualified_options[key] = opt
+                local_sym = getattr(opt, "localSymbol", "?")
+                print(f"   ✅ {sel['symbol']} {sel['right']} {sel['strike']} "
+                      f"exp={sel['expiration']} conId={opt.conId} "
+                      f"exchange={exch} local={local_sym}")
+                qualified = True
+                break
+        except Exception as e:
+            # Try next exchange
+            continue
+
+    if not qualified:
+        qual_failures += 1
+        print(f"   ⚠️  {sel['symbol']} {sel['right']} {sel['strike']} "
+              f"exp={sel['expiration']} — not found (may be normal outside market hours)")
 
 if qualified_options:
-    ok(f"{len(qualified_options)} options qualified")
+    ok(f"{len(qualified_options)}/{len(test_keys)} options qualified")
+elif qual_failures > 0:
+    now_et = datetime.now(ET)
+    if now_et.weekday() >= 5 or now_et.hour < 9 or now_et.hour >= 16:
+        warn(f"Option qualification failed outside market hours — "
+             f"this is expected and NOT a blocker for live sessions")
+    else:
+        warn("No options qualified during market hours — check IBKR market data subscriptions")
 else:
-    warn("No options could be qualified (may be outside market hours)")
+    warn("No options could be qualified")
 
 # ── 10. Bid/Ask Market Data ──────────────────────────────────────────────────
 print()
 print("10. OPTION BID/ASK MARKET DATA")
 
-for key, opt in list(qualified_options.items())[:2]:  # test 2 contracts
-    sel = selected_options[key]
-    try:
-        ticker = ib.reqMktData(opt, "106", snapshot=True)
-        ib.sleep(3)  # wait for snapshot
+if not qualified_options:
+    info("No qualified options to test — skipping market data check")
+    info("This is normal outside market hours")
+else:
+    for key, opt in list(qualified_options.items())[:2]:  # test 2 contracts
+        sel = selected_options[key]
+        try:
+            ticker = ib.reqMktData(opt, "106", snapshot=True)
+            ib.sleep(3)  # wait for snapshot
 
-        bid = ticker.bid if ticker.bid and ticker.bid > 0 else None
-        ask = ticker.ask if ticker.ask and ticker.ask > 0 else None
-        spread = round(ask - bid, 4) if bid and ask else None
-        spread_pct = round((ask - bid) / ask * 100, 2) if bid and ask and ask > 0 else None
+            bid = ticker.bid if ticker.bid and ticker.bid > 0 else None
+            ask = ticker.ask if ticker.ask and ticker.ask > 0 else None
+            spread = round(ask - bid, 4) if bid and ask else None
+            spread_pct = round((ask - bid) / ask * 100, 2) if bid and ask and ask > 0 else None
 
-        status = "LIVE" if bid and ask else "DELAYED/UNAVAILABLE"
-        print(f"   {sel['symbol']} {sel['right']} {sel['strike']}: "
-              f"bid={bid} ask={ask} spread={spread} "
-              f"spread%={spread_pct} [{status}]")
+            status = "LIVE" if bid and ask else "DELAYED/UNAVAILABLE"
+            print(f"   {sel['symbol']} {sel['right']} {sel['strike']}: "
+                  f"bid={bid} ask={ask} spread={spread} "
+                  f"spread%={spread_pct} [{status}]")
 
-        if bid is None and ask is None:
-            warn(f"{sel['symbol']} {sel['right']}: bid/ask both unavailable")
+            if bid is None and ask is None:
+                now_et = datetime.now(ET)
+                if now_et.weekday() >= 5 or now_et.hour < 9 or now_et.hour >= 16:
+                    info(f"{sel['symbol']} {sel['right']}: no bid/ask (market closed — normal)")
+                else:
+                    warn(f"{sel['symbol']} {sel['right']}: bid/ask both unavailable during market hours")
 
-        ib.cancelMktData(opt)
-    except Exception as e:
-        print(f"   {sel['symbol']} {sel['right']} {sel['strike']}: ERROR {e}")
-        warn(f"Market data error: {e}")
+            ib.cancelMktData(opt)
+        except Exception as e:
+            print(f"   {sel['symbol']} {sel['right']} {sel['strike']}: ERROR {e}")
+            warn(f"Market data error: {e}")
 
 # ── 11. IBKR Warnings ───────────────────────────────────────────────────────
 print()
@@ -405,6 +435,13 @@ if blockers:
     for b in blockers:
         print(f"    ❌ {b}")
 else:
-    print("  RESULT: READY FOR PAPER_EXECUTE")
+    now_et = datetime.now(ET)
+    is_market_hours = now_et.weekday() < 5 and 9 <= now_et.hour < 16
+    if is_market_hours:
+        print("  RESULT: READY FOR PAPER_EXECUTE")
+    else:
+        print("  RESULT: READY (tested outside market hours)")
+        print("  Option qualification/market data will fully verify")
+        print("  during the first live session.")
 print("=" * 60)
 print()
