@@ -79,7 +79,8 @@ class TestNoLive:
         r = client.get("/")
         html = r.data.decode()
         assert 'value="LIVE"' not in html
-        assert ">LIVE<" not in html
+        # Ensure no LIVE execution mode option (feed_status LIVE is fine)
+        assert '>LIVE</option>' not in html
 
 
 # ── Test 7: START sends correct payload ──────────────────────────────────────

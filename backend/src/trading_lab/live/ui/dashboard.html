@@ -380,7 +380,13 @@ function updateSymbols(symbols) {
     const stateClass = s.lifecycle === 'DONE_FOR_DAY' ? 'color:var(--dim)' :
                        isActive ? 'color:var(--accent)' : '';
 
-    html += `<div class="${cls}"><div class="sym-card"><span class="sym-name">${s.symbol}</span><span class="sym-state" style="${stateClass}">${s.enabled ? (s.lifecycle || '—').replace(/_/g,' ') : 'DISABLED'}</span></div>`;
+    // Feed health indicator
+    let feedLabel = '';
+    if (s.feed_status === 'STALE') feedLabel = '<span style="color:var(--red);font-size:11px;margin-left:6px">STALE</span>';
+    else if (s.feed_status === 'LIVE') feedLabel = '<span style="color:var(--green);font-size:11px;margin-left:6px">LIVE</span>';
+    else if (s.feed_status === 'INITIALIZING') feedLabel = '<span style="color:var(--dim);font-size:11px;margin-left:6px">INIT</span>';
+
+    html += `<div class="${cls}"><div class="sym-card"><span class="sym-name">${s.symbol}${feedLabel}</span><span class="sym-state" style="${stateClass}">${s.enabled ? (s.lifecycle || '—').replace(/_/g,' ') : 'DISABLED'}</span></div>`;
     if (detail) html += `<div class="sym-detail">${detail}</div>`;
     if (levels) html += `<div class="sym-levels">${levels}</div>`;
     if (ctx) html += `<div class="sym-levels">${ctx}</div>`;

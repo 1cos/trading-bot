@@ -263,6 +263,11 @@ class MaxBotController:
                 entry["premarket_final"] = ctx.premarket_final
                 if ctx.premarket_date is not None:
                     entry["premarket_date"] = ctx.premarket_date
+            # Feed health
+            entry["feed_status"] = rt.feed_status
+            entry["processed_bar_count"] = rt.processed_bar_count
+            if rt.resubscribe_count > 0:
+                entry["resubscribe_count"] = rt.resubscribe_count
             result.append(entry)
         return result
 

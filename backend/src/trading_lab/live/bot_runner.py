@@ -512,6 +512,10 @@ class MaxBotRunner:
             completed_bar = bars[-2]
             candle = ibkr_bar_to_candle(completed_bar, self._tz)
 
+            # Track feed health — any new bar proves feed is alive
+            rt.last_bar_time_ms = candle["time_ms"]
+            rt.feed_status = "LIVE"
+
             if not is_rth_bar(candle["time_ms"], self._tz,
                               self._session_open, self._session_close):
                 return
@@ -519,6 +523,7 @@ class MaxBotRunner:
                 return
 
             rt.processed_times.add(candle["time_ms"])
+            rt.processed_bar_count += 1
             result = rt.orchestrator.on_bar(candle)
             time_str = datetime.fromtimestamp(
                 candle["time_ms"] / 1000, tz=self._tz
@@ -534,6 +539,100 @@ class MaxBotRunner:
                 )
         except Exception as e:
             log.error(f"[{rt.symbol}] Bar callback error: {e}", exc_info=True)
+
+    # ── Feed health ──────────────────────────────────────────────────────
+
+    STALE_THRESHOLD_SECS = 180  # 3 minutes without a completed bar = stale
+    RESUBSCRIBE_COOLDOWN_SECS = 300  # 5 minutes between resubscribe attempts
+
+    def _check_feed_health(self, now_et) -> None:
+        """Check for stale feeds and attempt resubscription."""
+        import time as _time
+        now_ms = int(now_et.timestamp() * 1000)
+        mono_now = _time.monotonic()
+
+        for sym, rt in self._runtimes.items():
+            if not rt.enabled or rt.bars is None:
+                continue
+            if rt.feed_status == "INITIALIZING":
+                # Give new subscriptions time to deliver first bar
+                if rt.last_bar_time_ms > 0:
+                    rt.feed_status = "LIVE"
+                continue
+
+            # Check staleness: no new bar for > threshold during RTH
+            if rt.last_bar_time_ms > 0:
+                age_secs = (now_ms - rt.last_bar_time_ms) / 1000
+            else:
+                # Never received a bar — check how long since subscribe
+                age_secs = self.STALE_THRESHOLD_SECS + 1
+
+            if age_secs > self.STALE_THRESHOLD_SECS:
+                if rt.feed_status != "STALE":
+                    rt.feed_status = "STALE"
+                    log.warning(f"[{sym}] FEED STALE — no bar for {age_secs:.0f}s")
+                    self._emit(EventType.ERROR, symbol=sym,
+                               data={"error": "feed_stale",
+                                     "last_bar_age_secs": round(age_secs)})
+
+                # Attempt resubscribe with cooldown
+                since_last = mono_now - rt.last_resubscribe_time
+                if since_last >= self.RESUBSCRIBE_COOLDOWN_SECS:
+                    self._resubscribe_symbol(rt, mono_now)
+            else:
+                if rt.feed_status == "STALE":
+                    rt.feed_status = "LIVE"
+                    log.info(f"[{sym}] FEED LIVE — recovered")
+
+    def _resubscribe_symbol(self, rt: SymbolRuntime, mono_now: float) -> None:
+        """Cancel and re-create the bar subscription for one symbol."""
+        import time as _time
+        sym = rt.symbol
+        rt.last_resubscribe_time = mono_now
+        rt.resubscribe_count += 1
+
+        log.info(f"[{sym}] RESUBSCRIBING (attempt #{rt.resubscribe_count})")
+
+        # Cancel old subscription
+        try:
+            if rt.bars is not None:
+                self._ib.cancelHistoricalData(rt.bars)
+        except Exception as e:
+            log.warning(f"[{sym}] Cancel old subscription: {e}")
+
+        # Create new subscription
+        try:
+            bars = self._ib.reqHistoricalData(
+                rt.underlying_contract,
+                endDateTime="",
+                durationStr="1 D",
+                barSizeSetting="1 min",
+                whatToShow="TRADES",
+                useRTH=True,
+                formatDate=2,
+                keepUpToDate=True,
+            )
+            rt.bars = bars
+
+            # Bootstrap new bars (dedup via processed_times)
+            self._bootstrap_symbol(rt)
+
+            # Register callback
+            def make_callback(runtime):
+                def cb(bars_list, has_new_bar):
+                    try:
+                        self._on_bar_update(runtime, bars_list, has_new_bar)
+                    except Exception as e:
+                        log.error(f"[{runtime.symbol}] Callback exception: {e}",
+                                  exc_info=True)
+                return cb
+            bars.updateEvent += make_callback(rt)
+
+            log.info(f"[{sym}] RESUBSCRIBED ({len(bars)} bars, "
+                     f"listeners: {len(bars.updateEvent)})")
+        except Exception as e:
+            log.error(f"[{sym}] RESUBSCRIBE FAILED: {e}")
+            rt.feed_status = "STALE"
 
     # ── Main loop ────────────────────────────────────────────────────────
 
@@ -560,15 +659,21 @@ class MaxBotRunner:
             # Finalize premarket levels after market open (once)
             now_et = datetime.now(self._tz)
             open_h, open_m = int(self._session_open[:2]), int(self._session_open[3:])
+            close_h, close_m = int(self._session_close[:2]), int(self._session_close[3:])
             now_minutes = now_et.hour * 60 + now_et.minute
+            is_rth = (now_et.weekday() < 5
+                      and open_h * 60 + open_m <= now_minutes < close_h * 60 + close_m)
+
             if now_minutes >= open_h * 60 + open_m:
                 for sym, rt in self._runtimes.items():
                     if (rt.enabled and rt.context_levels
                             and not rt.context_levels.premarket_final):
-                        # Replace with finalized version
-                        ctx = rt.context_levels
                         from dataclasses import replace
-                        rt.context_levels = replace(ctx, premarket_final=True)
+                        rt.context_levels = replace(rt.context_levels, premarket_final=True)
+
+            # Feed health: detect stale and resubscribe (RTH only)
+            if is_rth and loop_count % 10 == 0:
+                self._check_feed_health(now_et)
 
             all_done = True
             for sym, rt in self._runtimes.items():

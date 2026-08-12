@@ -57,7 +57,14 @@ class SymbolRuntime:
     processed_times: set = field(default_factory=set)
     enabled: bool = True
     error: str | None = None
-    context_levels: object | None = None  # ContextLevels (PDH/PDL)
+    context_levels: object | None = None  # ContextLevels (PDH/PDL/PMH/PML)
+
+    # Feed health
+    last_bar_time_ms: int = 0
+    processed_bar_count: int = 0
+    feed_status: str = "INITIALIZING"  # INITIALIZING / LIVE / STALE
+    last_resubscribe_time: float = 0.0  # monotonic time of last resubscribe
+    resubscribe_count: int = 0
 
 
 def parse_symbols(symbols_str: str) -> list[str]:
