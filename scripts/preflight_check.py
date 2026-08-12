@@ -73,6 +73,7 @@ try:
     from trading_lab.live.bot_runner import verify_paper_account
     from trading_lab.live.option_selector import (
         OptionContractSelector, select_expiration, select_strike,
+        _pick_chain, _fallback_strikes,
     )
     ok("trading_lab.live modules")
 except ImportError as e:
@@ -191,200 +192,200 @@ else:
     info("Market closed — completed-bar callback NOT OBSERVABLE OUTSIDE LIVE SESSION")
     info("Bar callback rule (bars[-2] = completed) verified in unit tests")
 
-# ── 7. Option Chain Preflight ────────────────────────────────────────────────
+# ── 7. Option Chain Preflight (RAW + PRODUCTION SELECTION) ───────────────────
 print()
 print("7. OPTION CHAIN PREFLIGHT")
-print(f"   {'Symbol':<8} {'Chain':<6} {'Class':<8} {'Mult':<6} {'Expirations':<12} {'Strikes'}")
-print(f"   {'─'*8} {'─'*6} {'─'*8} {'─'*6} {'─'*12} {'─'*10}")
 
-chain_data = {}
+# Trading date: use market timezone (ET), not UTC
+now_et = datetime.now(ET)
+trading_date_str = now_et.strftime("%Y%m%d")
+trading_date_display = now_et.strftime("%Y-%m-%d")
+print(f"   Local time:    {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+print(f"   Market time:   {now_et.strftime('%Y-%m-%d %H:%M:%S')} ET")
+print(f"   Trading date:  {trading_date_display} ({trading_date_str})")
+print()
+
+raw_chains_data = {}  # sym -> list of raw chain dicts
+selected_chains = {}  # sym -> production-selected chain dict
+
 for sym in OPTION_TEST_SYMBOLS:
     if sym not in qualified_stocks:
-        print(f"   {sym:<8} {'SKIP':<6} — not qualified")
+        print(f"   {sym}: SKIP — not qualified")
         continue
     stock = qualified_stocks[sym]
-    try:
-        chains = ib.reqSecDefOptParams(sym, "", "STK", stock.conId)
-        smart_chain = None
-        for c in chains:
-            if c.exchange == "SMART":
-                smart_chain = c
-                break
-        if smart_chain is None and chains:
-            smart_chain = chains[0]
 
-        if smart_chain:
-            chain_data[sym] = smart_chain
-            print(f"   {sym:<8} {'YES':<6} {smart_chain.tradingClass:<8} "
-                  f"{smart_chain.multiplier:<6} {len(smart_chain.expirations):<12} "
-                  f"{len(smart_chain.strikes)}")
-        else:
-            print(f"   {sym:<8} {'NO':<6}")
-            warn(f"{sym}: no option chain")
-    except Exception as e:
-        print(f"   {sym:<8} {'ERROR':<6} {e}")
-        warn(f"{sym} chain: {e}")
-
-if chain_data:
-    ok(f"Option chains found for {len(chain_data)} symbols")
-else:
-    fail("No option chains found")
-
-# ── 8. Real Option Selection ─────────────────────────────────────────────────
-print()
-print("8. REAL OPTION SELECTION (policy: 0DTE/nearest, 1-strike ITM)")
-
-today_str = datetime.now(ET).strftime("%Y%m%d")
-selected_options = {}
-
-for sym in OPTION_TEST_SYMBOLS:
-    if sym not in chain_data:
-        continue
-    chain = chain_data[sym]
-    stock = qualified_stocks[sym]
-
-    # Get current underlying price from last bar
+    # Get underlying price
     und_price = None
     if sym in bar_subscriptions and bar_subscriptions[sym]:
         und_price = float(bar_subscriptions[sym][-1].close)
     if und_price is None:
-        info(f"{sym}: no underlying price available, skipping")
+        info(f"{sym}: no underlying price, skipping chain test")
         continue
-
-    expirations = list(chain.expirations)
-    strikes = list(chain.strikes)
 
     try:
-        exp = select_expiration(today_str, expirations)
-        is_0dte = (exp == today_str)
-    except ValueError as e:
-        warn(f"{sym} expiration: {e}")
+        chains = ib.reqSecDefOptParams(sym, "", "STK", stock.conId)
+    except Exception as e:
+        warn(f"{sym} chain request: {e}")
         continue
 
-    dte_label = "0DTE" if is_0dte else f"+{int(exp) - int(today_str)}d"
-    print(f"\n   {sym} — underlying={und_price:.2f}, expiration={exp} ({dte_label})")
+    if not chains:
+        warn(f"{sym}: no option chains returned")
+        continue
+
+    # Show RAW chains
+    print(f"   {sym} (underlying={und_price:.2f})")
+    print(f"     RAW CHAINS:")
+    raw_list = []
+    for c in chains:
+        raw_list.append({
+            "exchange": c.exchange, "tradingClass": c.tradingClass,
+            "multiplier": c.multiplier,
+            "expirations": len(list(c.expirations)),
+            "strikes": len(list(c.strikes)),
+        })
+        if c.exchange == "SMART" or c.tradingClass.upper() == sym.upper():
+            print(f"       {c.tradingClass:<8} exch={c.exchange:<6} mult={c.multiplier:<4} "
+                  f"exp={len(list(c.expirations)):<4} strikes={len(list(c.strikes))}")
+    raw_chains_data[sym] = raw_list
+
+    # PRODUCTION selection via _pick_chain
+    selected = _pick_chain(chains, sym, und_price, trading_date_str, "SMART")
+    if selected:
+        selected_chains[sym] = selected
+        print(f"     PRODUCTION SELECTED:")
+        print(f"       {selected['tradingClass']:<8} exch={selected['exchange']:<6} "
+              f"mult={selected['multiplier']:<4} "
+              f"exp={len(selected['expirations']):<4} "
+              f"strikes={len(selected['strikes'])}")
+    else:
+        print(f"     PRODUCTION SELECTED: NONE — no valid standard chain")
+        warn(f"{sym}: production _pick_chain returned None")
+
+if selected_chains:
+    ok(f"Production chains selected for {len(selected_chains)}/{len(OPTION_TEST_SYMBOLS)} symbols")
+else:
+    fail("No production chains selected for any symbol")
+
+# ── 8. Production Option Selection ───────────────────────────────────────────
+print()
+print("8. PRODUCTION OPTION SELECTION")
+print("   Using OptionContractSelector (same path as PAPER_EXECUTE)")
+print()
+
+selector = OptionContractSelector(ib)
+selected_options = {}
+qualified_options = {}
+
+for sym in OPTION_TEST_SYMBOLS:
+    if sym not in selected_chains:
+        continue
+
+    und_price = float(bar_subscriptions[sym][-1].close) if sym in bar_subscriptions else None
+    if und_price is None:
+        continue
 
     for right, label in [("C", "CALL"), ("P", "PUT")]:
         try:
-            strike = select_strike(right, und_price, strikes)
-            print(f"   {label}: strike={strike}")
-            selected_options[(sym, right)] = {
-                "symbol": sym, "right": right, "strike": strike,
-                "expiration": exp, "exchange": chain.exchange,
-                "multiplier": chain.multiplier,
-                "trading_class": chain.tradingClass,
-                "underlying_price": und_price,
-            }
-        except ValueError as e:
+            result = selector.select(
+                underlying_symbol=sym, right=right,
+                underlying_price=und_price, trading_date=trading_date_str,
+                fetch_market_data=True,
+            )
+
+            # DTE calculation with real dates
+            from datetime import datetime as dt_cls
+            exp_date = dt_cls.strptime(result.expiration, "%Y%m%d").date()
+            trade_date = dt_cls.strptime(trading_date_str, "%Y%m%d").date()
+            dte = (exp_date - trade_date).days
+            dte_label = "0DTE" if dte == 0 else f"+{dte}d"
+
+            fallback_note = ""
+            if result.fallback_attempts > 0:
+                fallback_note = f" (preferred={result.preferred_strike}, fallbacks={result.fallback_attempts})"
+
+            local_sym = getattr(result.qualified_contract, "localSymbol", "?") if result.qualified_contract else "?"
+
+            print(f"   ✅ {sym} {label}: strike={result.strike}{fallback_note}")
+            print(f"      class={result.trading_class} exp={result.expiration} ({dte_label})")
+            print(f"      conId={result.con_id} local={local_sym}")
+            print(f"      bid={result.bid} ask={result.ask} spread={result.spread}")
+
+            selected_options[(sym, right)] = result
+            if result.con_id:
+                qualified_options[(sym, right)] = result
+
+        except (ValueError, RuntimeError) as e:
+            print(f"   ⚠️  {sym} {label}: {e}")
             warn(f"{sym} {label}: {e}")
 
 if selected_options:
-    ok(f"{len(selected_options)} option contracts selected")
+    ok(f"{len(selected_options)} options selected via production path")
+    qual_count = sum(1 for r in selected_options.values() if r.con_id)
+    ok(f"{qual_count} options qualified with conId")
 else:
-    fail("No option contracts could be selected")
-
-# ── 9. Option Qualification ──────────────────────────────────────────────────
-print()
-print("9. OPTION QUALIFICATION")
-
-qualified_options = {}
-qual_failures = 0
-test_keys = list(selected_options.keys())[:6]  # test up to 6 contracts
-for key in test_keys:
-    sel = selected_options[key]
-    qualified = False
-
-    # Try with chain exchange first, then SMART fallback
-    exchanges_to_try = [sel["exchange"]]
-    if sel["exchange"] != "SMART":
-        exchanges_to_try.append("SMART")
-
-    for exch in exchanges_to_try:
-        try:
-            opt = Option(
-                sel["symbol"], sel["expiration"], sel["strike"],
-                sel["right"], exch, sel["multiplier"], "USD",
-            )
-            opt.tradingClass = sel["trading_class"]
-            result = ib.qualifyContracts(opt)
-            if result and opt.conId:
-                qualified_options[key] = opt
-                local_sym = getattr(opt, "localSymbol", "?")
-                print(f"   ✅ {sel['symbol']} {sel['right']} {sel['strike']} "
-                      f"exp={sel['expiration']} conId={opt.conId} "
-                      f"exchange={exch} local={local_sym}")
-                qualified = True
-                break
-        except Exception as e:
-            # Try next exchange
-            continue
-
-    if not qualified:
-        qual_failures += 1
-        print(f"   ⚠️  {sel['symbol']} {sel['right']} {sel['strike']} "
-              f"exp={sel['expiration']} — not found (may be normal outside market hours)")
-
-if qualified_options:
-    ok(f"{len(qualified_options)}/{len(test_keys)} options qualified")
-elif qual_failures > 0:
-    now_et = datetime.now(ET)
-    if now_et.weekday() >= 5 or now_et.hour < 9 or now_et.hour >= 16:
-        warn(f"Option qualification failed outside market hours — "
-             f"this is expected and NOT a blocker for live sessions")
+    now_et_check = datetime.now(ET)
+    if now_et_check.weekday() >= 5 or now_et_check.hour < 9 or now_et_check.hour >= 16:
+        warn("No options selected — expected outside market hours for some symbols")
     else:
-        warn("No options qualified during market hours — check IBKR market data subscriptions")
-else:
-    warn("No options could be qualified")
+        fail("No options selected during market hours")
 
-# ── 10. Bid/Ask Market Data ──────────────────────────────────────────────────
+# ── 9. Bid/Ask Summary (already obtained by production selector) ─────────────
 print()
-print("10. OPTION BID/ASK MARKET DATA")
+print("9. OPTION BID/ASK SUMMARY")
 
 if not qualified_options:
-    info("No qualified options to test — skipping market data check")
+    info("No qualified options — skipping bid/ask summary")
     info("This is normal outside market hours")
 else:
-    for key, opt in list(qualified_options.items())[:2]:  # test 2 contracts
-        sel = selected_options[key]
-        try:
-            ticker = ib.reqMktData(opt, "", snapshot=True)
-            ib.sleep(3)  # wait for snapshot
+    for key, result in list(qualified_options.items())[:4]:
+        sym, right = key
+        label = "CALL" if right == "C" else "PUT"
+        bid = result.bid
+        ask = result.ask
+        spread = result.spread
 
-            bid = ticker.bid if ticker.bid and ticker.bid > 0 else None
-            ask = ticker.ask if ticker.ask and ticker.ask > 0 else None
-            spread = round(ask - bid, 4) if bid and ask else None
-            spread_pct = round((ask - bid) / ask * 100, 2) if bid and ask and ask > 0 else None
+        if bid and ask:
+            status = "AVAILABLE"
+        else:
+            now_check = datetime.now(ET)
+            if now_check.weekday() >= 5 or now_check.hour < 9 or now_check.hour >= 16:
+                status = "UNAVAILABLE (market closed — normal)"
+            else:
+                status = "UNAVAILABLE (check market data subscription)"
+                warn(f"{sym} {label}: bid/ask unavailable during market hours")
 
-            status = "LIVE" if bid and ask else "DELAYED/UNAVAILABLE"
-            print(f"   {sel['symbol']} {sel['right']} {sel['strike']}: "
-                  f"bid={bid} ask={ask} spread={spread} "
-                  f"spread%={spread_pct} [{status}]")
+        print(f"   {sym} {label} {result.strike}: "
+              f"bid={bid} ask={ask} spread={spread} [{status}]")
 
-            if bid is None and ask is None:
-                now_et = datetime.now(ET)
-                if now_et.weekday() >= 5 or now_et.hour < 9 or now_et.hour >= 16:
-                    info(f"{sel['symbol']} {sel['right']}: no bid/ask (market closed — normal)")
-                else:
-                    warn(f"{sel['symbol']} {sel['right']}: bid/ask both unavailable during market hours")
-
-            ib.cancelMktData(opt)
-        except Exception as e:
-            print(f"   {sel['symbol']} {sel['right']} {sel['strike']}: ERROR {e}")
-            warn(f"Market data error: {e}")
-
-# ── 11. IBKR Warnings ───────────────────────────────────────────────────────
+# ── 10. IBKR Warnings ────────────────────────────────────────────────────────
 print()
-print("11. IBKR WARNINGS/ERRORS")
-# Check for any error messages from IB
+print("10. IBKR WARNINGS/ERRORS")
 if hasattr(ib, 'errorList') and ib.errorList:
-    for err in ib.errorList[-10:]:
-        print(f"   ⚠️  {err}")
+    mkt_data_warnings = []
+    critical_errors = []
+    for err in ib.errorList:
+        err_str = str(err)
+        if "10091" in err_str or "market data" in err_str.lower():
+            mkt_data_warnings.append(err_str)
+        elif "error" in err_str.lower() or "Error" in str(getattr(err, 'errorCode', '')):
+            critical_errors.append(err_str)
+    if mkt_data_warnings:
+        print("   MARKET DATA PERMISSION WARNINGS:")
+        for w in mkt_data_warnings[-5:]:
+            print(f"     ⚠️  {w}")
+        warn("Market data permission warnings detected (may affect bid/ask availability)")
+    if critical_errors:
+        for e in critical_errors[-5:]:
+            print(f"   ❌ {e}")
+    if not mkt_data_warnings and not critical_errors:
+        for err in ib.errorList[-5:]:
+            print(f"   ℹ️  {err}")
 else:
-    info("No critical IBKR errors captured")
+    info("No IBKR errors/warnings captured")
 
-# ── 12. API/PWA Check ───────────────────────────────────────────────────────
+# ── 11. API/PWA Check ───────────────────────────────────────────────────────
 print()
-print("12. API/PWA VERIFICATION")
+print("11. API/PWA VERIFICATION")
 try:
     app = create_app()
     client = app.test_client()
@@ -437,11 +438,25 @@ if blockers:
 else:
     now_et = datetime.now(ET)
     is_market_hours = now_et.weekday() < 5 and 9 <= now_et.hour < 16
-    if is_market_hours:
+    has_qualified = len(qualified_options) > 0
+    has_quotes = any(r.bid is not None and r.ask is not None
+                     for r in qualified_options.values()) if qualified_options else False
+
+    if is_market_hours and has_qualified and has_quotes:
         print("  RESULT: READY FOR PAPER_EXECUTE")
+    elif is_market_hours and has_qualified:
+        print("  RESULT: READY_FOR_MARKET_HOURS_PREFLIGHT")
+        print("  Production selector works but bid/ask unavailable.")
+        print("  Check IBKR market data subscriptions.")
+    elif not is_market_hours and has_qualified:
+        print("  RESULT: READY_FOR_MARKET_HOURS_PREFLIGHT")
+        print("  Production selector works outside market hours.")
+        print("  Rerun during market hours to verify bid/ask.")
+    elif not is_market_hours:
+        print("  RESULT: READY_FOR_MARKET_HOURS_PREFLIGHT")
+        print("  Full verification requires open market.")
     else:
-        print("  RESULT: READY (tested outside market hours)")
-        print("  Option qualification/market data will fully verify")
-        print("  during the first live session.")
+        print("  RESULT: NEEDS_INVESTIGATION")
+        print("  Production selector could not qualify options during market hours.")
 print("=" * 60)
 print()
