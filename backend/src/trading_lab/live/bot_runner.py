@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from ib_insync import IB, Stock
@@ -46,6 +47,7 @@ from trading_lab.live.observe_orchestrator import (
     ObserveLifecycle,
 )
 from trading_lab.live.watchlist import SymbolRuntime, parse_symbols
+from trading_lab.live.event_stream import EventFactory, SessionEventLog, EventType
 
 log = logging.getLogger("maxbot")
 
@@ -167,10 +169,27 @@ class MaxBotRunner:
         self._running = False
         self._paper_account: str | None = None
 
+        # Event infrastructure
+        self._event_factory = EventFactory(execution_mode)
+        self._session_log = SessionEventLog(metadata={
+            "trading_date": None,
+            "execution_mode": execution_mode,
+            "direction": direction,
+            "watchlist": self._symbols,
+            "trade_limits_enabled": trade_limits_enabled,
+            "host": host,
+            "port": port,
+            "client_id": client_id,
+        })
+
     # ── Public API ───────────────────────────────────────────────────────
 
     def run(self) -> None:
         """Connect to IBKR Paper and run the trading session."""
+        self._emit(EventType.BOT_STARTED, data={
+            "symbols": self._symbols, "direction": self._direction,
+            "execution_mode": str(self._execution_mode),
+        })
         self._connect()
         try:
             self._verify_paper()
@@ -180,8 +199,10 @@ class MaxBotRunner:
             self._run_loop()
         except KeyboardInterrupt:
             log.info("Keyboard interrupt — shutting down")
+            self._emit(EventType.BOT_STOPPED, data={"reason": "keyboard_interrupt"})
         except Exception as e:
             log.error(f"Runner error: {e}")
+            self._emit(EventType.ERROR, data={"error": str(e)})
             raise
         finally:
             self._shutdown()
@@ -226,6 +247,22 @@ class MaxBotRunner:
                     count += 1
         return count
 
+    # ── Event emission ───────────────────────────────────────────────────
+
+    def _emit(self, event_type, symbol: str = "", direction: str | None = None,
+              lifecycle: str | None = None, data: dict | None = None) -> LiveEvent:
+        """Create and append an event to the session log."""
+        event = self._event_factory.create(
+            event_type=event_type, symbol=symbol, direction=direction,
+            lifecycle=lifecycle, data=data,
+        )
+        self._session_log.append(event)
+        return event
+
+    @property
+    def session_log(self) -> SessionEventLog:
+        return self._session_log
+
     # ── Connection ───────────────────────────────────────────────────────
 
     def _connect(self) -> None:
@@ -233,10 +270,12 @@ class MaxBotRunner:
         log.info(f"Connecting to {self._host}:{self._port} (clientId={self._client_id})")
         self._ib.connect(self._host, self._port, clientId=self._client_id)
         log.info("CONNECTED")
+        self._emit(EventType.IBKR_CONNECTED)
 
     def _verify_paper(self) -> None:
         self._paper_account = verify_paper_account(self._ib)
         log.info(f"PAPER VERIFIED — account: {self._paper_account}")
+        self._emit(EventType.PAPER_VERIFIED, data={"account": self._paper_account[:3] + "***"})
 
     def _shutdown(self) -> None:
         unresolved = []
@@ -255,6 +294,25 @@ class MaxBotRunner:
         if unresolved:
             for sym, state in unresolved:
                 log.warning(f"UNRESOLVED {sym}: {state}")
+
+        self._emit(EventType.BOT_STOPPED, data={
+            "statuses": self.symbol_statuses,
+            "unresolved": [{"symbol": s, "state": str(st)} for s, st in unresolved],
+        })
+
+        # Export session log
+        try:
+            now = datetime.now(self._tz)
+            self._session_log.set_metadata("trading_date", now.strftime("%Y-%m-%d"))
+            self._session_log.set_metadata("runner_end_time", now.isoformat())
+            ts = now.strftime("%Y-%m-%d_%H%M%S")
+            log_dir = Path("logs/maxbot")
+            json_path = self._session_log.export_json(log_dir / f"maxbot_{ts}.json")
+            md_path = self._session_log.export_markdown(log_dir / f"maxbot_{ts}.md")
+            log.info(f"Session log exported: {json_path}")
+        except Exception as e:
+            log.error(f"Failed to export session log: {e}")
+
         if self._ib and self._ib.isConnected():
             self._ib.disconnect()
             log.info("Disconnected from IBKR")
@@ -324,10 +382,14 @@ class MaxBotRunner:
                     raise RuntimeError(f"qualifyContracts returned empty for {sym}")
                 rt.underlying_contract = stock
                 log.info(f"QUALIFIED: {sym} (conId={stock.conId})")
+                self._emit(EventType.SYMBOL_ENABLED, symbol=sym,
+                           data={"con_id": stock.conId})
             except Exception as e:
                 rt.enabled = False
                 rt.error = str(e)
                 log.error(f"DISABLED {sym}: {e}")
+                self._emit(EventType.SYMBOL_DISABLED, symbol=sym,
+                           data={"error": str(e)})
 
     def _subscribe_all(self) -> None:
         for sym, rt in self._runtimes.items():

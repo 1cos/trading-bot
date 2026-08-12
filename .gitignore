@@ -29,3 +29,6 @@ tools/output/
 .idea/
 .vscode/
 *.swp
+-e 
+# Runtime logs
+logs/
