@@ -144,6 +144,7 @@ class ObserveOrchestrator:
         self._exit_monitor: UnderlyingExitMonitor | None = None
         self._current_signal_event: ObservationEvent | None = None
         self._events: list[ObservationEvent] = []
+        self._resolved_direction: str | None = None
 
         # Theoretical daily counters
         self._max_trades = max_trades
@@ -218,11 +219,14 @@ class ObserveOrchestrator:
         if result.status != SignalStatus.SIGNAL:
             return None
 
+        # Use resolved direction from signal (supports BOTH mode)
+        resolved_direction = result.direction
+
         # Build execution intent
         intent = build_option_execution_intent(
             result.trade_plan,
             self._symbol,
-            self._direction,
+            resolved_direction,
             exit_target_r=self._exit_target_r,
             detection_result=result.detection_result,
         )
@@ -230,7 +234,7 @@ class ObserveOrchestrator:
         # Select option contract (real IBKR chain query)
         trading_date_yyyymmdd = sess["date"].replace("-", "")
         underlying_price = sess["candles"][-1]["close"]
-        right = "C" if self._direction == "LONG" else "P"
+        right = "C" if resolved_direction == "LONG" else "P"
 
         try:
             selection = self._option_selector.select(
@@ -262,7 +266,7 @@ class ObserveOrchestrator:
         event = ObservationEvent(
             event_type="SIGNAL",
             underlying_symbol=self._symbol,
-            direction=self._direction,
+            direction=resolved_direction,
             underlying_entry=entry_f,
             underlying_stop=stop_f,
             underlying_target=target_f,
@@ -288,15 +292,16 @@ class ObserveOrchestrator:
 
         # Start exit monitoring
         self._exit_monitor = UnderlyingExitMonitor(
-            direction=self._direction,
+            direction=resolved_direction,
             stop_price=stop_f,
             target_price=target_f,
             activation_time_ms=bar["time_ms"],
         )
+        self._resolved_direction = resolved_direction
         self._lifecycle = ObserveLifecycle.TRACKING_EXIT
 
         log.info(
-            f"[OBSERVE] SIGNAL {self._symbol} {self._direction}\n"
+            f"[OBSERVE] SIGNAL {self._symbol} {resolved_direction}\n"
             f"[OBSERVE] OPTION {self._symbol} {selection.expiration} "
             f"{selection.strike} {'CALL' if right == 'C' else 'PUT'}\n"
             f"[OBSERVE] BID {order_spec.bid} ASK {order_spec.ask} "
@@ -336,7 +341,7 @@ class ObserveOrchestrator:
         event = ObservationEvent(
             event_type=event_type,
             underlying_symbol=self._symbol,
-            direction=self._direction,
+            direction=self._resolved_direction or self._direction,
             underlying_entry=sig.underlying_entry if sig else None,
             underlying_stop=sig.underlying_stop if sig else None,
             underlying_target=sig.underlying_target if sig else None,
@@ -375,4 +380,5 @@ class ObserveOrchestrator:
         self._day_finished = False
         self._exit_monitor = None
         self._current_signal_event = None
+        self._resolved_direction = None
         self._lifecycle = ObserveLifecycle.WAITING_FOR_SIGNAL

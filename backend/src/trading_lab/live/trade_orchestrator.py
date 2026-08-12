@@ -140,6 +140,7 @@ class MaxBotTradeOrchestrator:
         self._exit_reason: str | None = None
         self._signal_status: str | None = None
         self._underlying_triggers = None
+        self._resolved_direction: str | None = None
 
     # ── Public API ───────────────────────────────────────────────────────
 
@@ -204,7 +205,7 @@ class MaxBotTradeOrchestrator:
             target = float(self._underlying_triggers.target_price) if self._underlying_triggers else 0.0
 
             self._exit_monitor = UnderlyingExitMonitor(
-                direction=self._direction,
+                direction=self._resolved_direction or self._direction,
                 stop_price=stop,
                 target_price=target,
                 activation_time_ms=activation_ms,
@@ -284,11 +285,14 @@ class MaxBotTradeOrchestrator:
         if result.status != SignalStatus.SIGNAL:
             return
 
+        # Use resolved direction from signal (supports BOTH mode)
+        resolved_direction = result.direction
+
         # Build execution intent
         intent = build_option_execution_intent(
             result.trade_plan,
             self._symbol,
-            self._direction,
+            resolved_direction,
             exit_target_r=self._exit_target_r,
             detection_result=result.detection_result,
         )
@@ -297,7 +301,7 @@ class MaxBotTradeOrchestrator:
         trading_date_yyyymmdd = sess["date"].replace("-", "")
         underlying_price = sess["candles"][-1]["close"]
 
-        right = "C" if self._direction == "LONG" else "P"
+        right = "C" if resolved_direction == "LONG" else "P"
 
         selection = self._option_selector.select(
             underlying_symbol=self._symbol,
@@ -323,6 +327,7 @@ class MaxBotTradeOrchestrator:
         self._option_strike = selection.strike
         self._signal_status = "SIGNAL"
         self._underlying_triggers = intent.underlying_triggers
+        self._resolved_direction = resolved_direction
         self._lifecycle = LifecycleState.ENTRY_SUBMITTED
 
     def _check_exit_trigger(self, bar: dict) -> None:
@@ -360,3 +365,4 @@ class MaxBotTradeOrchestrator:
         self._exit_order_id = None
         self._signal_status = None
         self._underlying_triggers = None
+        self._resolved_direction = None

@@ -32,6 +32,7 @@ from ib_insync import IB, Stock, util
 
 from trading_lab.live.session_builder_live import LiveSessionBuilder
 from trading_lab.live.signal_detector import LiveSignalDetector
+from trading_lab.live.dual_signal_detector import DualSignalDetector
 from trading_lab.live.trade_manager import DailyTradeManager
 from trading_lab.live.option_selector import OptionContractSelector
 from trading_lab.live.ibkr_option_executor import IBKROptionExecutor
@@ -229,13 +230,25 @@ class MaxBotRunner:
 
     def _setup_orchestrator(self) -> None:
         sb = LiveSessionBuilder(self._symbol, self._tz_str)
-        sd = LiveSignalDetector(
-            symbol=self._symbol,
-            direction=self._direction,
-            tick_size=self._tick_size,
-            market_timezone=self._tz_str,
-            session_open=self._session_open,
-        )
+
+        # Build signal detector(s)
+        if self._direction == "BOTH":
+            long_sd = LiveSignalDetector(
+                symbol=self._symbol, direction="LONG", tick_size=self._tick_size,
+                market_timezone=self._tz_str, session_open=self._session_open,
+            )
+            short_sd = LiveSignalDetector(
+                symbol=self._symbol, direction="SHORT", tick_size=self._tick_size,
+                market_timezone=self._tz_str, session_open=self._session_open,
+            )
+            sd = DualSignalDetector(long_sd, short_sd)
+        else:
+            sd = LiveSignalDetector(
+                symbol=self._symbol, direction=self._direction,
+                tick_size=self._tick_size, market_timezone=self._tz_str,
+                session_open=self._session_open,
+            )
+
         os_ = OptionContractSelector(self._ib)
 
         if self._execution_mode == ExecutionMode.OBSERVE_ONLY:
@@ -448,7 +461,7 @@ def main():
         description="MaxBot v0.1 IBKR Paper OPTIONS runner"
     )
     parser.add_argument("--symbol", required=True, help="Underlying symbol (e.g. QQQ)")
-    parser.add_argument("--direction", default="LONG", choices=["LONG", "SHORT"])
+    parser.add_argument("--direction", default="BOTH", choices=["LONG", "SHORT", "BOTH"])
     parser.add_argument("--execution-mode", default="OBSERVE_ONLY",
                         choices=["OBSERVE_ONLY", "PAPER_EXECUTE"],
                         help="OBSERVE_ONLY (default) or PAPER_EXECUTE")
