@@ -367,7 +367,9 @@ def create_app(controller: MaxBotController | None = None) -> Flask:
 
     @app.route("/")
     def index():
-        return send_from_directory(ui_dir, "dashboard.html")
+        resp = send_from_directory(ui_dir, "dashboard.html")
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return resp
 
     @app.route("/manifest.json")
     def manifest():
@@ -375,7 +377,9 @@ def create_app(controller: MaxBotController | None = None) -> Flask:
 
     @app.route("/sw.js")
     def service_worker():
-        return send_from_directory(ui_dir, "sw.js")
+        resp = send_from_directory(ui_dir, "sw.js")
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return resp
 
     # ── Status ───────────────────────────────────────────────────────────
 
