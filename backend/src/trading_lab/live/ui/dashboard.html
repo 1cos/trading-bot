@@ -413,7 +413,12 @@ function appendEvents(events) {
     if (e.seq > lastSeq) lastSeq = e.seq;
     const div = document.createElement('div');
     div.className = 'event';
-    const ts = e.timestamp_utc ? e.timestamp_utc.split('T')[1]?.substring(0,8) || '' : '';
+    // Convert to Central Time for display
+    let ts = '';
+    if (e.timestamp_ms) {
+      const d = new Date(e.timestamp_ms);
+      ts = d.toLocaleTimeString('en-US', {timeZone:'America/Chicago', hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    }
     const sym = e.symbol ? `<span class="event-sym">${e.symbol}</span>` : '';
     let cls = '';
     let text = e.event_type.replace(/_/g,' ');

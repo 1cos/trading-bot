@@ -488,6 +488,13 @@ class MaxBotRunner:
                 log.error(f"SUBSCRIPTION FAILED {sym}: {e}")
 
     def _bootstrap_symbol(self, rt: SymbolRuntime) -> None:
+        """Feed historical bars into session builder for context only.
+
+        Bootstrap bars are from previous sessions (loaded via reqHistoricalData
+        before market open). They must NOT trigger signal evaluation — only
+        populate the session builder so the ORB can be computed correctly
+        when today's live bars arrive, and populate processed_times for dedup.
+        """
         if not rt.bars:
             return
         completed = list(rt.bars)[:-1] if len(rt.bars) > 1 else []
@@ -500,9 +507,13 @@ class MaxBotRunner:
             if candle["time_ms"] in rt.processed_times:
                 continue
             rt.processed_times.add(candle["time_ms"])
-            rt.orchestrator.on_bar(candle)
+            # Add to session builder for context only — do NOT call
+            # orchestrator.on_bar() which would trigger signal detection
+            # on yesterday's completed BDRR setups
+            if rt.session_builder:
+                rt.session_builder.add_bar(candle)
             fed += 1
-        log.info(f"Bootstrap {rt.symbol}: {fed} bars")
+        log.info(f"Bootstrap {rt.symbol}: {fed} bars (context only, no signals)")
 
     def _on_bar_update(self, rt: SymbolRuntime, bars, has_new_bar) -> None:
         try:
