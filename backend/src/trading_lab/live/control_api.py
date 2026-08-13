@@ -527,6 +527,11 @@ def run_server(
 
 if __name__ == "__main__":
     import logging
+
+    # Suppress Flask/werkzeug HTTP request logs (they flood the terminal)
+    logging.getLogger("werkzeug").setLevel(logging.ERROR)
+
+    # Configure clean maxbot logging
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
