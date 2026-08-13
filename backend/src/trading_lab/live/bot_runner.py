@@ -119,6 +119,72 @@ def is_rth_bar(time_ms: int, tz: ZoneInfo, open_hhmm: str, close_hhmm: str) -> b
 # ── Runner ───────────────────────────────────────────────────────────────────
 
 
+def _format_stage(pipeline_stage: str, failed_stage: str | None,
+                  ctx: dict) -> str:
+    """Format pipeline stage into a detailed human-readable log suffix.
+
+    Examples:
+        [NO BREAK] LONG ORB H=726.02 L=724.03
+        [BREAK LONG] 09:36 close=727.90 > level=726.02
+        [DISP BUILDING] LONG 1/3 bars, break=727.90@09:36
+        [DISP CONFIRMED] LONG 4 bars, waiting retest
+        [RETEST — NO ENTRY] disp=7, rules: BODY_INSIDE_ORB
+        [RETEST TOO EARLY]
+        [SEQUENCE INVALIDATED]
+    """
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+    ET = ZoneInfo("America/New_York")
+
+    direction = ctx.get("direction", "")
+    orb_h = ctx.get("orb_high")
+    orb_l = ctx.get("orb_low")
+    break_close = ctx.get("break_close")
+    break_level = ctx.get("break_level")
+    break_time = ctx.get("break_time_ms")
+    disp_bars = ctx.get("displacement_bars")
+    disp_req = ctx.get("displacement_required", 3)
+
+    def _time_str(ms):
+        if not ms:
+            return "?"
+        return datetime.fromtimestamp(ms / 1000, tz=ET).strftime("%H:%M")
+
+    if failed_stage == "LEVEL_NOT_FOUND":
+        return " [BUILDING ORB]"
+
+    if failed_stage == "BREAK_NOT_FOUND":
+        return f" [NO BREAK] {direction} ORB H={orb_h:.2f} L={orb_l:.2f}"
+
+    if failed_stage == "DISPLACEMENT_TOO_SHORT":
+        bt = _time_str(break_time)
+        return (f" [DISP BUILDING] {direction} {disp_bars}/{disp_req} bars"
+                f", break={break_close:.2f}@{bt}")
+
+    if failed_stage == "RETEST_NOT_FOUND":
+        bt = _time_str(break_time)
+        return (f" [DISP CONFIRMED] {direction} {disp_bars} bars"
+                f", break={break_close:.2f}@{bt}, waiting retest")
+
+    if failed_stage == "RETEST_BEFORE_DISPLACEMENT":
+        bt = _time_str(break_time)
+        return f" [RETEST TOO EARLY] {direction}, break={break_close:.2f}@{bt}"
+
+    if failed_stage == "SEQUENCE_INVALIDATED":
+        inv_idx = ctx.get("invalidation_index")
+        return f" [SEQUENCE INVALIDATED] {direction}, at bar {inv_idx}"
+
+    if failed_stage == "NO_QUALIFYING_REJECTION_CANDLE":
+        rules = ctx.get("failed_rules", [])
+        rules_str = ", ".join(rules[:3]) if rules else "none in window"
+        bt = _time_str(break_time)
+        return (f" [RETEST — NO ENTRY] {direction} disp={disp_bars}"
+                f", break@{bt}, rules: {rules_str}")
+
+    # Fallback
+    return f" [{pipeline_stage}]"
+
+
 class MaxBotRunner:
     """IBKR Paper live runner for MaxBot v0.1 — multi-symbol.
 
@@ -545,21 +611,16 @@ class MaxBotRunner:
                 sig = rt.signal_detector.evaluate(sess)
                 if sig.pipeline_stage:
                     rt.pipeline_stage = sig.pipeline_stage
-                    stage_info = f" [{sig.pipeline_stage}]"
                     ctx = sig.stage_context or {}
                     rt.last_stage_context = ctx
                     # Capture ORB levels when available
                     if ctx.get("orb_high") is not None:
                         rt.orb_high = ctx["orb_high"]
                         rt.orb_low = ctx["orb_low"]
-                    if sig.failed_stage == "BREAK_NOT_FOUND":
-                        stage_info += f" H={ctx['orb_high']:.2f} L={ctx['orb_low']:.2f}"
-                    elif ctx.get("break_close") and "DISPLACEMENT" in (sig.pipeline_stage or ""):
-                        bars_done = ctx.get("displacement_bars", 0)
-                        bars_req = ctx.get("displacement_required", 3)
-                        stage_info += f" ({bars_done}/{bars_req} bars)"
-                    elif ctx.get("displacement_bars") and "RETEST" in (sig.pipeline_stage or ""):
-                        stage_info += f" disp={ctx['displacement_bars']} bars"
+
+                    # Build detailed stage info
+                    stage_info = _format_stage(sig.pipeline_stage, sig.failed_stage, ctx)
+
                 if sig.status == SignalStatus.SIGNAL:
                     rt.pipeline_stage = "SIGNAL"
 
