@@ -253,3 +253,41 @@ Progressione stage visibile barra per barra:
 | test_event_loop_isolation | 19 |
 | test_feed_health | 18 |
 | **TOTALE** | **528** |
+
+---
+
+## 9. Evidenza Produzione Reale — Terminal Mac Mini (13 agosto 09:03-09:06 CT)
+
+### Pipeline BDRR Live — Stage Progression Confermata
+```
+09:03:05 [GOOGL] 10:02 C=346.49 → WAITING [ORB COMPLETE — NO BREAK] H=346.68 L=343.76
+09:03:05 [QQQ]   10:02 C=731.73 → WAITING [DISPLACEMENT — NO RETEST] (12/None bars)
+09:03:05 [META]  10:02 C=604.86 → WAITING [RETEST — NO ENTRY CANDLE] disp=7 bars
+09:03:05 [TSLA]  10:02 C=333.82 → WAITING [RETEST TOO EARLY]
+09:03:05 [NVDA]  10:02 C=222.63 → WAITING [ORB COMPLETE — NO BREAK] H=226.87 L=224.13
+09:03:05 [AMD]   10:02 C=501.21 → WAITING [BREAK — DISPLACEMENT BUILDING] (1/None bars)
+09:03:05 [AMZN]  10:02 C=265.19 → WAITING [DISPLACEMENT — NO RETEST] (16/None bars)
+09:04:05 [QQQ]   10:03 C=731.44 → WAITING [DISPLACEMENT — NO RETEST] (27/None bars)
+09:04:05 [AMZN]  10:03 C=265.12 → WAITING [BREAK — DISPLACEMENT BUILDING] (1/None bars)
+09:04:05 [META]  10:03 C=608.54 → WAITING [RETEST — NO ENTRY CANDLE] disp=7 bars
+```
+
+### Osservazioni Chiave
+1. **Ogni simbolo è in uno stage BDRR diverso** — il bot sta valutando il mercato correttamente e indipendentemente per simbolo
+2. **QQQ ha displacement di 27 bars** ma nessun retest — il prezzo non è tornato alla zona
+3. **META è nella fase più avanzata** — retest trovato, aspetta la candela di rejection/entry
+4. **TSLA ha un retest troppo presto** — prima del displacement minimo (3 bars)
+5. **AMD ha appena rotto l'ORB** — sta costruendo il displacement (1 bar)
+6. **Feed health recovery funziona** — dopo STALE alle 09:00, i feed si sono risubscritti e hanno ripreso alle 09:03
+7. **SPY continua problematico** — INITIALIZING TIMEOUT ripetuto (IBKR-side issue)
+8. **Error 366** durante resubscribe ("No historical data query found for ticker id") — IBKR rifiuta il cancel di subscription già scadute, non è un bug del nostro codice
+
+### AMZN Portfolio Update Visibile
+```
+09:04:05 updatePortfolio: PortfolioItem(contract=Option(conId=849725196, symbol='AMZN',
+  lastTradeDateOrContractMonth='20260814', strike=270.0, right='C', multiplier='100',
+  primaryExchange='AMZN', currency='USD', localSymbol='AMZN 20260814C08270000',
+  tradingClass='AMZN'), position=0.0, marketPrice=5.814875, marketValue=0.0,
+  averageCost=0.0, unrealizedPNL=0.0, realizedPNL=-126.92, account='DU0157785')
+```
+Questo conferma che il bot ha effettivamente piazzato ordini Paper nella sessione precedente (AMZN CALL 270, realizedPNL=-$126.92 — probabilmente una LOSS da stop strutturale).
