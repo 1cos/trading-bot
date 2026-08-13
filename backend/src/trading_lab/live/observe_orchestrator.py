@@ -247,22 +247,24 @@ class ObserveOrchestrator:
                 fetch_market_data=True,
             )
         except Exception as e:
-            log.warning(f"[OBSERVE] Option selection failed: {e}")
-            return None
+            log.warning(f"[OBSERVE] {self._symbol} Option selection failed: {e}")
+            selection = None
 
-        # Build theoretical entry order
-        try:
-            order_spec = build_option_entry_order(selection)
-        except Exception as e:
-            log.warning(f"[OBSERVE] Order spec failed: {e}")
-            return None
+        # Build theoretical entry order (may fail if bid/ask unavailable)
+        order_spec = None
+        if selection:
+            try:
+                order_spec = build_option_entry_order(selection)
+            except Exception as e:
+                log.warning(f"[OBSERVE] {self._symbol} Order spec failed: {e}")
+                order_spec = None
 
         triggers = intent.underlying_triggers
         entry_f = float(triggers.entry_price)
         stop_f = float(triggers.stop_price)
         target_f = float(triggers.target_price)
 
-        # Record theoretical trade
+        # Record theoretical trade — even if option unavailable
         self._trades_used += 1
 
         event = ObservationEvent(
@@ -272,17 +274,17 @@ class ObserveOrchestrator:
             underlying_entry=entry_f,
             underlying_stop=stop_f,
             underlying_target=target_f,
-            option_right=selection.right,
-            expiration=selection.expiration,
-            strike=selection.strike,
-            con_id=selection.con_id,
-            bid=order_spec.bid,
-            ask=order_spec.ask,
-            spread=order_spec.spread,
-            spread_pct=order_spec.spread_pct,
+            option_right=right if not selection else selection.right,
+            expiration=selection.expiration if selection else "",
+            strike=selection.strike if selection else 0.0,
+            con_id=selection.con_id if selection else None,
+            bid=order_spec.bid if order_spec else None,
+            ask=order_spec.ask if order_spec else None,
+            spread=order_spec.spread if order_spec else None,
+            spread_pct=order_spec.spread_pct if order_spec else None,
             quantity=1,
             order_type="LMT",
-            limit_price=order_spec.limit_price,
+            limit_price=order_spec.limit_price if order_spec else None,
             order_submitted=False,
             bar_time_ms=bar["time_ms"],
             theoretical_trades_used=self._trades_used,
@@ -297,17 +299,21 @@ class ObserveOrchestrator:
             "underlying_entry": entry_f, "underlying_stop": stop_f,
             "underlying_target": target_f,
         })
-        self._do_emit("OPTION_SELECTED", direction=resolved_direction, data={
-            "right": selection.right, "expiration": selection.expiration,
-            "strike": selection.strike, "con_id": selection.con_id,
-            "exchange": selection.exchange, "multiplier": selection.multiplier,
-            "bid": selection.bid, "ask": selection.ask, "spread": selection.spread,
-        })
-        self._do_emit("ENTRY_ORDER_BUILT", direction=resolved_direction, data={
-            "order_type": "LMT", "quantity": 1, "limit_price": order_spec.limit_price,
-        })
+        if selection:
+            self._do_emit("OPTION_SELECTED", direction=resolved_direction, data={
+                "right": selection.right, "expiration": selection.expiration,
+                "strike": selection.strike, "con_id": selection.con_id,
+                "exchange": selection.exchange, "multiplier": selection.multiplier,
+                "bid": selection.bid, "ask": selection.ask, "spread": selection.spread,
+            })
+        if order_spec:
+            self._do_emit("ENTRY_ORDER_BUILT", direction=resolved_direction, data={
+                "order_type": "LMT", "quantity": 1, "limit_price": order_spec.limit_price,
+            })
         self._do_emit("OBSERVE_ENTRY", direction=resolved_direction, data={
-            "order_submitted": False, "limit_price": order_spec.limit_price,
+            "order_submitted": False,
+            "limit_price": order_spec.limit_price if order_spec else None,
+            "option_unavailable": selection is None,
         })
 
         # Start exit monitoring
