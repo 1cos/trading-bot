@@ -531,6 +531,11 @@ if __name__ == "__main__":
     # Suppress Flask/werkzeug HTTP request logs (they flood the terminal)
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
+    # Suppress ib_insync verbose account/commission logs
+    logging.getLogger("ib_insync.ib").setLevel(logging.WARNING)
+    logging.getLogger("ib_insync.client").setLevel(logging.WARNING)
+    logging.getLogger("ib_insync.wrapper").setLevel(logging.WARNING)
+
     # Configure clean maxbot logging
     logging.basicConfig(
         level=logging.INFO,
