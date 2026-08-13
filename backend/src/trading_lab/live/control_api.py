@@ -268,6 +268,12 @@ class MaxBotController:
             entry["processed_bar_count"] = rt.processed_bar_count
             if rt.resubscribe_count > 0:
                 entry["resubscribe_count"] = rt.resubscribe_count
+            # Pipeline observability
+            if rt.pipeline_stage:
+                entry["pipeline_stage"] = rt.pipeline_stage
+            if rt.orb_high is not None:
+                entry["orb_high"] = rt.orb_high
+                entry["orb_low"] = rt.orb_low
             result.append(entry)
         return result
 

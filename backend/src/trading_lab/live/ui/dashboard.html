@@ -388,8 +388,12 @@ function updateSymbols(symbols) {
 
     html += `<div class="${cls}"><div class="sym-card"><span class="sym-name">${s.symbol}${feedLabel}</span><span class="sym-state" style="${stateClass}">${s.enabled ? (s.lifecycle || '—').replace(/_/g,' ') : 'DISABLED'}</span></div>`;
     if (detail) html += `<div class="sym-detail">${detail}</div>`;
+    // ORB levels
+    if (s.orb_high != null) html += `<div class="sym-levels" style="color:var(--accent)">ORB H ${s.orb_high.toFixed(2)} · L ${s.orb_low.toFixed(2)}</div>`;
     if (levels) html += `<div class="sym-levels">${levels}</div>`;
     if (ctx) html += `<div class="sym-levels">${ctx}</div>`;
+    // Pipeline stage
+    if (s.pipeline_stage) html += `<div class="sym-detail" style="color:var(--cyan);font-size:11px">${s.pipeline_stage}</div>`;
     if (!s.enabled && s.error) html += `<div class="sym-detail" style="color:var(--red)">${s.error}</div>`;
     html += '</div>';
 

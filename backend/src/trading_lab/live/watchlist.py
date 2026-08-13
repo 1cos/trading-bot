@@ -67,6 +67,12 @@ class SymbolRuntime:
     resubscribe_count: int = 0
     subscription_start_time: float = 0.0  # monotonic time of subscription creation
 
+    # Pipeline observability
+    pipeline_stage: str = ""        # e.g. "BUILDING ORB", "ORB COMPLETE — NO BREAK"
+    orb_high: float | None = None
+    orb_low: float | None = None
+    last_stage_context: dict | None = None
+
 
 def parse_symbols(symbols_str: str) -> list[str]:
     """Parse and normalize a comma-separated symbol string.

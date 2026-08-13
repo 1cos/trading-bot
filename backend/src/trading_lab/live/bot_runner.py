@@ -31,7 +31,7 @@ from zoneinfo import ZoneInfo
 from ib_insync import IB, Stock
 
 from trading_lab.live.session_builder_live import LiveSessionBuilder
-from trading_lab.live.signal_detector import LiveSignalDetector
+from trading_lab.live.signal_detector import LiveSignalDetector, SignalStatus
 from trading_lab.live.dual_signal_detector import DualSignalDetector
 from trading_lab.live.trade_manager import DailyTradeManager
 from trading_lab.live.option_selector import OptionContractSelector
@@ -544,9 +544,15 @@ class MaxBotRunner:
             if rt.signal_detector:
                 sig = rt.signal_detector.evaluate(sess)
                 if sig.pipeline_stage:
+                    rt.pipeline_stage = sig.pipeline_stage
                     stage_info = f" [{sig.pipeline_stage}]"
                     ctx = sig.stage_context or {}
-                    if ctx.get("orb_high") and sig.failed_stage == "BREAK_NOT_FOUND":
+                    rt.last_stage_context = ctx
+                    # Capture ORB levels when available
+                    if ctx.get("orb_high") is not None:
+                        rt.orb_high = ctx["orb_high"]
+                        rt.orb_low = ctx["orb_low"]
+                    if sig.failed_stage == "BREAK_NOT_FOUND":
                         stage_info += f" H={ctx['orb_high']:.2f} L={ctx['orb_low']:.2f}"
                     elif ctx.get("break_close") and "DISPLACEMENT" in (sig.pipeline_stage or ""):
                         bars_done = ctx.get("displacement_bars", 0)
@@ -554,6 +560,8 @@ class MaxBotRunner:
                         stage_info += f" ({bars_done}/{bars_req} bars)"
                     elif ctx.get("displacement_bars") and "RETEST" in (sig.pipeline_stage or ""):
                         stage_info += f" disp={ctx['displacement_bars']} bars"
+                if sig.status == SignalStatus.SIGNAL:
+                    rt.pipeline_stage = "SIGNAL"
 
             result = rt.orchestrator.on_bar(candle)
             time_str = datetime.fromtimestamp(
