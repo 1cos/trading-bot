@@ -485,9 +485,17 @@ class MaxBotRunner:
         now_minutes = now.hour * 60 + now.minute
         pm_final = now_minutes >= open_h * 60 + open_m
 
-        for sym, rt in self._runtimes.items():
-            if not rt.enabled or rt.underlying_contract is None:
-                continue
+        enabled_symbols = [
+            (sym, rt) for sym, rt in self._runtimes.items()
+            if rt.enabled and rt.underlying_contract is not None
+        ]
+        for idx, (sym, rt) in enumerate(enabled_symbols):
+            # Pacing: IBKR limits ~6 similar historical-data requests
+            # per 2 seconds. Each symbol makes 2 requests (prev session +
+            # premarket), so stagger between symbols.
+            if idx > 0:
+                self._ib.sleep(0.5)
+
             try:
                 # PDH/PDL from previous RTH session
                 sessions = fetch_previous_session_bars(
@@ -527,9 +535,20 @@ class MaxBotRunner:
 
     def _subscribe_all(self) -> None:
         import time as _time
-        for sym, rt in self._runtimes.items():
-            if not rt.enabled:
-                continue
+        enabled_symbols = [
+            (sym, rt) for sym, rt in self._runtimes.items() if rt.enabled
+        ]
+        total = len(enabled_symbols)
+        for idx, (sym, rt) in enumerate(enabled_symbols):
+            # Stagger subscriptions to avoid IBKR pacing violations.
+            # IBKR limits ~6 similar historical-data requests per 2 seconds;
+            # with 9 symbols plus context-level fetches, back-to-back
+            # requests cause silent drops (SPY dead feed root cause).
+            if idx > 0:
+                delay = 0.6  # seconds between subscriptions
+                log.debug(f"Subscription pacing: waiting {delay}s before {sym}")
+                self._ib.sleep(delay)
+
             try:
                 bars = self._ib.reqHistoricalData(
                     rt.underlying_contract,
@@ -542,6 +561,7 @@ class MaxBotRunner:
                     keepUpToDate=True,
                 )
                 rt.bars = bars
+                rt.bars_object_id = id(bars)  # diagnostic: track object identity
                 self._bootstrap_symbol(rt)
                 # Create closure to bind rt — with error protection
                 def make_callback(runtime):
@@ -553,9 +573,13 @@ class MaxBotRunner:
                                       exc_info=True)
                     return cb
                 bars.updateEvent += make_callback(rt)
+                rt.listener_count = len(bars.updateEvent)
                 rt.subscription_start_time = _time.monotonic()
-                log.info(f"STREAM ACTIVE: {sym} ({len(bars)} bars, "
-                         f"updateEvent listeners: {len(bars.updateEvent)})")
+                log.info(
+                    f"STREAM ACTIVE: {sym} ({idx + 1}/{total}, "
+                    f"{len(bars)} bars, obj={id(bars)}, "
+                    f"listeners={rt.listener_count})"
+                )
             except Exception as e:
                 rt.enabled = False
                 rt.error = str(e)
@@ -734,20 +758,48 @@ class MaxBotRunner:
                     log.info(f"[{sym}] FEED LIVE — recovered")
 
     def _resubscribe_symbol(self, rt: SymbolRuntime, mono_now: float) -> None:
-        """Cancel and re-create the bar subscription for one symbol."""
+        """Cancel and re-create the bar subscription for one symbol.
+
+        Guarantees:
+        - Old BarDataList listeners removed before cancel
+        - Exactly 1 listener on new BarDataList
+        - Old BarDataList not retained
+        - Feed state reset to INITIALIZING
+        - Bootstrap bars fed for context (no signals)
+        """
         import time as _time
         sym = rt.symbol
         rt.last_resubscribe_time = mono_now
         rt.resubscribe_count += 1
 
-        log.info(f"[{sym}] RESUBSCRIBING (attempt #{rt.resubscribe_count})")
+        old_bars = rt.bars
+        old_id = id(old_bars) if old_bars is not None else None
+        old_listener_count = len(old_bars.updateEvent) if old_bars is not None else 0
+
+        log.info(
+            f"[{sym}] RESUBSCRIBING (attempt #{rt.resubscribe_count}, "
+            f"old_obj={old_id}, old_listeners={old_listener_count})"
+        )
+
+        # Remove ALL listeners from old BarDataList BEFORE cancelling.
+        # This prevents any stale callbacks from firing during the
+        # cancel/re-create window.
+        if old_bars is not None:
+            try:
+                old_bars.updateEvent.clear()
+                log.debug(f"[{sym}] Cleared {old_listener_count} old listeners")
+            except Exception as e:
+                log.warning(f"[{sym}] Failed to clear old listeners: {e}")
 
         # Cancel old subscription
         try:
-            if rt.bars is not None:
-                self._ib.cancelHistoricalData(rt.bars)
+            if old_bars is not None:
+                self._ib.cancelHistoricalData(old_bars)
         except Exception as e:
             log.warning(f"[{sym}] Cancel old subscription: {e}")
+
+        # Brief pause to let IBKR process the cancel before new request
+        self._ib.sleep(0.5)
 
         # Create new subscription
         try:
@@ -762,13 +814,14 @@ class MaxBotRunner:
                 keepUpToDate=True,
             )
             rt.bars = bars
+            rt.bars_object_id = id(bars)
             rt.subscription_start_time = _time.monotonic()
             rt.feed_status = "INITIALIZING"  # wait for first live bar
 
             # Bootstrap new bars (dedup via processed_times)
             self._bootstrap_symbol(rt)
 
-            # Register callback
+            # Register exactly ONE callback on the NEW BarDataList
             def make_callback(runtime):
                 def cb(bars_list, has_new_bar):
                     try:
@@ -778,9 +831,12 @@ class MaxBotRunner:
                                   exc_info=True)
                 return cb
             bars.updateEvent += make_callback(rt)
+            rt.listener_count = len(bars.updateEvent)
 
-            log.info(f"[{sym}] RESUBSCRIBED ({len(bars)} bars, "
-                     f"listeners: {len(bars.updateEvent)})")
+            log.info(
+                f"[{sym}] RESUBSCRIBED (new_obj={id(bars)}, "
+                f"{len(bars)} bars, listeners={rt.listener_count})"
+            )
         except Exception as e:
             log.error(f"[{sym}] RESUBSCRIBE FAILED: {e}")
             rt.feed_status = "STALE"

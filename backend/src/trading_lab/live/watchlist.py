@@ -66,6 +66,8 @@ class SymbolRuntime:
     last_resubscribe_time: float = 0.0  # monotonic time of last resubscribe
     resubscribe_count: int = 0
     subscription_start_time: float = 0.0  # monotonic time of subscription creation
+    bars_object_id: int = 0   # id() of current BarDataList — tracks object identity
+    listener_count: int = 0   # updateEvent listener count after registration
 
     # Pipeline observability
     pipeline_stage: str = ""        # e.g. "BUILDING ORB", "ORB COMPLETE — NO BREAK"
