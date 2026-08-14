@@ -32,6 +32,12 @@ class DualSignalDetector:
     def __init__(self, long_detector: LiveSignalDetector, short_detector: LiveSignalDetector):
         self._long = long_detector
         self._short = short_detector
+        self._last_result: SignalResult | None = None
+
+    @property
+    def last_result(self) -> SignalResult | None:
+        """The result of the most recent evaluate() call."""
+        return self._last_result
 
     def evaluate(self, session: dict) -> SignalResult:
         """Evaluate the session for both LONG and SHORT setups.
@@ -42,15 +48,19 @@ class DualSignalDetector:
         """
         long_result = self._long.evaluate(session)
         if long_result.status == SignalStatus.SIGNAL:
+            self._last_result = long_result
             return long_result
 
         short_result = self._short.evaluate(session)
         if short_result.status == SignalStatus.SIGNAL:
+            self._last_result = short_result
             return short_result
 
         # Return whichever progressed further (more stage context = further)
         long_depth = len(long_result.stage_context or {})
         short_depth = len(short_result.stage_context or {})
         if short_depth > long_depth:
+            self._last_result = short_result
             return short_result
+        self._last_result = long_result
         return long_result

@@ -144,6 +144,9 @@ class MaxBotTradeOrchestrator:
         self._underlying_triggers = None
         self._resolved_direction: str | None = None
 
+        # Pending signal (set by _check_for_signal, consumed by execute_pending_signal)
+        self._pending_signal = None
+
         # Per-trade telemetry context (events for TRADE_COMPLETED)
         self._trade_events: dict[str, object] = {}
         self._emitted_terminal: set[str] = set()
@@ -305,6 +308,11 @@ class MaxBotTradeOrchestrator:
         return self._lifecycle
 
     @property
+    def has_pending_signal(self) -> bool:
+        """True if a signal was detected but not yet executed."""
+        return self._pending_signal is not None
+
+    @property
     def status(self) -> OrchestratorStatus:
         mgr = self._trade_manager.state
         return OrchestratorStatus(
@@ -325,6 +333,11 @@ class MaxBotTradeOrchestrator:
     # ── Internal flows ───────────────────────────────────────────────────
 
     def _check_for_signal(self) -> None:
+        """Pure signal detection — NO IBKR sync calls.
+
+        If a signal is found, stores it in _pending_signal for
+        later execution by execute_pending_signal().
+        """
         if not self._trade_manager.can_trade:
             self._lifecycle = LifecycleState.DONE_FOR_DAY
             return
@@ -337,10 +350,29 @@ class MaxBotTradeOrchestrator:
         if result.status != SignalStatus.SIGNAL:
             return
 
-        resolved_direction = result.direction
-        triggers_data = {}
+        # Store pending signal — execution deferred outside callback
+        self._pending_signal = result
 
-        # Build execution intent
+    def execute_pending_signal(self) -> None:
+        """Execute IBKR sync work for a pending signal.
+
+        MUST be called OUTSIDE the bar callback (i.e. from the main
+        loop), never from _on_bar_update.
+
+        Contains all IBKR sync calls:
+        - qualifyContracts
+        - reqSecDefOptParams
+        - reqMktData
+        - placeOrder
+        """
+        result = self._pending_signal
+        if result is None:
+            return
+        self._pending_signal = None
+
+        resolved_direction = result.direction
+
+        # Build execution intent (pure computation)
         intent = build_option_execution_intent(
             result.trade_plan,
             self._symbol,
@@ -358,7 +390,10 @@ class MaxBotTradeOrchestrator:
         sig_event = self._do_emit("SIGNAL", direction=resolved_direction, data=triggers_data)
         self._trade_events = {"signal": sig_event}
 
-        # Select option contract
+        # Select option contract — IBKR SYNC
+        sess = self._session_builder.current_session()
+        if sess is None:
+            return
         trading_date_yyyymmdd = sess["date"].replace("-", "")
         underlying_price = sess["candles"][-1]["close"]
         right = "C" if resolved_direction == "LONG" else "P"
@@ -380,7 +415,7 @@ class MaxBotTradeOrchestrator:
         opt_event = self._do_emit("OPTION_SELECTED", direction=resolved_direction, data=opt_data)
         self._trade_events["option"] = opt_event
 
-        # Build entry order spec
+        # Build entry order spec (pure computation)
         order_spec = build_option_entry_order(selection)
 
         entry_built_data = {
@@ -391,7 +426,7 @@ class MaxBotTradeOrchestrator:
         }
         self._do_emit("ENTRY_ORDER_BUILT", direction=resolved_direction, data=entry_built_data)
 
-        # Submit entry
+        # Submit entry — IBKR SYNC
         submission = self._entry_executor.submit_entry(order_spec)
 
         sub_data = {

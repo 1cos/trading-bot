@@ -48,6 +48,11 @@ from trading_lab.live.observe_orchestrator import (
 )
 from trading_lab.live.watchlist import SymbolRuntime, parse_symbols
 from trading_lab.live.event_stream import EventFactory, SessionEventLog, EventType
+from trading_lab.live.execution_queue import (
+    ExecutionQueue,
+    ExecutionWorkItem,
+    WorkItemType,
+)
 from trading_lab.live.context_levels import (
     ContextLevels,
     fetch_previous_session_bars,
@@ -240,6 +245,9 @@ class MaxBotRunner:
         self._runtimes: dict[str, SymbolRuntime] = {}
         self._running = False
         self._paper_account: str | None = None
+
+        # Execution queue — defers IBKR sync work outside callbacks
+        self._execution_queue = ExecutionQueue()
 
         # Event infrastructure
         self._event_factory = EventFactory(execution_mode)
@@ -582,6 +590,19 @@ class MaxBotRunner:
         log.info(f"Bootstrap {rt.symbol}: {fed} bars (context only, no signals)")
 
     def _on_bar_update(self, rt: SymbolRuntime, bars, has_new_bar) -> None:
+        """Bar callback — MUST NOT call any IBKR sync methods.
+
+        Only pure computation is allowed here:
+        - candle conversion
+        - dedup
+        - session builder update
+        - signal evaluation (single, via orchestrator.on_bar)
+        - telemetry update
+        - enqueue execution work if signal detected
+
+        IBKR sync calls (qualifyContracts, reqSecDefOptParams, reqMktData,
+        placeOrder) are deferred to _process_execution_queue in the main loop.
+        """
         try:
             if not has_new_bar:
                 return
@@ -604,27 +625,37 @@ class MaxBotRunner:
             rt.processed_times.add(candle["time_ms"])
             rt.processed_bar_count += 1
 
-            # Evaluate signal (for both modes, we want stage info)
-            sess = rt.session_builder.current_session() if rt.session_builder else None
+            # ONE signal evaluation via orchestrator.on_bar()
+            # This calls session_builder.add_bar + signal_detector.evaluate
+            # but does NOT call any IBKR sync methods.
+            result = rt.orchestrator.on_bar(candle)
+
+            # Extract pipeline stage info from the signal detector's last result
+            # (already evaluated inside orchestrator.on_bar, no second call)
             stage_info = ""
             if rt.signal_detector:
-                sig = rt.signal_detector.evaluate(sess)
-                if sig.pipeline_stage:
-                    rt.pipeline_stage = sig.pipeline_stage
-                    ctx = sig.stage_context or {}
+                last = rt.signal_detector.last_result
+                if last and last.pipeline_stage:
+                    rt.pipeline_stage = last.pipeline_stage
+                    ctx = last.stage_context or {}
                     rt.last_stage_context = ctx
-                    # Capture ORB levels when available
                     if ctx.get("orb_high") is not None:
                         rt.orb_high = ctx["orb_high"]
                         rt.orb_low = ctx["orb_low"]
-
-                    # Build detailed stage info
-                    stage_info = _format_stage(sig.pipeline_stage, sig.failed_stage, ctx)
-
-                if sig.status == SignalStatus.SIGNAL:
+                    stage_info = _format_stage(last.pipeline_stage, last.failed_stage, ctx)
+                if last and last.status == SignalStatus.SIGNAL:
                     rt.pipeline_stage = "SIGNAL"
 
-            result = rt.orchestrator.on_bar(candle)
+            # If orchestrator detected a signal, enqueue for deferred execution
+            if rt.orchestrator.has_pending_signal:
+                item = ExecutionWorkItem(
+                    symbol=rt.symbol,
+                    work_type=WorkItemType.SIGNAL_EXECUTION,
+                    signal_result=None,  # signal stored in orchestrator
+                    bar_time_ms=candle["time_ms"],
+                )
+                self._execution_queue.enqueue(item)
+
             time_str = datetime.fromtimestamp(
                 candle["time_ms"] / 1000, tz=self._tz
             ).strftime("%H:%M")
@@ -754,6 +785,30 @@ class MaxBotRunner:
             log.error(f"[{sym}] RESUBSCRIBE FAILED: {e}")
             rt.feed_status = "STALE"
 
+    # ── Execution queue processing ─────────────────────────────────────
+
+    def _process_execution_queue(self) -> None:
+        """Drain and process pending execution work items.
+
+        Called from the main loop, OUTSIDE any bar callback.
+        Safe to make IBKR sync calls here.
+        """
+        items = self._execution_queue.drain()
+        for item in items:
+            rt = self._runtimes.get(item.symbol)
+            if rt is None or not rt.enabled or rt.orchestrator is None:
+                self._execution_queue.fail(item, "symbol not available")
+                continue
+            try:
+                rt.orchestrator.execute_pending_signal()
+                self._execution_queue.complete(item)
+            except Exception as e:
+                self._execution_queue.fail(item, str(e))
+                log.error(
+                    f"[{item.symbol}] Execution failed: {e}",
+                    exc_info=True,
+                )
+
     # ── Main loop ────────────────────────────────────────────────────────
 
     def _run_loop(self) -> None:
@@ -767,6 +822,9 @@ class MaxBotRunner:
         while self._running:
             self._ib.sleep(1)
             loop_count += 1
+
+            # Process deferred execution work (IBKR sync calls safe here)
+            self._process_execution_queue()
 
             # Periodic heartbeat (every 60 iterations ≈ 1 minute)
             if loop_count % 60 == 0:

@@ -217,10 +217,17 @@ def _make_orchestrator(entry_executor=None, exit_executor=None):
 
 
 def _feed_bars(orch, bars):
-    """Feed multiple bars and return the last status."""
+    """Feed multiple bars and return the last status.
+
+    After each bar, if a pending signal exists, execute it immediately.
+    This simulates the runner's main-loop processing of the execution
+    queue (deferred IBKR sync calls happen outside the bar callback).
+    """
     status = None
     for bar in bars:
         status = orch.on_bar(bar)
+        if orch.has_pending_signal:
+            orch.execute_pending_signal()
     return status
 
 

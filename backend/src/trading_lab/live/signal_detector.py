@@ -223,6 +223,12 @@ class LiveSignalDetector:
         }
 
         self._exit_target_r = exit_target_r
+        self._last_result: SignalResult | None = None
+
+    @property
+    def last_result(self) -> SignalResult | None:
+        """The result of the most recent evaluate() call."""
+        return self._last_result
 
     def evaluate(self, session: dict) -> SignalResult:
         """Evaluate the current session snapshot for a valid signal.
@@ -242,9 +248,15 @@ class LiveSignalDetector:
             SIGNAL if the BDRR pattern is complete through the entry candle.
 
         This method is pure and stateless — calling it repeatedly with
-        the same session produces the same result.  It never mutates
-        the session or internal state.
+        the same session produces the same result.  It caches the last
+        result in ``last_result`` for observability.
         """
+        result = self._evaluate_inner(session)
+        self._last_result = result
+        return result
+
+    def _evaluate_inner(self, session: dict) -> SignalResult:
+        """Core evaluation logic — no side effects."""
         if session is None:
             return _no_setup("NO_SESSION")
 

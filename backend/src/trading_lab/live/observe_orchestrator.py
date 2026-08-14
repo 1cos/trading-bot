@@ -148,6 +148,10 @@ class ObserveOrchestrator:
         self._events: list[ObservationEvent] = []
         self._resolved_direction: str | None = None
 
+        # Pending signal (set by _check_for_signal, consumed by execute_pending_signal)
+        self._pending_signal = None
+        self._pending_signal_bar: dict | None = None
+
         # Theoretical daily counters
         self._max_trades = max_trades
         self._trades_used = 0
@@ -180,6 +184,11 @@ class ObserveOrchestrator:
     def day_finished(self) -> bool:
         return self._day_finished
 
+    @property
+    def has_pending_signal(self) -> bool:
+        """True if a signal was detected but not yet executed."""
+        return self._pending_signal is not None
+
     def on_bar(self, bar: dict) -> ObservationEvent | None:
         """Process a completed underlying bar.
 
@@ -204,6 +213,11 @@ class ObserveOrchestrator:
     # ── Signal detection ─────────────────────────────────────────────────
 
     def _check_for_signal(self, bar: dict) -> ObservationEvent | None:
+        """Pure signal detection — NO IBKR sync calls.
+
+        If a signal is found, stores it in _pending_signal for
+        later execution by execute_pending_signal().
+        """
         if self._day_finished:
             self._lifecycle = ObserveLifecycle.DONE_FOR_DAY
             return None
@@ -221,10 +235,32 @@ class ObserveOrchestrator:
         if result.status != SignalStatus.SIGNAL:
             return None
 
+        # Store pending signal — execution deferred outside callback
+        self._pending_signal = result
+        self._pending_signal_bar = bar
+        return None
+
+    def execute_pending_signal(self) -> ObservationEvent | None:
+        """Execute IBKR sync work for a pending signal.
+
+        MUST be called OUTSIDE the bar callback (from the main loop).
+
+        Contains all IBKR sync calls:
+        - qualifyContracts (via option_selector)
+        - reqSecDefOptParams (via option_selector)
+        - reqMktData (via option_selector)
+        """
+        result = self._pending_signal
+        bar = self._pending_signal_bar
+        if result is None or bar is None:
+            return None
+        self._pending_signal = None
+        self._pending_signal_bar = None
+
         # Use resolved direction from signal (supports BOTH mode)
         resolved_direction = result.direction
 
-        # Build execution intent
+        # Build execution intent (pure computation)
         intent = build_option_execution_intent(
             result.trade_plan,
             self._symbol,
@@ -233,7 +269,10 @@ class ObserveOrchestrator:
             detection_result=result.detection_result,
         )
 
-        # Select option contract (real IBKR chain query)
+        # Select option contract (real IBKR chain query) — IBKR SYNC
+        sess = self._session_builder.current_session()
+        if sess is None:
+            return None
         trading_date_yyyymmdd = sess["date"].replace("-", "")
         underlying_price = sess["candles"][-1]["close"]
         right = "C" if resolved_direction == "LONG" else "P"
@@ -326,15 +365,21 @@ class ObserveOrchestrator:
         self._resolved_direction = resolved_direction
         self._lifecycle = ObserveLifecycle.TRACKING_EXIT
 
-        log.info(
-            f"[OBSERVE] SIGNAL {self._symbol} {resolved_direction}\n"
-            f"[OBSERVE] OPTION {self._symbol} {selection.expiration} "
-            f"{selection.strike} {'CALL' if right == 'C' else 'PUT'}\n"
-            f"[OBSERVE] BID {order_spec.bid} ASK {order_spec.ask} "
-            f"SPREAD {order_spec.spread:.4f}\n"
-            f"[OBSERVE] WOULD BUY 1 @ {order_spec.limit_price} LMT\n"
-            f"[OBSERVE] ORDER NOT SUBMITTED"
-        )
+        if selection and order_spec:
+            log.info(
+                f"[OBSERVE] SIGNAL {self._symbol} {resolved_direction}\n"
+                f"[OBSERVE] OPTION {self._symbol} {selection.expiration} "
+                f"{selection.strike} {'CALL' if right == 'C' else 'PUT'}\n"
+                f"[OBSERVE] BID {order_spec.bid} ASK {order_spec.ask} "
+                f"SPREAD {order_spec.spread:.4f}\n"
+                f"[OBSERVE] WOULD BUY 1 @ {order_spec.limit_price} LMT\n"
+                f"[OBSERVE] ORDER NOT SUBMITTED"
+            )
+        else:
+            log.info(
+                f"[OBSERVE] SIGNAL {self._symbol} {resolved_direction} "
+                f"(option {'unavailable' if not selection else 'order spec failed'})"
+            )
 
         return event
 

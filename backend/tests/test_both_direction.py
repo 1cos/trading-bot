@@ -124,6 +124,11 @@ class TestLongCall:
             e = orch.on_bar(bar)
             if e:
                 events.append(e)
+            # Execute deferred IBKR work (signal → option select)
+            if orch.has_pending_signal:
+                ev = orch.execute_pending_signal()
+                if ev:
+                    events.append(ev)
 
         assert len(events) == 1
         assert events[0].direction == "LONG"
