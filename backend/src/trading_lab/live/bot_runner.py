@@ -842,6 +842,103 @@ class MaxBotRunner:
             log.error(f"[{sym}] RESUBSCRIBE FAILED: {e}")
             rt.feed_status = "STALE"
 
+    # ── Bar polling fallback ───────────────────────────────────────────
+
+    def _poll_bars_fallback(self) -> None:
+        """Poll BarDataList for new completed bars that updateEvent missed.
+
+        ib_insync's updateEvent sometimes fails to fire even when the
+        BarDataList grows (observed on SPY with Error 162 at startup).
+        This fallback checks each symbol's BarDataList directly and
+        processes any completed bars that haven't been seen yet.
+
+        Uses the same dedup (processed_times) and code path as
+        _on_bar_update, so bars are never processed twice.
+        Does NOT process the last bar (it's the live/incomplete bar).
+        """
+        for sym, rt in self._runtimes.items():
+            if not rt.enabled or rt.bars is None:
+                continue
+            try:
+                bars = rt.bars
+                if len(bars) < 2:
+                    continue
+
+                # Check the completed bar (second-to-last)
+                completed_bar = bars[-2]
+                candle = ibkr_bar_to_candle(completed_bar, self._tz)
+
+                # Quick check: already processed?
+                if candle["time_ms"] in rt.processed_times:
+                    continue
+
+                # Not yet processed — this bar was missed by updateEvent.
+                # Feed it through the normal path.
+                if not is_rth_bar(candle["time_ms"], self._tz,
+                                  self._session_open, self._session_close):
+                    continue
+
+                # Track feed health
+                rt.last_bar_time_ms = candle["time_ms"]
+                if rt.feed_status != "LIVE":
+                    log.info(
+                        f"[{sym}] POLL FALLBACK — first bar detected, "
+                        f"transitioning to LIVE"
+                    )
+                rt.feed_status = "LIVE"
+
+                rt.processed_times.add(candle["time_ms"])
+                rt.processed_bar_count += 1
+
+                # ONE signal evaluation via orchestrator
+                result = rt.orchestrator.on_bar(candle)
+
+                # Extract pipeline stage info
+                stage_info = ""
+                if rt.signal_detector:
+                    last = rt.signal_detector.last_result
+                    if last and last.pipeline_stage:
+                        rt.pipeline_stage = last.pipeline_stage
+                        ctx = last.stage_context or {}
+                        rt.last_stage_context = ctx
+                        if ctx.get("orb_high") is not None:
+                            rt.orb_high = ctx["orb_high"]
+                            rt.orb_low = ctx["orb_low"]
+                        stage_info = _format_stage(
+                            last.pipeline_stage, last.failed_stage, ctx
+                        )
+                    if last and last.status == SignalStatus.SIGNAL:
+                        rt.pipeline_stage = "SIGNAL"
+
+                # Enqueue if signal detected
+                if rt.orchestrator.has_pending_signal:
+                    item = ExecutionWorkItem(
+                        symbol=rt.symbol,
+                        work_type=WorkItemType.SIGNAL_EXECUTION,
+                        signal_result=None,
+                        bar_time_ms=candle["time_ms"],
+                    )
+                    self._execution_queue.enqueue(item)
+
+                time_str = datetime.fromtimestamp(
+                    candle["time_ms"] / 1000, tz=self._tz
+                ).strftime("%H:%M")
+
+                if self._execution_mode == ExecutionMode.OBSERVE_ONLY:
+                    state = rt.orchestrator.lifecycle
+                    log.info(
+                        f"[{sym}] {time_str} C={candle['close']:.2f} → "
+                        f"{state}{stage_info} (poll)"
+                    )
+                else:
+                    log.info(
+                        f"[{sym}] {time_str} C={candle['close']:.2f} → "
+                        f"{result.lifecycle if result else '?'}{stage_info} "
+                        f"(poll)"
+                    )
+            except Exception as e:
+                log.error(f"[{sym}] Poll fallback error: {e}", exc_info=True)
+
     # ── Execution queue processing ─────────────────────────────────────
 
     def _process_execution_queue(self) -> None:
@@ -909,6 +1006,12 @@ class MaxBotRunner:
             # Feed health: detect stale and resubscribe (RTH only)
             if is_rth and loop_count % 10 == 0:
                 self._check_feed_health(now_et)
+
+            # Poll BarDataList fallback — catches bars that arrive
+            # without updateEvent firing (observed on SPY).
+            # Uses the same dedup (processed_times) as _on_bar_update.
+            if is_rth and loop_count % 5 == 0:
+                self._poll_bars_fallback()
 
             all_done = True
             for sym, rt in self._runtimes.items():
