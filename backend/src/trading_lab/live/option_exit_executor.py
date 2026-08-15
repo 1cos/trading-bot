@@ -116,6 +116,16 @@ class OptionExitExecutor:
         self._ib = ib
         self._submitted_entry_ids: set[int] = set()
 
+    def allow_resubmit(self, entry_order_id: int) -> None:
+        """Clear duplicate protection for an entry, allowing retry.
+
+        Used by the orchestrator when an exit order fails and needs
+        to be re-submitted.  Only the orchestrator should call this,
+        and only after confirming the previous exit order is
+        CANCELLED/REJECTED (not pending or filled).
+        """
+        self._submitted_entry_ids.discard(entry_order_id)
+
     def submit_exit(
         self,
         qualified_contract,

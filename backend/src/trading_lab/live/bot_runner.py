@@ -370,7 +370,8 @@ class MaxBotRunner:
                 if state in (LifecycleState.POSITION_OPEN,
                              LifecycleState.ENTRY_SUBMITTED,
                              LifecycleState.EXIT_SUBMITTED,
-                             LifecycleState.EXIT_FAILED):
+                             LifecycleState.EXIT_FAILED,
+                             LifecycleState.REQUIRES_ATTENTION):
                     unresolved.append((sym, state))
         if unresolved:
             for sym, state in unresolved:
@@ -931,6 +932,12 @@ class MaxBotRunner:
                         status = rt.orchestrator.refresh_exit_status()
                         if status.lifecycle != prev:
                             log.info(f"[{sym}] Exit: {prev} → {status.lifecycle}")
+                    elif state == LifecycleState.EXIT_FAILED:
+                        all_done = False
+                        prev = state
+                        status = rt.orchestrator.refresh_exit_status()
+                        if status.lifecycle != prev:
+                            log.info(f"[{sym}] Exit recovery: {prev} → {status.lifecycle}")
                     elif state != LifecycleState.DONE_FOR_DAY:
                         all_done = False
 

@@ -54,6 +54,7 @@ class LifecycleState(StrEnum):
     DONE_FOR_DAY = "DONE_FOR_DAY"
     ENTRY_FAILED = "ENTRY_FAILED"
     EXIT_FAILED = "EXIT_FAILED"
+    REQUIRES_ATTENTION = "REQUIRES_ATTENTION"  # exit retries exhausted
 
 
 # ── Orchestrator status snapshot ─────────────────────────────────────────────
@@ -143,9 +144,16 @@ class MaxBotTradeOrchestrator:
         self._exit_submission = None
         self._exit_order_id: int | None = None
         self._exit_reason: str | None = None
+        self._last_exit_trigger = None  # stored for retry
         self._signal_status: str | None = None
         self._underlying_triggers = None
         self._resolved_direction: str | None = None
+
+        # Exit retry state
+        self._exit_retry_count: int = 0
+        self._exit_max_retries: int = 3
+        self._exit_retry_cooldown_secs: float = 30.0
+        self._exit_last_retry_time: float = 0.0  # monotonic
 
         # Pending signal (set by _check_for_signal, consumed by execute_pending_signal)
         self._pending_signal = None
@@ -251,10 +259,19 @@ class MaxBotTradeOrchestrator:
     def refresh_exit_status(self) -> OrchestratorStatus:
         """Check exit fill status (call periodically while EXIT_SUBMITTED).
 
+        EXIT_FAILED recovery:
+        - If exit order is CANCELLED/REJECTED, log detailed error info
+        - After cooldown, retry exit submission (up to max retries)
+        - After retries exhausted → REQUIRES_ATTENTION terminal state
+        - Never declares trade closed without confirmed fill
+
         Returns
         -------
         OrchestratorStatus
         """
+        if self._lifecycle == LifecycleState.EXIT_FAILED:
+            return self._handle_exit_retry()
+
         if self._lifecycle != LifecycleState.EXIT_SUBMITTED:
             return self.status
 
@@ -305,10 +322,113 @@ class MaxBotTradeOrchestrator:
                 self._lifecycle = LifecycleState.DONE_FOR_DAY
 
         elif exit_fill.state in (ExitFillState.CANCELLED, ExitFillState.REJECTED):
+            # Log detailed error for diagnostics
+            log.error(
+                f"[{self._symbol}] EXIT ORDER FAILED — "
+                f"status={exit_fill.broker_status} "
+                f"exit_order_id={exit_fill.exit_order_id} "
+                f"entry_order_id={exit_fill.entry_order_id} "
+                f"con_id={exit_fill.con_id} "
+                f"reason={exit_fill.exit_reason} "
+                f"retry={self._exit_retry_count}/{self._exit_max_retries}"
+            )
             cancel_type = "EXIT_CANCELLED" if exit_fill.state == ExitFillState.CANCELLED else "EXIT_REJECTED"
             if self._emit_once(cancel_type):
-                self._do_emit(cancel_type, direction=self._resolved_direction)
+                self._do_emit(cancel_type, direction=self._resolved_direction, data={
+                    "broker_status": exit_fill.broker_status,
+                    "exit_order_id": exit_fill.exit_order_id,
+                    "con_id": exit_fill.con_id,
+                    "retry_count": self._exit_retry_count,
+                    "max_retries": self._exit_max_retries,
+                })
             self._lifecycle = LifecycleState.EXIT_FAILED
+
+        return self.status
+
+    def _handle_exit_retry(self) -> OrchestratorStatus:
+        """Retry exit submission when in EXIT_FAILED state.
+
+        Called by refresh_exit_status when lifecycle == EXIT_FAILED.
+        Respects cooldown and max retries.  After retries exhausted,
+        transitions to REQUIRES_ATTENTION.
+        """
+        import time as _time
+
+        if self._exit_retry_count >= self._exit_max_retries:
+            if self._lifecycle != LifecycleState.REQUIRES_ATTENTION:
+                log.critical(
+                    f"[{self._symbol}] EXIT RETRIES EXHAUSTED "
+                    f"({self._exit_max_retries}/{self._exit_max_retries}) — "
+                    f"REQUIRES MANUAL ATTENTION. "
+                    f"con_id={self._entry_con_id} "
+                    f"entry_order_id={self._entry_order_id}"
+                )
+                self._do_emit("EXIT_RETRIES_EXHAUSTED", direction=self._resolved_direction, data={
+                    "con_id": self._entry_con_id,
+                    "entry_order_id": self._entry_order_id,
+                    "retry_count": self._exit_retry_count,
+                    "symbol": self._symbol,
+                })
+                self._lifecycle = LifecycleState.REQUIRES_ATTENTION
+            return self.status
+
+        # Cooldown check
+        now = _time.monotonic()
+        elapsed = now - self._exit_last_retry_time
+        if elapsed < self._exit_retry_cooldown_secs:
+            return self.status
+
+        # Retry: re-submit exit
+        self._exit_retry_count += 1
+        self._exit_last_retry_time = now
+
+        log.warning(
+            f"[{self._symbol}] EXIT RETRY #{self._exit_retry_count} — "
+            f"re-submitting SELL for con_id={self._entry_con_id}"
+        )
+
+        try:
+            # Allow re-submission by clearing duplicate protection
+            self._exit_executor.allow_resubmit(self._entry_order_id)
+
+            # Re-create exit trigger from stored state
+            exit_sub = self._exit_executor.submit_exit(
+                qualified_contract=self._qualified_contract,
+                exit_trigger=self._last_exit_trigger,
+                entry_order_id=self._entry_order_id,
+                con_id=self._entry_con_id,
+                right=self._option_right,
+                expiration=self._option_expiration,
+                strike=self._option_strike,
+                quantity=1,
+            )
+            self._exit_submission = exit_sub
+            self._exit_order_id = exit_sub.order_id
+            self._lifecycle = LifecycleState.EXIT_SUBMITTED
+            # Reset emit-once for exit status tracking
+            self._emitted_terminal.discard("EXIT_CANCELLED")
+            self._emitted_terminal.discard("EXIT_REJECTED")
+
+            log.info(
+                f"[{self._symbol}] EXIT RETRY #{self._exit_retry_count} "
+                f"submitted — order_id={exit_sub.order_id}"
+            )
+            self._do_emit("EXIT_RETRY", direction=self._resolved_direction, data={
+                "retry_count": self._exit_retry_count,
+                "order_id": exit_sub.order_id,
+                "con_id": self._entry_con_id,
+            })
+
+        except Exception as e:
+            log.error(
+                f"[{self._symbol}] EXIT RETRY #{self._exit_retry_count} "
+                f"FAILED: {e}"
+            )
+            # Stay in EXIT_FAILED for next retry attempt
+            self._do_emit("EXIT_RETRY_FAILED", direction=self._resolved_direction, data={
+                "retry_count": self._exit_retry_count,
+                "error": str(e),
+            })
 
         return self.status
 
@@ -507,6 +627,7 @@ class MaxBotTradeOrchestrator:
                 strike=self._option_strike,
                 quantity=1,
             )
+            self._last_exit_trigger = result  # stored for retry
             exit_data = {
                 "order_id": exit_sub.order_id, "exit_reason": exit_sub.exit_reason,
                 "con_id": self._entry_con_id, "quantity": 1, "status": exit_sub.status,
@@ -530,11 +651,14 @@ class MaxBotTradeOrchestrator:
         self._exit_monitor = None
         self._exit_submission = None
         self._exit_order_id = None
+        self._last_exit_trigger = None
         self._signal_status = None
         self._underlying_triggers = None
         self._resolved_direction = None
         self._trade_events = {}
         self._emitted_terminal = set()
+        self._exit_retry_count = 0
+        self._exit_last_retry_time = 0.0
 
     def _do_emit(self, event_type, direction=None, data=None):
         """Emit an event via the injected callback, if present."""
