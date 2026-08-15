@@ -89,6 +89,7 @@ class SignalResult:
     failed_stage: str | None = None
     pipeline_stage: str | None = None   # human-readable stage label
     stage_context: dict | None = None   # key data from reached stages
+    setup_key: str | None = None        # structural identity: "direction:break_time_ms"
 
 
 # ── Stage label mapping ──────────────────────────────────────────────────────
@@ -425,6 +426,17 @@ class LiveSignalDetector:
         conf_idx = rej["confirmation_candle_index"]
         entry_ts_ms = sc_candles[conf_idx]["time_ms"]
 
+        # Setup key: structural identity of this BDRR sequence.
+        # Same break + direction = same setup, regardless of which
+        # bar evaluates it.  A genuinely new setup will have a
+        # different break_time_ms (new break candle).
+        break_time_ms = brk.get("break_candle_index")
+        if break_time_ms is not None and break_time_ms < len(sc_candles):
+            break_ts = sc_candles[break_time_ms]["time_ms"]
+        else:
+            break_ts = 0
+        setup_key = f"{self._direction}:{break_ts}"
+
         return SignalResult(
             status=SignalStatus.SIGNAL,
             direction=self._direction,
@@ -434,4 +446,5 @@ class LiveSignalDetector:
             entry_timestamp_ms=entry_ts_ms,
             detection_result=detection_result,
             trade_plan=trade_plan,
+            setup_key=setup_key,
         )

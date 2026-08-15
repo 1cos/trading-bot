@@ -24,6 +24,7 @@ Does NOT:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import StrEnum, unique
@@ -38,6 +39,8 @@ from trading_lab.live.exit_fill_monitor import (
 from trading_lab.live.option_order_builder import build_option_entry_order
 from trading_lab.live.signal_detector import SignalStatus
 from trading_lab.live.underlying_exit_monitor import ExitState, UnderlyingExitMonitor
+
+log = logging.getLogger("maxbot")
 
 
 # ── Lifecycle state ──────────────────────────────────────────────────────────
@@ -146,6 +149,12 @@ class MaxBotTradeOrchestrator:
 
         # Pending signal (set by _check_for_signal, consumed by execute_pending_signal)
         self._pending_signal = None
+
+        # Consumed setup keys — a setup that has produced a trade cannot
+        # re-enter.  Keyed by setup_key (direction:break_time_ms).
+        # A genuinely new BDRR sequence will have a different break,
+        # producing a different setup_key.
+        self._consumed_setups: set[str] = set()
 
         # Per-trade telemetry context (events for TRADE_COMPLETED)
         self._trade_events: dict[str, object] = {}
@@ -337,6 +346,10 @@ class MaxBotTradeOrchestrator:
 
         If a signal is found, stores it in _pending_signal for
         later execution by execute_pending_signal().
+
+        A setup whose setup_key has already been consumed (produced
+        a trade) is rejected.  A new entry requires a structurally
+        different BDRR sequence (different break candle).
         """
         if not self._trade_manager.can_trade:
             self._lifecycle = LifecycleState.DONE_FOR_DAY
@@ -348,6 +361,16 @@ class MaxBotTradeOrchestrator:
 
         result = self._signal_detector.evaluate(sess)
         if result.status != SignalStatus.SIGNAL:
+            return
+
+        # Reject same-setup re-entry: a consumed setup cannot produce
+        # another trade.  Only a genuinely new BDRR sequence (new break)
+        # is allowed.
+        if result.setup_key and result.setup_key in self._consumed_setups:
+            log.info(
+                f"[{self._symbol}] SETUP_ALREADY_CONSUMED "
+                f"key={result.setup_key} — skipping re-entry"
+            )
             return
 
         # Store pending signal — execution deferred outside callback
@@ -369,6 +392,11 @@ class MaxBotTradeOrchestrator:
         if result is None:
             return
         self._pending_signal = None
+
+        # Mark this setup as consumed — prevents same-setup re-entry
+        # after exit.  Only a new BDRR sequence can generate another trade.
+        if result.setup_key:
+            self._consumed_setups.add(result.setup_key)
 
         resolved_direction = result.direction
 
