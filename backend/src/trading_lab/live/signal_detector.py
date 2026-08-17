@@ -231,32 +231,53 @@ class LiveSignalDetector:
         """The result of the most recent evaluate() call."""
         return self._last_result
 
-    def evaluate(self, session: dict) -> SignalResult:
+    def evaluate(self, session: dict, consumed_setup_keys: set[str] | None = None) -> SignalResult:
         """Evaluate the current session snapshot for a valid signal.
 
         Parameters
         ----------
         session : dict
             Session dict as produced by ``LiveSessionBuilder.current_session()``.
-            Must contain: symbol, date, market_timezone, session_open_utc_ms,
-            session_close_utc_ms, timeframe, candles.
-            Optionally: warmup_candles, warmup_previous_close.
+        consumed_setup_keys : set[str] | None
+            Setup keys that have already produced a trade this session.
+            If the first BDRR sequence found matches a consumed key,
+            the detector continues scanning for the next valid sequence.
 
         Returns
         -------
         SignalResult
-            NO_SETUP if no valid entry exists yet.
-            SIGNAL if the BDRR pattern is complete through the entry candle.
 
-        This method is pure and stateless — calling it repeatedly with
-        the same session produces the same result.  It caches the last
-        result in ``last_result`` for observability.
+        This method caches the last result in ``last_result``.
         """
-        result = self._evaluate_inner(session)
+        consumed = consumed_setup_keys or set()
+        skip_before = 0
+
+        # Loop to skip consumed setups and find the next valid one.
+        # Each iteration finds the first BDRR sequence starting from
+        # skip_before.  If that sequence is consumed, advance past its
+        # break candle and try again.
+        result = None
+        for _attempt in range(10):  # safety cap
+            result = self._evaluate_inner(session, skip_before=skip_before)
+
+            if result.status != SignalStatus.SIGNAL:
+                break
+
+            if not result.setup_key or result.setup_key not in consumed:
+                break  # genuinely new setup
+
+            # This setup is consumed — skip past its break candle
+            ctx = result.stage_context or {}
+            brk_idx = ctx.get("break_bar_index")
+            if brk_idx is not None:
+                skip_before = brk_idx + 1
+            else:
+                break  # can't determine break index, stop
+
         self._last_result = result
         return result
 
-    def _evaluate_inner(self, session: dict) -> SignalResult:
+    def _evaluate_inner(self, session: dict, skip_before: int = 0) -> SignalResult:
         """Core evaluation logic — no side effects."""
         if session is None:
             return _no_setup("NO_SESSION")
@@ -295,7 +316,10 @@ class LiveSignalDetector:
         }
 
         # ── Stage 2: Break ───────────────────────────────────────────────
-        brk = find_break(sc_candles, level_result, self._engine_config)
+        break_config = self._engine_config
+        if skip_before > 0:
+            break_config = {**self._engine_config, "_scan_start_index": skip_before}
+        brk = find_break(sc_candles, level_result, break_config)
         if brk.get("status") != "OK":
             return _no_setup(brk.get("failed_stage"), stage_context=orb_ctx)
 
@@ -447,4 +471,6 @@ class LiveSignalDetector:
             detection_result=detection_result,
             trade_plan=trade_plan,
             setup_key=setup_key,
+            pipeline_stage="SIGNAL",
+            stage_context=break_ctx,
         )

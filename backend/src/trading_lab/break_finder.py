@@ -156,7 +156,10 @@ def find_break(
     tick_size = config["tick_size"]
     is_short = direction == "SHORT"
 
-    for i in range(orb_idx + 1, len(candles)):
+    # Optional: start scanning after a consumed break's index
+    scan_start = max(orb_idx + 1, config.get("_scan_start_index", 0))
+
+    for i in range(scan_start, len(candles)):
         c = candles[i]
         if is_short:
             # SHORT: strict < on raw float close

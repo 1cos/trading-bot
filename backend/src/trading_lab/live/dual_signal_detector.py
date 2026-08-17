@@ -39,19 +39,19 @@ class DualSignalDetector:
         """The result of the most recent evaluate() call."""
         return self._last_result
 
-    def evaluate(self, session: dict) -> SignalResult:
+    def evaluate(self, session: dict, consumed_setup_keys: set[str] | None = None) -> SignalResult:
         """Evaluate the session for both LONG and SHORT setups.
 
         Returns the first valid SIGNAL found (LONG checked first).
         If neither direction has a signal, returns the result from
         whichever direction progressed further in the pipeline.
         """
-        long_result = self._long.evaluate(session)
+        long_result = self._long.evaluate(session, consumed_setup_keys=consumed_setup_keys)
         if long_result.status == SignalStatus.SIGNAL:
             self._last_result = long_result
             return long_result
 
-        short_result = self._short.evaluate(session)
+        short_result = self._short.evaluate(session, consumed_setup_keys=consumed_setup_keys)
         if short_result.status == SignalStatus.SIGNAL:
             self._last_result = short_result
             return short_result

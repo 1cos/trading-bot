@@ -479,7 +479,9 @@ class MaxBotTradeOrchestrator:
         if sess is None:
             return
 
-        result = self._signal_detector.evaluate(sess)
+        result = self._signal_detector.evaluate(
+            sess, consumed_setup_keys=self._consumed_setups
+        )
         if result.status != SignalStatus.SIGNAL:
             return
 
