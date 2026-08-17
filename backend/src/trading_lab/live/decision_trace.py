@@ -138,32 +138,36 @@ def _stage_detail(stage: str, failed: str, ctx: dict) -> str:
         return stage or ""
 
     # ORB building
-    if failed in ("ORB_BUILDING", "ORB_NOT_COMPLETE"):
+    if failed in ("ORB_BUILDING", "ORB_NOT_COMPLETE", "LEVEL_NOT_FOUND"):
         return "building ORB"
 
     # Break
     if failed == "BREAK_NOT_FOUND":
-        return "ORB complete — no break yet"
+        return "waiting for break"
 
     # Displacement
-    if failed in ("DISPLACEMENT_NOT_CONFIRMED", "DISPLACEMENT_BUILDING"):
+    if failed in ("DISPLACEMENT_NOT_CONFIRMED", "DISPLACEMENT_BUILDING",
+                  "DISPLACEMENT_TOO_SHORT"):
         count = ctx.get("displacement_bars", 0)
         req = ctx.get("displacement_required", 3)
-        return f"displacement building {count}/{req} candles"
+        return f"displacement {count}/{req}"
 
-    # Retest
-    if failed == "RETEST_TOO_EARLY":
-        return "retest attempt too early (still in displacement zone)"
-    if failed in ("RETEST_NOT_IN_WINDOW", "NO_RETEST_IN_WINDOW"):
-        return "waiting for price to return to level for retest"
+    # Retest too early
+    if failed == "RETEST_BEFORE_DISPLACEMENT":
+        return "retest too early — displacement not confirmed"
+
+    # Waiting for retest
+    if failed == "RETEST_NOT_FOUND":
+        count = ctx.get("displacement_bars", "?")
+        return f"waiting for retest (disp={count})"
 
     # Rejection
     if failed == "NO_QUALIFYING_REJECTION_CANDLE":
-        return "retest detected — no qualifying entry candle yet"
+        return "retest — no qualifying entry candle"
 
-    # Sequence
+    # Sequence invalidated
     if failed == "SEQUENCE_INVALIDATED":
-        return "sequence invalidated — price re-entered ORB"
+        return "setup invalidated — price re-entered ORB"
 
     return failed
 

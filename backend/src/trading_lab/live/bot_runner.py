@@ -133,14 +133,20 @@ def _format_stage(pipeline_stage: str, failed_stage: str | None,
                   ctx: dict) -> str:
     """Format pipeline stage into a detailed human-readable log suffix.
 
-    Examples:
-        [NO BREAK] LONG ORB H=726.02 L=724.03
-        [BREAK LONG] 09:36 close=727.90 > level=726.02
-        [DISP BUILDING] LONG 1/3 bars, break=727.90@09:36
-        [DISP CONFIRMED] LONG 4 bars, waiting retest
-        [RETEST — NO ENTRY] disp=7, rules: BODY_INSIDE_ORB
-        [RETEST TOO EARLY]
-        [SEQUENCE INVALIDATED]
+    The format reflects the CURRENT candle's relationship to the pipeline,
+    not just the last historical event.  Each stage has a distinct name
+    so the PWA/terminal can show where in the BDRR sequence the bot is.
+
+    Stages (in order):
+        BUILDING ORB           — ORB candles still accumulating
+        WAITING FOR BREAK      — ORB complete, no break yet
+        DISP BUILDING 1/3      — break found, displacement not confirmed
+        RETEST TOO EARLY       — candle touched level before displacement
+        DISP CONFIRMED         — displacement complete, waiting retest
+        WAITING FOR RETEST     — displacement done, price hasn't returned
+        RETEST — NO ENTRY      — retest found, no qualifying entry candle
+        SEQUENCE INVALIDATED   — 2+ closes back inside ORB after displacement
+        SIGNAL                 — entry candle accepted
     """
     from datetime import datetime, timezone
     from zoneinfo import ZoneInfo
@@ -164,25 +170,25 @@ def _format_stage(pipeline_stage: str, failed_stage: str | None,
         return " [BUILDING ORB]"
 
     if failed_stage == "BREAK_NOT_FOUND":
-        return f" [NO BREAK] {direction} ORB H={orb_h:.2f} L={orb_l:.2f}"
+        return f" [WAITING FOR BREAK] {direction} ORB H={orb_h:.2f} L={orb_l:.2f}"
 
     if failed_stage == "DISPLACEMENT_TOO_SHORT":
         bt = _time_str(break_time)
         return (f" [DISP BUILDING] {direction} {disp_bars}/{disp_req} bars"
                 f", break={break_close:.2f}@{bt}")
 
-    if failed_stage == "RETEST_NOT_FOUND":
-        bt = _time_str(break_time)
-        return (f" [DISP CONFIRMED] {direction} {disp_bars} bars"
-                f", break={break_close:.2f}@{bt}, waiting retest")
-
     if failed_stage == "RETEST_BEFORE_DISPLACEMENT":
         bt = _time_str(break_time)
         return f" [RETEST TOO EARLY] {direction}, break={break_close:.2f}@{bt}"
 
+    if failed_stage == "RETEST_NOT_FOUND":
+        bt = _time_str(break_time)
+        return (f" [WAITING FOR RETEST] {direction} disp={disp_bars}"
+                f", break={break_close:.2f}@{bt}")
+
     if failed_stage == "SEQUENCE_INVALIDATED":
         inv_idx = ctx.get("invalidation_index")
-        return f" [SEQUENCE INVALIDATED] {direction}, at bar {inv_idx}"
+        return f" [SETUP INVALIDATED] {direction}, at bar {inv_idx}"
 
     if failed_stage == "NO_QUALIFYING_REJECTION_CANDLE":
         rules = ctx.get("failed_rules", [])
