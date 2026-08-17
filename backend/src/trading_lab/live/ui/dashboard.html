@@ -386,14 +386,28 @@ function updateSymbols(symbols) {
     else if (s.feed_status === 'LIVE') feedLabel = '<span style="color:var(--green);font-size:11px;margin-left:6px">LIVE</span>';
     else if (s.feed_status === 'INITIALIZING') feedLabel = '<span style="color:var(--dim);font-size:11px;margin-left:6px">INIT</span>';
 
-    html += `<div class="${cls}"><div class="sym-card"><span class="sym-name">${s.symbol}${feedLabel}</span><span class="sym-state" style="${stateClass}">${s.enabled ? (s.lifecycle || '—').replace(/_/g,' ') : 'DISABLED'}</span></div>`;
+    // Current state: use new current_state if available, else fallback to lifecycle
+    let mainState = s.lifecycle || '—';
+    if (s.current_state && !isActive) {
+      mainState = s.current_state;
+    }
+    mainState = mainState.replace(/_/g, ' ');
+
+    html += `<div class="${cls}"><div class="sym-card"><span class="sym-name">${s.symbol}${feedLabel}</span><span class="sym-state" style="${stateClass}">${s.enabled ? mainState : 'DISABLED'}</span></div>`;
     if (detail) html += `<div class="sym-detail">${detail}</div>`;
     // ORB levels
     if (s.orb_high != null) html += `<div class="sym-levels" style="color:var(--accent)">ORB H ${s.orb_high.toFixed(2)} · L ${s.orb_low.toFixed(2)}</div>`;
     if (levels) html += `<div class="sym-levels">${levels}</div>`;
     if (ctx) html += `<div class="sym-levels">${ctx}</div>`;
-    // Pipeline stage
-    if (s.pipeline_stage) html += `<div class="sym-detail" style="color:var(--cyan);font-size:11px">${s.pipeline_stage}</div>`;
+    // Pipeline detail: show candle_event + direction/displacement info
+    if (s.current_state && !isActive) {
+      let pipeInfo = '';
+      const dir = s.pipeline_stage || '';
+      if (s.candle_event) pipeInfo = s.candle_event.replace(/_/g, ' ');
+      if (pipeInfo) html += `<div class="sym-detail" style="color:var(--cyan);font-size:11px">Last: ${pipeInfo}</div>`;
+    } else if (s.pipeline_stage) {
+      html += `<div class="sym-detail" style="color:var(--cyan);font-size:11px">${s.pipeline_stage}</div>`;
+    }
     if (!s.enabled && s.error) html += `<div class="sym-detail" style="color:var(--red)">${s.error}</div>`;
     html += '</div>';
 
