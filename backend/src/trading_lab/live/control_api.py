@@ -274,6 +274,11 @@ class MaxBotController:
             if rt.orb_high is not None:
                 entry["orb_high"] = rt.orb_high
                 entry["orb_low"] = rt.orb_low
+            # Current state / last candle event from decision trace
+            if rt.decision_trace:
+                last_trace = rt.decision_trace[-1]
+                entry["current_state"] = last_trace.get("current_state", "")
+                entry["candle_event"] = last_trace.get("candle_event", "")
             result.append(entry)
         return result
 

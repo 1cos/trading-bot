@@ -63,6 +63,13 @@ class CandleDecision:
     orb_state: str              # INSIDE_ORB, ABOVE_ORB_HIGH, BELOW_ORB_LOW
     orb_high: float | None = None
     orb_low: float | None = None
+
+    # Separated state model:
+    # current_state = where in the BDRR sequence the detector is NOW
+    # candle_event  = what THIS specific candle contributed
+    current_state: str = ""     # BUILDING_ORB, WAITING_FOR_BREAK, etc.
+    candle_event: str = ""      # INSIDE_ORB, BREAK_SHORT, DISPLACEMENT_2_OF_3, etc.
+
     pipeline_stage: str = ""    # deepest stage reached
     failed_stage: str = ""      # why it stopped
     stage_detail: str = ""      # human-readable one-liner
@@ -91,6 +98,74 @@ def _orb_state(close: float, high: float, low: float, orb_high: float, orb_low: 
         return "BELOW_ORB_LOW"
     else:
         return "INSIDE_ORB"
+
+
+def _compute_current_state(failed_stage: str | None, is_signal: bool) -> str:
+    """Map pipeline failure to the detector's current state.
+
+    This is WHERE in the BDRR sequence the detector is, not what
+    the last candle did.
+    """
+    if is_signal:
+        return "SIGNAL"
+    if not failed_stage:
+        return "UNKNOWN"
+    return {
+        "NO_SESSION": "NO_SESSION",
+        "NO_CANDLES": "NO_CANDLES",
+        "LEVEL_NOT_FOUND": "BUILDING_ORB",
+        "BREAK_NOT_FOUND": "WAITING_FOR_BREAK",
+        "DISPLACEMENT_TOO_SHORT": "WAITING_FOR_DISPLACEMENT",
+        "RETEST_BEFORE_DISPLACEMENT": "WAITING_FOR_DISPLACEMENT",
+        "RETEST_NOT_FOUND": "WAITING_FOR_RETEST",
+        "SEQUENCE_INVALIDATED": "WAITING_FOR_BREAK",
+        "NO_QUALIFYING_REJECTION_CANDLE": "WAITING_FOR_ENTRY_CANDLE",
+    }.get(failed_stage, failed_stage)
+
+
+def _compute_candle_event(
+    failed_stage: str | None,
+    is_signal: bool,
+    orb_state: str,
+    ctx: dict,
+) -> str:
+    """Describe what THIS specific candle contributed.
+
+    This is the candle-specific event, not the persistent state.
+    """
+    if is_signal:
+        return "SIGNAL"
+
+    if not failed_stage:
+        return orb_state
+
+    direction = ctx.get("direction", "")
+    disp_count = ctx.get("displacement_bars", 0)
+    disp_req = ctx.get("displacement_required", 3)
+
+    if failed_stage == "LEVEL_NOT_FOUND":
+        return "BUILDING_ORB"
+
+    if failed_stage == "BREAK_NOT_FOUND":
+        return orb_state  # INSIDE_ORB / ABOVE / BELOW
+
+    if failed_stage == "DISPLACEMENT_TOO_SHORT":
+        return f"DISPLACEMENT_{disp_count}_OF_{disp_req}"
+
+    if failed_stage == "RETEST_BEFORE_DISPLACEMENT":
+        return "RETEST_TOO_EARLY"
+
+    if failed_stage == "RETEST_NOT_FOUND":
+        # Displacement confirmed but no retest yet — candle is outside ORB
+        return f"OUTSIDE_ORB_{direction}"
+
+    if failed_stage == "SEQUENCE_INVALIDATED":
+        return "SETUP_INVALIDATED"
+
+    if failed_stage == "NO_QUALIFYING_REJECTION_CANDLE":
+        return "ENTRY_REJECTED"
+
+    return failed_stage
 
 
 def _parse_rejection_detail(rec: dict) -> RejectionDetail:
@@ -245,6 +320,11 @@ def build_candle_trace(
     # Stage detail
     detail = _stage_detail(ps, fs, ctx)
 
+    # State/event model
+    is_signal = signal_result.status.value == "SIGNAL" if signal_result.status else False
+    cur_state = _compute_current_state(fs, is_signal)
+    cnd_event = _compute_candle_event(fs, is_signal, orb_st, ctx)
+
     return CandleDecision(
         time_ms=candle["time_ms"],
         time_str=time_str,
@@ -253,6 +333,8 @@ def build_candle_trace(
         orb_state=orb_st,
         orb_high=oh,
         orb_low=ol,
+        current_state=cur_state,
+        candle_event=cnd_event,
         pipeline_stage=ps,
         failed_stage=fs,
         stage_detail=detail,
@@ -277,7 +359,8 @@ def build_candle_trace(
 def format_trace_line(d: CandleDecision) -> str:
     """Format a CandleDecision as a compact single-line trace for terminal."""
     parts = [f"[{d.symbol}] {d.time_str} C={d.close:.2f}"]
-    parts.append(d.orb_state)
+    parts.append(d.candle_event)
+    parts.append(d.current_state)
 
     if not d.break_detected:
         parts.append(d.stage_detail)
@@ -334,6 +417,8 @@ def trace_to_dict(d: CandleDecision) -> dict:
         "orb_state": d.orb_state,
         "orb_high": d.orb_high,
         "orb_low": d.orb_low,
+        "current_state": d.current_state,
+        "candle_event": d.candle_event,
         "stage": d.pipeline_stage,
         "failed_stage": d.failed_stage,
         "detail": d.stage_detail,

@@ -294,6 +294,8 @@ class TestFormatTraceLine:
         d = CandleDecision(
             time_ms=1000, time_str="09:31", symbol="QQQ",
             close=732.50, orb_state="INSIDE_ORB",
+            current_state="WAITING_FOR_BREAK",
+            candle_event="INSIDE_ORB",
             pipeline_stage="BUILDING ORB", failed_stage="ORB_BUILDING",
             stage_detail="building ORB",
         )
