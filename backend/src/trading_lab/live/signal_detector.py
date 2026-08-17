@@ -250,34 +250,108 @@ class LiveSignalDetector:
         -------
         SignalResult
 
-        This method caches the last result in ``last_result``.
+        Skips two kinds of stale breaks:
+        1. Consumed setups (already traded, via setup_key)
+        2. Dead breaks (failed at pre-displacement stage AND subsequent
+           candles show consecutive_orb_closes inside ORB — same existing
+           invalidation rule, applied earlier)
         """
         consumed = consumed_setup_keys or set()
         skip_before = 0
 
-        # Loop to skip consumed setups and find the next valid one.
-        # Each iteration finds the first BDRR sequence starting from
-        # skip_before.  If that sequence is consumed, advance past its
-        # break candle and try again.
+        # Loop to skip consumed/dead setups and find the next valid one.
         result = None
         for _attempt in range(10):  # safety cap
             result = self._evaluate_inner(session, skip_before=skip_before)
 
-            if result.status != SignalStatus.SIGNAL:
+            if result.status == SignalStatus.SIGNAL:
+                if not result.setup_key or result.setup_key not in consumed:
+                    break  # genuinely new setup — use it
+                # Consumed setup — skip past its break
+                ctx = result.stage_context or {}
+                brk_idx = ctx.get("break_bar_index")
+                if brk_idx is not None:
+                    skip_before = brk_idx + 1
+                    continue
                 break
 
-            if not result.setup_key or result.setup_key not in consumed:
-                break  # genuinely new setup
+            # NO_SETUP — check if this is a dead break we should skip
+            if result.status == SignalStatus.NO_SETUP and result.failed_stage in (
+                "RETEST_BEFORE_DISPLACEMENT",
+                "DISPLACEMENT_TOO_SHORT",
+            ):
+                ctx = result.stage_context or {}
+                brk_idx = ctx.get("break_bar_index")
+                if brk_idx is not None and session and isinstance(session.get("candles"), list):
+                    candles = session["candles"]
+                    orb_high = ctx.get("orb_high")
+                    orb_low = ctx.get("orb_low")
+                    direction = ctx.get("direction", self._direction)
+                    threshold = self._engine_config.get("consecutive_orb_closes", 2)
 
-            # This setup is consumed — skip past its break candle
-            ctx = result.stage_context or {}
-            brk_idx = ctx.get("break_bar_index")
-            if brk_idx is not None:
-                skip_before = brk_idx + 1
-            else:
-                break  # can't determine break index, stop
+                    if self._is_break_dead(candles, brk_idx, direction,
+                                           orb_high, orb_low, threshold):
+                        skip_before = brk_idx + 1
+                        continue
+
+            # Not a dead break — return as-is
+            break
 
         self._last_result = result
+        return result
+
+    @staticmethod
+    def _is_break_dead(
+        candles: list[dict],
+        break_idx: int,
+        direction: str,
+        orb_high: float | None,
+        orb_low: float | None,
+        threshold: int,
+    ) -> bool:
+        """Check if a break is dead — price returned to ORB and stayed.
+
+        Uses the same consecutive_orb_closes rule as sequence validation,
+        applied to the candles after the break.  If N consecutive candles
+        closed back inside ORB after the break, the break is dead.
+
+        Parameters
+        ----------
+        candles : list[dict]
+            Session candles.
+        break_idx : int
+            Index of the break candle.
+        direction : str
+            'LONG' or 'SHORT'.
+        orb_high, orb_low : float | None
+            ORB boundaries.
+        threshold : int
+            Number of consecutive closes inside ORB to declare dead.
+
+        Returns
+        -------
+        bool
+            True if the break is dead.
+        """
+        if orb_high is None or orb_low is None:
+            return False
+
+        consecutive = 0
+        for i in range(break_idx + 1, len(candles)):
+            close = candles[i]["close"]
+            if direction == "SHORT":
+                inside = close >= orb_low
+            else:
+                inside = close <= orb_high
+
+            if inside:
+                consecutive += 1
+                if consecutive >= threshold:
+                    return True
+            else:
+                consecutive = 0
+
+        return False
         return result
 
     def _evaluate_inner(self, session: dict, skip_before: int = 0) -> SignalResult:
