@@ -90,6 +90,7 @@ class SignalResult:
     pipeline_stage: str | None = None   # human-readable stage label
     stage_context: dict | None = None   # key data from reached stages
     setup_key: str | None = None        # structural identity: "direction:break_time_ms"
+    rejection_detail: dict | None = None  # raw rejection finder result (for trace)
 
 
 # ── Stage label mapping ──────────────────────────────────────────────────────
@@ -120,12 +121,14 @@ def _stage_label(failed_stage: str | None) -> str:
 
 
 def _no_setup(failed_stage: str | None = None,
-              stage_context: dict | None = None) -> SignalResult:
+              stage_context: dict | None = None,
+              rejection_detail: dict | None = None) -> SignalResult:
     return SignalResult(
         status=SignalStatus.NO_SETUP,
         failed_stage=failed_stage,
         pipeline_stage=_stage_label(failed_stage),
         stage_context=stage_context,
+        rejection_detail=rejection_detail,
     )
 
 
@@ -395,7 +398,8 @@ class LiveSignalDetector:
                 retest_ctx["last_candle_close"] = float(last_c["close"])
                 retest_ctx["last_candle_time_ms"] = last_c["time_ms"]
             return _no_setup(rej.get("failed_stage"),
-                             stage_context=retest_ctx)
+                             stage_context=retest_ctx,
+                             rejection_detail=rej)
 
         # ── DetectionResult/v1 ───────────────────────────────────────────
         tf_seconds = timeframe_to_seconds(session.get("timeframe", "1m"))

@@ -285,6 +285,16 @@ class MaxBotController:
         events = runner.session_log.events_since(since)
         return [e.to_dict() for e in events]
 
+    def get_trace(self, symbol: str, limit: int = 30) -> list[dict]:
+        """Return candle-by-candle decision trace for one symbol."""
+        runner = self._runner
+        if not runner:
+            return []
+        rt = runner._runtimes.get(symbol)
+        if not rt:
+            return []
+        return rt.decision_trace[-limit:]
+
     def get_session_summary(self) -> dict:
         """Return session summary."""
         runner = self._runner
@@ -412,6 +422,12 @@ def create_app(controller: MaxBotController | None = None) -> Flask:
         if data is None:
             return jsonify({"error": "No session available"}), 404
         return jsonify(data)
+
+    @app.route("/api/trace/<symbol>")
+    def symbol_trace(symbol):
+        """Candle-by-candle decision trace for one symbol."""
+        limit = request.args.get("limit", 30, type=int)
+        return jsonify(ctrl.get_trace(symbol.upper(), limit))
 
     @app.route("/api/session/export.md")
     def session_export_md():

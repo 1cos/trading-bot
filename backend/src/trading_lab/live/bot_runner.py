@@ -53,6 +53,11 @@ from trading_lab.live.execution_queue import (
     ExecutionWorkItem,
     WorkItemType,
 )
+from trading_lab.live.decision_trace import (
+    build_candle_trace,
+    format_trace_line,
+    trace_to_dict,
+)
 from trading_lab.live.context_levels import (
     ContextLevels,
     fetch_previous_session_bars,
@@ -693,6 +698,9 @@ class MaxBotRunner:
                     f"[{rt.symbol}] {time_str} C={candle['close']:.2f} → "
                     f"{result.lifecycle if result else '?'}{stage_info}"
                 )
+
+            # Record decision trace for PWA
+            self._record_trace(rt, candle, time_str)
         except Exception as e:
             log.error(f"[{rt.symbol}] Bar callback error: {e}", exc_info=True)
 
@@ -842,6 +850,28 @@ class MaxBotRunner:
             log.error(f"[{sym}] RESUBSCRIBE FAILED: {e}")
             rt.feed_status = "STALE"
 
+    def _record_trace(self, rt: SymbolRuntime, candle: dict, time_str: str) -> None:
+        """Record decision trace for one completed bar."""
+        try:
+            sd = rt.signal_detector
+            if sd is None or sd.last_result is None:
+                return
+            result = sd.last_result
+            trace = build_candle_trace(
+                candle=candle,
+                signal_result=result,
+                orb_high=rt.orb_high,
+                orb_low=rt.orb_low,
+                symbol=rt.symbol,
+                time_str=time_str,
+                rejection_data=result.rejection_detail,
+            )
+            rt.decision_trace.append(trace_to_dict(trace))
+            if len(rt.decision_trace) > rt.max_trace_entries:
+                rt.decision_trace.pop(0)
+        except Exception as e:
+            log.debug(f"[{rt.symbol}] Trace error: {e}")
+
     # ── Bar polling fallback ───────────────────────────────────────────
 
     def _poll_bars_fallback(self) -> None:
@@ -936,6 +966,9 @@ class MaxBotRunner:
                         f"{result.lifecycle if result else '?'}{stage_info} "
                         f"(poll)"
                     )
+
+                # Record decision trace for PWA
+                self._record_trace(rt, candle, time_str)
             except Exception as e:
                 log.error(f"[{sym}] Poll fallback error: {e}", exc_info=True)
 

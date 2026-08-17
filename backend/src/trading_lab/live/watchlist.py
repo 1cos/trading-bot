@@ -69,6 +69,10 @@ class SymbolRuntime:
     bars_object_id: int = 0   # id() of current BarDataList — tracks object identity
     listener_count: int = 0   # updateEvent listener count after registration
 
+    # Decision trace — last N candle decisions for PWA display
+    decision_trace: list = field(default_factory=list)
+    max_trace_entries: int = 60  # keep last 60 candles (~1 hour)
+
     # Pipeline observability
     pipeline_stage: str = ""        # e.g. "BUILDING ORB", "ORB COMPLETE — NO BREAK"
     orb_high: float | None = None
