@@ -213,6 +213,24 @@ class MaxBotTradeOrchestrator:
         fill_result = check_fill(self._entry_submission)
 
         if fill_result.state == FillState.FILLED:
+            # SAFETY: require positive evidence of fill before POSITION_OPEN.
+            # An order that shows "Filled" status but filled_quantity == 0
+            # must NOT transition to POSITION_OPEN.
+            if fill_result.filled_quantity <= 0:
+                log.error(
+                    f"[{self._symbol}] FILL ANOMALY — status=Filled but "
+                    f"filled_qty={fill_result.filled_quantity}, "
+                    f"order_id={fill_result.order_id}. "
+                    f"Treating as CANCELLED for safety."
+                )
+                self._do_emit("ENTRY_FILL_ANOMALY", direction=self._resolved_direction,
+                              data={"order_id": fill_result.order_id,
+                                    "broker_status": fill_result.broker_status,
+                                    "filled_quantity": fill_result.filled_quantity})
+                self._clear_active_trade()
+                self._lifecycle = LifecycleState.WAITING_FOR_SIGNAL
+                return self.status
+
             activated = self._fill_activator.apply_if_filled(fill_result)
             if self._emit_once("ENTRY_FILLED"):
                 fill_data = {
