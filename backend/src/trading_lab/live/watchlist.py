@@ -68,6 +68,7 @@ class SymbolRuntime:
     subscription_start_time: float = 0.0  # monotonic time of subscription creation
     bars_object_id: int = 0   # id() of current BarDataList — tracks object identity
     listener_count: int = 0   # updateEvent listener count after registration
+    last_known_bars_count: int = 0  # for detecting whether BarDataList is still growing
 
     # Decision trace — last N candle decisions for PWA display
     decision_trace: list = field(default_factory=list)

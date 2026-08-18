@@ -743,9 +743,21 @@ class MaxBotRunner:
                         self._emit(EventType.ERROR, symbol=sym,
                                    data={"error": "initializing_timeout",
                                          "elapsed_secs": round(elapsed)})
-                        # Attempt resubscribe with cooldown
+                        # Attempt resubscribe with cooldown — but NOT if
+                        # BarDataList is actively growing (data arriving,
+                        # updateEvent broken). Compare current bar count
+                        # to last known count to detect real growth.
                         since_last = mono_now - rt.last_resubscribe_time
-                        if since_last >= self.RESUBSCRIBE_COOLDOWN_SECS:
+                        current_count = len(rt.bars) if rt.bars is not None else 0
+                        bars_growing = current_count > rt.last_known_bars_count
+                        rt.last_known_bars_count = current_count
+                        if bars_growing:
+                            log.debug(
+                                f"[{sym}] INIT but bars growing "
+                                f"({current_count}) — skipping resubscribe, "
+                                f"poll fallback active"
+                            )
+                        elif since_last >= self.RESUBSCRIBE_COOLDOWN_SECS:
                             self._resubscribe_symbol(rt, mono_now)
                 continue
 
@@ -763,9 +775,18 @@ class MaxBotRunner:
                                data={"error": "feed_stale",
                                      "last_bar_age_secs": round(age_secs)})
 
-                # Attempt resubscribe with cooldown
+                # Attempt resubscribe with cooldown — but NOT if
+                # BarDataList is actively growing (poll fallback handles it)
                 since_last = mono_now - rt.last_resubscribe_time
-                if since_last >= self.RESUBSCRIBE_COOLDOWN_SECS:
+                current_count = len(rt.bars) if rt.bars is not None else 0
+                bars_growing = current_count > rt.last_known_bars_count
+                rt.last_known_bars_count = current_count
+                if bars_growing:
+                    log.debug(
+                        f"[{sym}] STALE but bars growing "
+                        f"({current_count}) — skipping resubscribe"
+                    )
+                elif since_last >= self.RESUBSCRIBE_COOLDOWN_SECS:
                     self._resubscribe_symbol(rt, mono_now)
             else:
                 if rt.feed_status == "STALE":
