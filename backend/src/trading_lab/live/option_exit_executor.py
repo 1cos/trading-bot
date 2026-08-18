@@ -189,7 +189,27 @@ class OptionExitExecutor:
             )
 
         # ── Build and submit ─────────────────────────────────────────
-        order = MarketOrder(action="SELL", totalQuantity=1)
+        # Explicit TIF and openClose to avoid IBKR preset interference:
+        # - tif="DAY": prevents Error 10349 "TIF was set to DAY based
+        #   on order preset" by setting it explicitly
+        # - openClose="C": tells IBKR this is a CLOSING trade, not
+        #   opening a short option. Prevents Error 201 "not able to
+        #   submit... options strategy" when IBKR misinterprets a SELL
+        #   as an opening short position.
+        order = MarketOrder(
+            action="SELL",
+            totalQuantity=quantity,
+            tif="DAY",
+            openClose="C",  # C = closing an existing position
+        )
+
+        import logging
+        log = logging.getLogger("maxbot")
+        log.info(
+            f"[{right}{expiration}{strike}] EXIT ORDER: "
+            f"action=SELL qty={quantity} type=MKT tif=DAY openClose=C "
+            f"conId={con_id} entry_order_id={entry_order_id}"
+        )
 
         trade = self._ib.placeOrder(qualified_contract, order)
 

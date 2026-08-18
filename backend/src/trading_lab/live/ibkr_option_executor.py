@@ -145,6 +145,8 @@ class IBKROptionExecutor:
             action="BUY",
             totalQuantity=1,
             lmtPrice=order_spec.limit_price,
+            tif="DAY",
+            openClose="O",  # O = opening a new position
         )
 
         trade = self._ib.placeOrder(contract, order)
