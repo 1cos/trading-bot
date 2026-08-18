@@ -603,11 +603,17 @@ class MaxBotRunner:
         Bootstrap bars are from previous sessions (loaded via reqHistoricalData
         before market open). They must NOT trigger signal evaluation — only
         populate the session builder so the ORB can be computed correctly
-        when today's live bars arrive, and populate processed_times for dedup.
+        when today's live bars arrive.
+
+        SAFETY: marks ALL bars (including the last one) in processed_times
+        to prevent _on_bar_update or _poll_bars_fallback from processing
+        historical bars as if they were live.
         """
         if not rt.bars:
             return
-        completed = list(rt.bars)[:-1] if len(rt.bars) > 1 else []
+        # Process ALL bars for context — the last bar is NOT a live bar
+        # pre-market, it's just the last historical bar from yesterday.
+        completed = list(rt.bars)
         fed = 0
         for bar in completed:
             candle = ibkr_bar_to_candle(bar, self._tz)
@@ -617,9 +623,6 @@ class MaxBotRunner:
             if candle["time_ms"] in rt.processed_times:
                 continue
             rt.processed_times.add(candle["time_ms"])
-            # Add to session builder for context only — do NOT call
-            # orchestrator.on_bar() which would trigger signal detection
-            # on yesterday's completed BDRR setups
             if rt.session_builder:
                 rt.session_builder.add_bar(candle)
             fed += 1
@@ -660,6 +663,14 @@ class MaxBotRunner:
 
             rt.processed_times.add(candle["time_ms"])
             rt.processed_bar_count += 1
+
+            # ── LIVE BOUNDARY CHECK ──────────────────────────────────
+            # A bar from a previous session must NEVER trigger execution.
+            # Feed it to session builder for context, then return.
+            if not self._is_live_bar(candle, rt):
+                if rt.session_builder:
+                    rt.session_builder.add_bar(candle)
+                return
 
             # ONE signal evaluation via orchestrator.on_bar()
             # This calls session_builder.add_bar + signal_detector.evaluate
@@ -877,6 +888,23 @@ class MaxBotRunner:
             log.error(f"[{sym}] RESUBSCRIBE FAILED: {e}")
             rt.feed_status = "STALE"
 
+    # ── Live boundary ─────────────────────────────────────────────────
+
+    def _is_live_bar(self, candle: dict, rt: SymbolRuntime) -> bool:
+        """Check if a candle belongs to TODAY's RTH session.
+
+        A bar from a previous session date must NEVER trigger execution.
+        Only bars whose date matches the current trading date are live.
+
+        This is the primary safety gate against historical bootstrap
+        bars reaching the execution queue.
+        """
+        bar_dt = datetime.fromtimestamp(
+            candle["time_ms"] / 1000, tz=self._tz
+        )
+        today = datetime.now(self._tz).date()
+        return bar_dt.date() == today
+
     def _record_trace(self, rt: SymbolRuntime, candle: dict, time_str: str) -> None:
         """Record decision trace for one completed bar."""
         try:
@@ -946,6 +974,12 @@ class MaxBotRunner:
 
                 rt.processed_times.add(candle["time_ms"])
                 rt.processed_bar_count += 1
+
+                # ── LIVE BOUNDARY CHECK ──────────────────────────────
+                if not self._is_live_bar(candle, rt):
+                    if rt.session_builder:
+                        rt.session_builder.add_bar(candle)
+                    continue
 
                 # ONE signal evaluation via orchestrator
                 result = rt.orchestrator.on_bar(candle)

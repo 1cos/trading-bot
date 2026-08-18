@@ -480,9 +480,12 @@ class TestBotRunnerCallbackEnqueue:
 
     def _make_bar_list(self):
         """Create a bar list that ibkr_bar_to_candle can process."""
-        from datetime import datetime, timezone
+        from datetime import datetime, timezone, timedelta
+        # Use TODAY's date so _is_live_bar passes
+        now_utc = datetime.now(timezone.utc)
+        today_1035 = now_utc.replace(hour=14, minute=35, second=0, microsecond=0)
         bar = MagicMock()
-        bar.date = datetime(2026, 1, 15, 15, 35, 0, tzinfo=timezone.utc)  # 10:35 ET
+        bar.date = today_1035  # 10:35 ET today
         bar.open = 100.0
         bar.high = 101.0
         bar.low = 99.0

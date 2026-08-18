@@ -44,6 +44,7 @@ def _make_runner():
 
 
 def _make_bar(dt_utc, close=100.0):
+    """Create a bar mock. Uses provided UTC datetime."""
     bar = MagicMock()
     bar.date = dt_utc
     bar.open = close - 0.5
@@ -52,6 +53,13 @@ def _make_bar(dt_utc, close=100.0):
     bar.close = close
     bar.volume = 1000
     return bar
+
+
+def _today_utc(hour, minute):
+    """Return a UTC datetime for today at the given hour:minute."""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    return now.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
 class TestPollFallbackDetectsNewBar:
@@ -68,8 +76,8 @@ class TestPollFallbackDetectsNewBar:
         rt.signal_detector.last_result = None
 
         # Two bars: completed + live
-        completed = _make_bar(datetime(2026, 1, 15, 14, 31, 0, tzinfo=timezone.utc), 100.0)
-        live = _make_bar(datetime(2026, 1, 15, 14, 32, 0, tzinfo=timezone.utc), 100.5)
+        completed = _make_bar(_today_utc(14, 31), 100.0)
+        live = _make_bar(_today_utc(14, 32), 100.5)
         rt.bars = [completed, live]
 
         runner._runtimes = {"SPY": rt}
@@ -90,8 +98,8 @@ class TestPollFallbackDedup:
         rt.signal_detector = MagicMock()
         rt.signal_detector.last_result = None
 
-        completed = _make_bar(datetime(2026, 1, 15, 14, 31, 0, tzinfo=timezone.utc))
-        live = _make_bar(datetime(2026, 1, 15, 14, 32, 0, tzinfo=timezone.utc))
+        completed = _make_bar(_today_utc(14, 31))
+        live = _make_bar(_today_utc(14, 32))
         rt.bars = [completed, live]
 
         # Pre-mark as processed
@@ -113,7 +121,7 @@ class TestPollFallbackLiveBarSkipped:
         rt.enabled = True
         rt.orchestrator = MagicMock()
 
-        live = _make_bar(datetime(2026, 1, 15, 14, 32, 0, tzinfo=timezone.utc))
+        live = _make_bar(_today_utc(14, 32))
         rt.bars = [live]
 
         runner._runtimes = {"SPY": rt}
@@ -134,8 +142,8 @@ class TestPollFallbackFeedTransition:
         rt.signal_detector = MagicMock()
         rt.signal_detector.last_result = None
 
-        completed = _make_bar(datetime(2026, 1, 15, 14, 31, 0, tzinfo=timezone.utc))
-        live = _make_bar(datetime(2026, 1, 15, 14, 32, 0, tzinfo=timezone.utc))
+        completed = _make_bar(_today_utc(14, 31))
+        live = _make_bar(_today_utc(14, 32))
         rt.bars = [completed, live]
 
         runner._runtimes = {"SPY": rt}
@@ -154,8 +162,8 @@ class TestPollFallbackFeedTransition:
         rt.signal_detector = MagicMock()
         rt.signal_detector.last_result = None
 
-        completed = _make_bar(datetime(2026, 1, 15, 14, 31, 0, tzinfo=timezone.utc))
-        live = _make_bar(datetime(2026, 1, 15, 14, 32, 0, tzinfo=timezone.utc))
+        completed = _make_bar(_today_utc(14, 31))
+        live = _make_bar(_today_utc(14, 32))
         rt.bars = [completed, live]
 
         runner._runtimes = {"SPY": rt}
@@ -180,8 +188,8 @@ class TestPollFallbackSignalEnqueue:
             stage_context={}, status=SignalStatus.SIGNAL,
         )
 
-        completed = _make_bar(datetime(2026, 1, 15, 14, 31, 0, tzinfo=timezone.utc))
-        live = _make_bar(datetime(2026, 1, 15, 14, 32, 0, tzinfo=timezone.utc))
+        completed = _make_bar(_today_utc(14, 31))
+        live = _make_bar(_today_utc(14, 32))
         rt.bars = [completed, live]
 
         runner._runtimes = {"SPY": rt}
@@ -200,8 +208,8 @@ class TestPollFallbackOtherSymbolsUnaffected:
         rt_qqq.orchestrator = MagicMock()
         rt_qqq.signal_detector = MagicMock()
 
-        completed = _make_bar(datetime(2026, 1, 15, 14, 31, 0, tzinfo=timezone.utc))
-        live = _make_bar(datetime(2026, 1, 15, 14, 32, 0, tzinfo=timezone.utc))
+        completed = _make_bar(_today_utc(14, 31))
+        live = _make_bar(_today_utc(14, 32))
         rt_qqq.bars = [completed, live]
 
         # QQQ already processed via callback
@@ -225,8 +233,8 @@ class TestPollFallbackErrorIsolation:
         rt.signal_detector = MagicMock()
         rt.signal_detector.last_result = None
 
-        completed = _make_bar(datetime(2026, 1, 15, 14, 31, 0, tzinfo=timezone.utc))
-        live = _make_bar(datetime(2026, 1, 15, 14, 32, 0, tzinfo=timezone.utc))
+        completed = _make_bar(_today_utc(14, 31))
+        live = _make_bar(_today_utc(14, 32))
         rt.bars = [completed, live]
 
         runner._runtimes = {"SPY": rt}
@@ -244,10 +252,10 @@ class TestPollFallbackNonRTHSkipped:
 
         # 08:30 ET = before 09:30 open
         pre_market = _make_bar(
-            datetime(2026, 1, 15, 13, 30, 0, tzinfo=timezone.utc)
+            _today_utc(4, 30)
         )
         live = _make_bar(
-            datetime(2026, 1, 15, 13, 31, 0, tzinfo=timezone.utc)
+            _today_utc(4, 31)
         )
         rt.bars = [pre_market, live]
 

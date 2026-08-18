@@ -377,8 +377,9 @@ class TestBootstrapSafety:
 
         runner._bootstrap_symbol(rt)
 
-        # session_builder.add_bar should have been called
-        assert rt.session_builder.add_bar.call_count == 2
+        # session_builder.add_bar called for ALL bars (bootstrap now
+        # processes all including last, for historical execution safety)
+        assert rt.session_builder.add_bar.call_count == 3
         # orchestrator.on_bar should NOT have been called
         rt.orchestrator.on_bar.assert_not_called()
 
