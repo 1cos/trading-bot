@@ -212,6 +212,19 @@ class MaxBotTradeOrchestrator:
 
         fill_result = check_fill(self._entry_submission)
 
+        # Diagnostic logging for every entry status check
+        log.debug(
+            f"[{self._symbol}] ENTRY_STATUS_CHECK "
+            f"order={fill_result.order_id} "
+            f"conId={fill_result.con_id} "
+            f"status={fill_result.broker_status} "
+            f"filled={fill_result.filled_quantity} "
+            f"remaining={fill_result.remaining_quantity} "
+            f"avgPrice={fill_result.average_fill_price} "
+            f"state={fill_result.state} "
+            f"lifecycle={self._lifecycle}"
+        )
+
         if fill_result.state == FillState.FILLED:
             # SAFETY: require positive evidence of fill before POSITION_OPEN.
             # An order that shows "Filled" status but filled_quantity == 0
@@ -263,9 +276,22 @@ class MaxBotTradeOrchestrator:
                 activation_time_ms=activation_ms,
             )
             self._lifecycle = LifecycleState.POSITION_OPEN
+            log.info(
+                f"[{self._symbol}] ENTRY_STATUS_CHECK → POSITION_OPEN "
+                f"order={fill_result.order_id} "
+                f"filled={fill_result.filled_quantity} "
+                f"avgPrice={fill_result.average_fill_price} "
+                f"status={fill_result.broker_status}"
+            )
 
         elif fill_result.state in (FillState.CANCELLED, FillState.REJECTED):
             cancel_type = "ENTRY_CANCELLED" if fill_result.state == FillState.CANCELLED else "ENTRY_REJECTED"
+            log.info(
+                f"[{self._symbol}] ENTRY_STATUS_CHECK → {cancel_type} "
+                f"order={fill_result.order_id} "
+                f"filled={fill_result.filled_quantity} "
+                f"status={fill_result.broker_status}"
+            )
             if self._emit_once(cancel_type):
                 self._do_emit(cancel_type, direction=self._resolved_direction,
                               data={"order_id": fill_result.order_id})
