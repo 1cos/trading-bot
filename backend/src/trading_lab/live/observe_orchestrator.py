@@ -154,6 +154,8 @@ class ObserveOrchestrator:
 
         # Consumed setup keys — same-setup re-entry prevention
         self._consumed_setups: set[str] = set()
+        # Consumed signal keys — exactly-once per signal
+        self._consumed_signals: set[str] = set()
 
         # Theoretical daily counters
         self._max_trades = max_trades
@@ -244,6 +246,10 @@ class ObserveOrchestrator:
         if result.setup_key and result.setup_key in self._consumed_setups:
             return None
 
+        # Reject same-signal re-emission (exactly-once)
+        if result.signal_key and result.signal_key in self._consumed_signals:
+            return None
+
         # Store pending signal — execution deferred outside callback
         self._pending_signal = result
         self._pending_signal_bar = bar
@@ -266,9 +272,11 @@ class ObserveOrchestrator:
         self._pending_signal = None
         self._pending_signal_bar = None
 
-        # Mark setup as consumed
+        # Mark setup and signal as consumed
         if result.setup_key:
             self._consumed_setups.add(result.setup_key)
+        if result.signal_key:
+            self._consumed_signals.add(result.signal_key)
 
         # Use resolved direction from signal (supports BOTH mode)
         resolved_direction = result.direction

@@ -90,6 +90,7 @@ class SignalResult:
     pipeline_stage: str | None = None   # human-readable stage label
     stage_context: dict | None = None   # key data from reached stages
     setup_key: str | None = None        # structural identity: "direction:break_time_ms"
+    signal_key: str | None = None       # exact signal identity: "setup_key:entry_candle_time_ms"
     rejection_detail: dict | None = None  # raw rejection finder result (for trace)
 
 
@@ -538,6 +539,7 @@ class LiveSignalDetector:
         else:
             break_ts = 0
         setup_key = f"{self._direction}:{break_ts}"
+        signal_key = f"{setup_key}:{entry_ts_ms}"
 
         return SignalResult(
             status=SignalStatus.SIGNAL,
@@ -549,6 +551,7 @@ class LiveSignalDetector:
             detection_result=detection_result,
             trade_plan=trade_plan,
             setup_key=setup_key,
+            signal_key=signal_key,
             pipeline_stage="SIGNAL",
             stage_context=break_ctx,
         )

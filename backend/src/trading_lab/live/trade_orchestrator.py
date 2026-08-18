@@ -164,6 +164,12 @@ class MaxBotTradeOrchestrator:
         # producing a different setup_key.
         self._consumed_setups: set[str] = set()
 
+        # Consumed signal keys — exactly-once execution per signal.
+        # Keyed by signal_key (setup_key:entry_candle_time_ms).
+        # Even if an entry is cancelled, the same signal cannot re-fire.
+        # A new entry candle produces a new signal_key.
+        self._consumed_signals: set[str] = set()
+
         # Per-trade telemetry context (events for TRADE_COMPLETED)
         self._trade_events: dict[str, object] = {}
         self._emitted_terminal: set[str] = set()
@@ -529,13 +535,19 @@ class MaxBotTradeOrchestrator:
         if result.status != SignalStatus.SIGNAL:
             return
 
-        # Reject same-setup re-entry: a consumed setup cannot produce
-        # another trade.  Only a genuinely new BDRR sequence (new break)
-        # is allowed.
+        # Reject same-setup re-entry (defense in depth)
         if result.setup_key and result.setup_key in self._consumed_setups:
             log.info(
                 f"[{self._symbol}] SETUP_ALREADY_CONSUMED "
                 f"key={result.setup_key} — skipping re-entry"
+            )
+            return
+
+        # Reject same-signal re-emission (exactly-once)
+        if result.signal_key and result.signal_key in self._consumed_signals:
+            log.info(
+                f"[{self._symbol}] SIGNAL_ALREADY_CONSUMED "
+                f"signal_key={result.signal_key} — skipping"
             )
             return
 
@@ -559,10 +571,13 @@ class MaxBotTradeOrchestrator:
             return
         self._pending_signal = None
 
-        # Mark this setup as consumed — prevents same-setup re-entry
-        # after exit.  Only a new BDRR sequence can generate another trade.
+        # Mark this setup AND signal as consumed — prevents:
+        # 1. Same setup re-entry (setup_key)
+        # 2. Same signal re-emission (signal_key, exactly-once)
         if result.setup_key:
             self._consumed_setups.add(result.setup_key)
+        if result.signal_key:
+            self._consumed_signals.add(result.signal_key)
 
         resolved_direction = result.direction
 
