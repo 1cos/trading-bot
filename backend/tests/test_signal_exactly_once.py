@@ -125,20 +125,21 @@ class TestSignalKeyExactlyOnce:
         orch.on_bar(_bar(2000))
         assert not orch.has_pending_signal
 
-    def test_different_entry_candle_allowed(self):
-        """New entry candle on same setup → new signal_key → allowed."""
+    def test_different_entry_candle_blocked_by_setup(self):
+        """New entry candle on SAME setup → blocked (one setup = one trade)."""
         sig1 = _sig("SHORT:1000", 5000)
-        sig2 = _sig("SHORT:1000", 7000)  # different entry candle
+        sig2 = _sig("SHORT:1000", 7000)  # different entry candle, SAME setup
         orch, sd = _make_orch([sig1, sig2])
 
         orch.on_bar(_bar(1000))
-        orch._consumed_signals.add("SHORT:1000:5000")
+        # setup_key consumed immediately at acceptance
+        assert "SHORT:1000" in orch._consumed_setups
         orch._pending_signal = None
         orch._lifecycle = LifecycleState.WAITING_FOR_SIGNAL
 
-        # New entry candle → new signal_key → allowed
+        # New entry candle on same setup → BLOCKED
         orch.on_bar(_bar(2000))
-        assert orch.has_pending_signal
+        assert not orch.has_pending_signal
 
     def test_different_setup_allowed(self):
         """Different break → different setup_key → allowed."""

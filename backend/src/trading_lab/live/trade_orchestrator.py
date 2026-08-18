@@ -566,6 +566,20 @@ class MaxBotTradeOrchestrator:
             )
             return
 
+        # Consume setup_key and signal_key IMMEDIATELY when a signal
+        # is accepted.  This prevents re-entry even if the execution
+        # fails, the order is cancelled, or the exit completes and
+        # lifecycle returns to WAITING_FOR_SIGNAL.
+        # One setup/break → at most one trade.
+        if result.setup_key:
+            self._consumed_setups.add(result.setup_key)
+            log.info(
+                f"[{self._symbol}] SETUP_CONSUMED at signal acceptance "
+                f"key={result.setup_key}"
+            )
+        if result.signal_key:
+            self._consumed_signals.add(result.signal_key)
+
         # Store pending signal — execution deferred outside callback
         self._pending_signal = result
 

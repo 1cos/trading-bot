@@ -216,26 +216,27 @@ class TestSameSetupReEntry:
         orch.on_bar(bar2)
         assert orch.has_pending_signal  # allowed!
 
-    def test_same_setup_before_execution_still_produces_signal(self):
-        """Before a setup is consumed, re-evaluating it should still work."""
+    def test_same_setup_consumed_at_first_acceptance(self):
+        """Setup consumed at signal acceptance, not just at execution."""
         sig1 = _make_signal("SHORT:1000")
         sig2 = _make_signal("SHORT:1000")
         orch, sd, os_, ee = _make_orchestrator([sig1, sig2])
 
-        # First bar: signal stored as pending (not yet executed)
+        # First bar: signal accepted → setup consumed immediately
         bar = {"time_ms": 1000, "open": 100, "high": 101,
                "low": 99, "close": 100.5, "volume": 1000}
         orch.on_bar(bar)
         assert orch.has_pending_signal
-        # Don't execute — just clear pending for test
-        orch._pending_signal = None
+        assert "SHORT:1000" in orch._consumed_setups
 
-        # Lifecycle stays WAITING_FOR_SIGNAL (no execution happened)
-        # Second bar: same setup but never consumed → should produce signal
+        orch._pending_signal = None
+        orch._lifecycle = LifecycleState.WAITING_FOR_SIGNAL
+
+        # Second bar: same setup → BLOCKED (consumed at acceptance)
         bar2 = {"time_ms": 2000, "open": 100, "high": 101,
                 "low": 99, "close": 100.5, "volume": 1000}
         orch.on_bar(bar2)
-        assert orch.has_pending_signal  # allowed — not yet consumed
+        assert not orch.has_pending_signal
 
     def test_no_setup_result_not_affected(self):
         """NO_SETUP results are unaffected by consumed setups."""
