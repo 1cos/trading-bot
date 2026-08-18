@@ -412,7 +412,7 @@ class LiveSignalDetector:
 
         # ── Stage 3: Displacement ────────────────────────────────────────
         engine_config = self._engine_config  # may be shadowed below
-        min_req = engine_config.get("min_displacement_bars", 3)
+        min_req = engine_config.get("min_displacement_bars") or 3
         disp = find_displacement(sc_candles, level_result, brk, engine_config)
         if disp.get("status") != "OK":
             disp_count = disp.get("displacement_bar_count", 0)
