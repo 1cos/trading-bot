@@ -170,6 +170,10 @@ class MaxBotTradeOrchestrator:
         # A new entry candle produces a new signal_key.
         self._consumed_signals: set[str] = set()
 
+        # Live boundary: signals with entry_timestamp_ms before this
+        # are stale (from before the bot started) and non-executable.
+        self._live_boundary_ms: int = 0
+
         # Per-trade telemetry context (events for TRADE_COMPLETED)
         self._trade_events: dict[str, object] = {}
         self._emitted_terminal: set[str] = set()
@@ -548,6 +552,17 @@ class MaxBotTradeOrchestrator:
             log.info(
                 f"[{self._symbol}] SIGNAL_ALREADY_CONSUMED "
                 f"signal_key={result.signal_key} — skipping"
+            )
+            return
+
+        # Reject stale signals from before bot startup (mid-session restart)
+        if (self._live_boundary_ms > 0
+                and result.entry_timestamp_ms
+                and result.entry_timestamp_ms < self._live_boundary_ms):
+            log.info(
+                f"[{self._symbol}] SIGNAL_STALE — entry candle "
+                f"{result.entry_timestamp_ms} < live boundary "
+                f"{self._live_boundary_ms} — skipping"
             )
             return
 

@@ -260,6 +260,11 @@ class MaxBotRunner:
         # Execution queue — defers IBKR sync work outside callbacks
         self._execution_queue = ExecutionQueue()
 
+        # Live boundary: only signals whose entry candle is AFTER this
+        # timestamp can trigger execution.  Set when main loop starts.
+        # Prevents mid-session restarts from executing stale setups.
+        self._live_start_time_ms: int = 0
+
         # Event infrastructure
         self._event_factory = EventFactory(execution_mode)
         self._session_log = SessionEventLog(metadata={
@@ -1061,9 +1066,22 @@ class MaxBotRunner:
 
     def _run_loop(self) -> None:
         self._running = True
+
+        # Set live boundary: only signals with entry candle AFTER this
+        # time can trigger execution.  This prevents mid-session restarts
+        # from executing stale setups found in historical bars.
+        import time as _time
+        self._live_start_time_ms = int(_time.time() * 1000)
+
+        # Propagate live boundary to all orchestrators
+        for sym, rt in self._runtimes.items():
+            if rt.orchestrator and hasattr(rt.orchestrator, '_live_boundary_ms'):
+                rt.orchestrator._live_boundary_ms = self._live_start_time_ms
+
         log.info(
             f"Main loop [{self._execution_mode}] — "
-            f"{self.enabled_count} symbols active"
+            f"{self.enabled_count} symbols active — "
+            f"live_boundary={self._live_start_time_ms}"
         )
 
         loop_count = 0
