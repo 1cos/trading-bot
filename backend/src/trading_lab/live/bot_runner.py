@@ -291,6 +291,7 @@ class MaxBotRunner:
             self._verify_paper()
             self._setup_all_symbols()
             self._qualify_all()
+            self._reconcile_existing_positions()
             self._compute_context_levels()
             self._subscribe_all()
             self._run_loop()
@@ -489,6 +490,74 @@ class MaxBotRunner:
                 log.error(f"DISABLED {sym}: {e}")
                 self._emit(EventType.SYMBOL_DISABLED, symbol=sym,
                            data={"error": str(e)})
+
+    def _reconcile_existing_positions(self) -> None:
+        """Startup safety gate: block new entries on symbols that already
+        have an existing, untracked IBKR option position.
+
+        Runs once at startup, after qualification and before the run
+        loop / any signal can be accepted. Does NOT attempt to recover
+        the original trade's entry/stop/target/setup_key — that is a
+        separate, later task. Positions found here are treated
+        conservatively as external/existing broker positions, not
+        automatically adopted as MaxBot-managed trades.
+
+        Matching (per position):
+          - position.position != 0        (zero/closed positions ignored)
+          - contract.secType == "OPT"     (non-option positions, e.g. a
+            plain stock position, are intentionally NOT treated as a
+            block — MaxBot only ever holds options, so a stock position
+            in the account is not evidence of an untracked MaxBot trade)
+          - contract.symbol is a symbol in this runner's watchlist
+
+        For each match: marks the SymbolRuntime and (for PAPER_EXECUTE)
+        the orchestrator as blocked, transitions the orchestrator's
+        lifecycle to EXISTING_BROKER_POSITION (which — via the existing
+        on_bar() dispatch, unchanged — means _check_for_signal() is
+        never called again for that symbol this session, so no new
+        entry can ever be enqueued), and logs an explicit message.
+        """
+        try:
+            positions = self._ib.positions()
+        except Exception as e:
+            log.error(f"Position reconciliation failed: {e}")
+            return
+
+        for pos in positions:
+            contract = getattr(pos, "contract", None)
+            quantity = getattr(pos, "position", 0)
+            if contract is None or quantity == 0:
+                continue
+            if getattr(contract, "secType", None) != "OPT":
+                continue
+
+            underlying_symbol = getattr(contract, "symbol", None)
+            rt = self._runtimes.get(underlying_symbol)
+            if rt is None or not rt.enabled:
+                continue  # not a symbol this runner manages
+
+            info = {
+                "conId": getattr(contract, "conId", None),
+                "localSymbol": getattr(contract, "localSymbol", None),
+                "right": getattr(contract, "right", None),
+                "strike": getattr(contract, "strike", None),
+                "expiry": getattr(contract, "lastTradeDateOrContractMonth", None),
+                "quantity": quantity,
+            }
+            rt.broker_position_blocked = True
+            rt.broker_position_info = info
+
+            if rt.orchestrator is not None and hasattr(rt.orchestrator, "_broker_position_blocked"):
+                rt.orchestrator._broker_position_blocked = True
+                rt.orchestrator._lifecycle = LifecycleState.EXISTING_BROKER_POSITION
+
+            log.warning(
+                f"[{underlying_symbol}] EXISTING BROKER POSITION — "
+                f"new entries blocked contract={info['localSymbol']} "
+                f"qty={info['quantity']}"
+            )
+            self._emit(EventType.ERROR, symbol=underlying_symbol,
+                       data={"error": "EXISTING_BROKER_POSITION", **info})
 
     def _compute_context_levels(self) -> None:
         """Fetch previous RTH session and premarket, compute PDH/PDL + PMH/PML."""

@@ -45,6 +45,12 @@ class SymbolRuntime:
         False if qualification failed.
     error : str or None
         Error message if disabled.
+    broker_position_blocked : bool
+        True if an existing IBKR option position for this symbol was
+        found at startup reconciliation — new entries are blocked.
+    broker_position_info : dict or None
+        Details of the detected existing position (conId, localSymbol,
+        right, strike, expiry, quantity), or None if not blocked.
     """
 
     symbol: str
@@ -58,6 +64,14 @@ class SymbolRuntime:
     enabled: bool = True
     error: str | None = None
     context_levels: object | None = None  # ContextLevels (PDH/PDL/PMH/PML)
+
+    # Existing broker position reconciliation (startup safety gate).
+    # broker_position_blocked is True when an existing, non-zero IBKR
+    # OPTION position for this symbol was found at startup — new
+    # entries are blocked for the rest of the session (see
+    # MaxBotRunner._reconcile_existing_positions).
+    broker_position_blocked: bool = False
+    broker_position_info: dict | None = None
 
     # Feed health
     last_bar_time_ms: int = 0

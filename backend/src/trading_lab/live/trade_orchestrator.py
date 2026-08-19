@@ -55,6 +55,7 @@ class LifecycleState(StrEnum):
     ENTRY_FAILED = "ENTRY_FAILED"
     EXIT_FAILED = "EXIT_FAILED"
     REQUIRES_ATTENTION = "REQUIRES_ATTENTION"  # exit retries exhausted
+    EXISTING_BROKER_POSITION = "EXISTING_BROKER_POSITION"  # startup reconciliation found an untracked open option position — new entries blocked
 
 
 # ── Orchestrator status snapshot ─────────────────────────────────────────────
@@ -173,6 +174,17 @@ class MaxBotTradeOrchestrator:
         # Live boundary: signals with entry_timestamp_ms before this
         # are stale (from before the bot started) and non-executable.
         self._live_boundary_ms: int = 0
+
+        # Startup safety gate: set externally (by the runner, after
+        # startup position reconciliation) when IBKR already shows an
+        # existing, untracked option position for this symbol. While
+        # True, execute_pending_signal() refuses to submit any entry
+        # order, regardless of lifecycle state — a defensive check
+        # placed right next to the real order-submission call, not
+        # just a display/UI condition. See
+        # MaxBotRunner._reconcile_existing_positions() for how this
+        # gets set.
+        self._broker_position_blocked: bool = False
 
         # Per-trade telemetry context (events for TRADE_COMPLETED)
         self._trade_events: dict[str, object] = {}
@@ -624,6 +636,24 @@ class MaxBotTradeOrchestrator:
         result = self._pending_signal
         if result is None:
             return
+
+        # Defensive gate, right next to the real order-submission path:
+        # refuse to execute if startup reconciliation found an existing,
+        # untracked broker option position for this symbol. The primary
+        # gate is the lifecycle transition in _check_for_signal (which
+        # normally prevents _pending_signal from ever being set while
+        # blocked) — this is a second, independent check so a BUY can
+        # never reach the broker for this symbol regardless of how
+        # _pending_signal got populated.
+        if self._broker_position_blocked:
+            log.error(
+                f"[{self._symbol}] EXISTING BROKER POSITION — refusing to "
+                f"execute pending signal (setup_key={result.setup_key})"
+            )
+            self._pending_signal = None
+            self._lifecycle = LifecycleState.EXISTING_BROKER_POSITION
+            return
+
         self._pending_signal = None
 
         # Mark this setup AND signal as consumed — prevents:
