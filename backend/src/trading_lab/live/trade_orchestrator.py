@@ -38,6 +38,11 @@ from trading_lab.live.exit_fill_monitor import (
 )
 from trading_lab.live.option_order_builder import build_option_entry_order
 from trading_lab.live.signal_detector import SignalStatus
+from trading_lab.live.trade_state_store import (
+    DEFAULT_TRADE_STATE_DIR,
+    build_trade_id,
+    persist_open_trade,
+)
 from trading_lab.live.underlying_exit_monitor import ExitState, UnderlyingExitMonitor
 
 log = logging.getLogger("maxbot")
@@ -116,6 +121,7 @@ class MaxBotTradeOrchestrator:
         *,
         exit_target_r: int = 2,
         emit=None,
+        trade_state_dir: object | None = None,
     ):
         self._symbol = underlying_symbol
         self._direction = direction
@@ -128,6 +134,7 @@ class MaxBotTradeOrchestrator:
         self._exit_executor = exit_executor
         self._exit_target_r = exit_target_r
         self._emit_fn = emit  # optional callback(event_type, symbol, **kw)
+        self._trade_state_dir = trade_state_dir if trade_state_dir is not None else DEFAULT_TRADE_STATE_DIR
 
         self._lifecycle = LifecycleState.WAITING_FOR_SIGNAL
         self._fill_activator = FillActivator(trade_manager)
@@ -149,6 +156,16 @@ class MaxBotTradeOrchestrator:
         self._signal_status: str | None = None
         self._underlying_triggers = None
         self._resolved_direction: str | None = None
+
+        # Setup/signal identity for the currently active trade — preserved
+        # from signal acceptance through to the confirmed fill so a crash-
+        # safe OPEN record can be persisted with correct identity (see
+        # execute_pending_signal() and refresh_entry_status()). Otherwise
+        # these values are only ever transient locals inside
+        # execute_pending_signal() and are lost the moment it returns.
+        self._active_setup_key: str | None = None
+        self._active_signal_key: str | None = None
+        self._active_entry_timestamp_ms: int | None = None
 
         # Exit retry state
         self._exit_retry_count: int = 0
@@ -278,6 +295,7 @@ class MaxBotTradeOrchestrator:
                 self._trade_events["entry_filled"] = ev
                 self._do_emit("POSITION_OPEN", direction=self._resolved_direction)
                 self._emitted_terminal.add("POSITION_OPEN")
+                self._persist_open_trade_state(fill_result)
 
             activation_ms = 0
             if fill_result.fill_time is not None:
@@ -664,6 +682,14 @@ class MaxBotTradeOrchestrator:
         if result.signal_key:
             self._consumed_signals.add(result.signal_key)
 
+        # Preserve identity for this active trade — result itself is a
+        # local variable and is discarded once this method returns, so
+        # without this these values would be unavailable by the time the
+        # entry fill is confirmed (see refresh_entry_status()).
+        self._active_setup_key = result.setup_key
+        self._active_signal_key = result.signal_key
+        self._active_entry_timestamp_ms = result.entry_timestamp_ms
+
         resolved_direction = result.direction
 
         # Build execution intent (pure computation)
@@ -786,6 +812,52 @@ class MaxBotTradeOrchestrator:
             self._exit_reason = exit_sub.exit_reason
             self._lifecycle = LifecycleState.EXIT_SUBMITTED
 
+    def _persist_open_trade_state(self, fill_result) -> None:
+        """Write a crash-safe OPEN trade-state record to disk.
+
+        Called exactly once per confirmed entry fill (guarded by the
+        _emit_once("ENTRY_FILLED") check at the call site) — never on
+        rejected/cancelled/still-pending entries. Best-effort: a
+        persistence failure is logged but must never break the trading
+        lifecycle itself.
+        """
+        if not self._active_setup_key or self._underlying_triggers is None:
+            log.error(
+                f"[{self._symbol}] Cannot persist OPEN trade state — "
+                f"missing setup_key or underlying_triggers"
+            )
+            return
+        try:
+            trade_id = build_trade_id(self._symbol, self._active_setup_key)
+            local_symbol = getattr(self._qualified_contract, "localSymbol", None)
+            record = {
+                "trade_id": trade_id,
+                "symbol": self._symbol,
+                "setup_key": self._active_setup_key,
+                "signal_key": self._active_signal_key,
+                "direction": self._resolved_direction,
+                "entry_timestamp_ms": self._active_entry_timestamp_ms,
+                "underlying_entry": float(self._underlying_triggers.entry_price),
+                "stop": float(self._underlying_triggers.stop_price),
+                "target": float(self._underlying_triggers.target_price),
+                "rr": self._exit_target_r,
+                "option": {
+                    "con_id": self._entry_con_id,
+                    "local_symbol": local_symbol,
+                    "right": self._option_right,
+                    "strike": self._option_strike,
+                    "expiry": self._option_expiration,
+                },
+                "quantity": 1,
+                "entry_order_id": self._entry_order_id,
+                "entry_fill_price": fill_result.average_fill_price,
+                "state": "OPEN",
+            }
+            path = persist_open_trade(record, base_dir=self._trade_state_dir)
+            log.info(f"[{self._symbol}] TRADE_STATE_PERSISTED trade_id={trade_id} path={path}")
+        except Exception as e:
+            log.error(f"[{self._symbol}] Failed to persist OPEN trade state: {e}")
+
     def _clear_active_trade(self) -> None:
         self._entry_submission = None
         self._entry_con_id = None
@@ -801,6 +873,9 @@ class MaxBotTradeOrchestrator:
         self._signal_status = None
         self._underlying_triggers = None
         self._resolved_direction = None
+        self._active_setup_key = None
+        self._active_signal_key = None
+        self._active_entry_timestamp_ms = None
         self._trade_events = {}
         self._emitted_terminal = set()
         self._exit_retry_count = 0
