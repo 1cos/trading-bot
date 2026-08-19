@@ -508,14 +508,28 @@ def find_rejection(
                     # First candle body-traversal check (close-based)
                     close1_ticks = price_to_ticks(cnd["close"], tick_size)
                     open1_ticks = price_to_ticks(cnd["open"], tick_size)
+                    high1_ticks = price_to_ticks(cnd["high"], tick_size)
+                    low1_ticks = price_to_ticks(cnd["low"], tick_size)
                     if is_short:
                         # SHORT: close must not be above far_edge (orb_high)
                         if close1_ticks > zone_far_edge_ticks:
                             tc_failed_rules.append("TWO_CANDLE_BODY_TRAVERSES_ZONE")
+                        # Candle #1 must show real interaction with the near
+                        # edge (level): its high must actually penetrate
+                        # beyond the level, not merely touch it exactly
+                        # (high1 == level is zero penetration, not rejection).
+                        if high1_ticks <= level_ticks:
+                            tc_failed_rules.append("TWO_CANDLE_NO_LEVEL_PENETRATION")
                     else:
                         # LONG: close must not be below far_edge (orb_low)
                         if close1_ticks < zone_far_edge_ticks:
                             tc_failed_rules.append("TWO_CANDLE_BODY_TRAVERSES_ZONE")
+                        # Candle #1 must show real interaction with the near
+                        # edge (level): its low must actually penetrate
+                        # beyond the level, not merely touch it exactly
+                        # (low1 == level is zero penetration, not rejection).
+                        if low1_ticks >= level_ticks:
+                            tc_failed_rules.append("TWO_CANDLE_NO_LEVEL_PENETRATION")
 
                     if not tc_failed_rules:
                         # Second candle evaluation
@@ -529,8 +543,11 @@ def find_rejection(
                             # Bearish
                             if close2_ticks >= open2_ticks:
                                 tc_failed_rules.append("TWO_CANDLE_NOT_BEARISH")
-                            # Engulfs body
-                            if not (open2_ticks >= body1_high and close2_ticks <= body1_low):
+                            # Engulfs body — STRICT: candle #2 must extend
+                            # beyond both body edges of candle #1.  Exact
+                            # equality (open2 == body1_high or
+                            # close2 == body1_low) is NOT engulfing.
+                            if not (open2_ticks > body1_high and close2_ticks < body1_low):
                                 if "TWO_CANDLE_NOT_BEARISH" not in tc_failed_rules:
                                     tc_failed_rules.append("TWO_CANDLE_ENGULFING_INSUFFICIENT")
                             # Recovery: close below near_edge
@@ -540,8 +557,11 @@ def find_rejection(
                             # Bullish
                             if close2_ticks <= open2_ticks:
                                 tc_failed_rules.append("TWO_CANDLE_NOT_BULLISH")
-                            # Engulfs body
-                            if not (open2_ticks <= body1_low and close2_ticks >= body1_high):
+                            # Engulfs body — STRICT: candle #2 must extend
+                            # beyond both body edges of candle #1.  Exact
+                            # equality (open2 == body1_low or
+                            # close2 == body1_high) is NOT engulfing.
+                            if not (open2_ticks < body1_low and close2_ticks > body1_high):
                                 if "TWO_CANDLE_NOT_BULLISH" not in tc_failed_rules:
                                     tc_failed_rules.append("TWO_CANDLE_ENGULFING_INSUFFICIENT")
                             # Recovery: close above near_edge
