@@ -253,9 +253,12 @@ class LiveSignalDetector:
 
         Skips two kinds of stale breaks:
         1. Consumed setups (already traded, via setup_key)
-        2. Dead breaks (failed at pre-displacement stage AND subsequent
-           candles show consecutive_orb_closes inside ORB — same existing
-           invalidation rule, applied earlier)
+        2. Dead breaks — either explicitly invalidated by
+           validate_sequence() (SEQUENCE_INVALIDATED, at any point after
+           the break, before or after retest began), or failed at the
+           pre-displacement stage with subsequent candles showing
+           consecutive_orb_closes back inside the ORB (same rule,
+           applied earlier via _is_break_dead()).
         """
         consumed = consumed_setup_keys or set()
         skip_before = 0
@@ -277,7 +280,18 @@ class LiveSignalDetector:
                 break
 
             # NO_SETUP — check if this is a dead break we should skip
-            if result.status == SignalStatus.NO_SETUP and result.failed_stage in (
+            if result.status == SignalStatus.NO_SETUP and result.failed_stage == "SEQUENCE_INVALIDATED":
+                # validate_sequence() has already confirmed this break is
+                # dead (invalidated, whether before or after the retest
+                # began) — skip straight past it, no need to re-derive
+                # deadness via _is_break_dead().
+                ctx = result.stage_context or {}
+                brk_idx = ctx.get("break_bar_index")
+                if brk_idx is not None:
+                    skip_before = brk_idx + 1
+                    continue
+
+            elif result.status == SignalStatus.NO_SETUP and result.failed_stage in (
                 "RETEST_BEFORE_DISPLACEMENT",
                 "DISPLACEMENT_TOO_SHORT",
             ):
@@ -430,14 +444,16 @@ class LiveSignalDetector:
         # ── Stage 3b: Sequence validation ────────────────────────────────
         seq_val = validate_sequence(sc_candles, level_result, brk, disp, engine_config)
         if seq_val.get("status") == "INVALIDATED":
+            # A validated-dead sequence never generates a signal, whether
+            # the invalidation happened before or after the retest began.
+            # Surface SEQUENCE_INVALIDATED unconditionally so the caller
+            # (evaluate()'s dead-break skip loop) can advance past this
+            # break and search for the next one, instead of freezing the
+            # retest window on a break that will never produce an entry.
             max_vi = seq_val["max_valid_index"]
-            first_retest = disp["first_retest_contact_index"]
-            if max_vi < first_retest:
-                return _no_setup("SEQUENCE_INVALIDATED",
-                                 stage_context={**disp_ctx,
-                                                "invalidation_index": max_vi})
-            else:
-                engine_config = {**engine_config, "_max_valid_index": max_vi}
+            return _no_setup("SEQUENCE_INVALIDATED",
+                             stage_context={**disp_ctx,
+                                            "invalidation_index": max_vi})
 
         # ── Stage 4: Retest window ───────────────────────────────────────
         retest = find_retest_window(sc_candles, level_result, brk, disp, engine_config)
