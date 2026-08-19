@@ -200,7 +200,7 @@ class MaxBotTradeOrchestrator:
 
         # State-dependent processing
         if self._lifecycle == LifecycleState.WAITING_FOR_SIGNAL:
-            self._check_for_signal()
+            self._check_for_signal(bar)
 
         elif self._lifecycle == LifecycleState.POSITION_OPEN:
             self._check_exit_trigger(bar)
@@ -515,7 +515,7 @@ class MaxBotTradeOrchestrator:
 
     # ── Internal flows ───────────────────────────────────────────────────
 
-    def _check_for_signal(self) -> None:
+    def _check_for_signal(self, bar: dict | None = None) -> None:
         """Pure signal detection — NO IBKR sync calls.
 
         If a signal is found, stores it in _pending_signal for
@@ -524,6 +524,11 @@ class MaxBotTradeOrchestrator:
         A setup whose setup_key has already been consumed (produced
         a trade) is rejected.  A new entry requires a structurally
         different BDRR sequence (different break candle).
+
+        ``bar`` is the underlying bar that was just added to the
+        session (the "current completed bar").  It is used for the
+        edge-trigger gate below — a SIGNAL is only actionable when
+        its entry/rejection candle IS this bar, never a historical one.
         """
         if not self._trade_manager.can_trade:
             self._lifecycle = LifecycleState.DONE_FOR_DAY
@@ -563,6 +568,27 @@ class MaxBotTradeOrchestrator:
                 f"[{self._symbol}] SIGNAL_STALE — entry candle "
                 f"{result.entry_timestamp_ms} < live boundary "
                 f"{self._live_boundary_ms} — skipping"
+            )
+            return
+
+        # Edge-trigger gate: the entry/rejection candle found by the
+        # detector must BE the current completed bar, not a historical
+        # candle re-discovered by scanning the session from the start.
+        # A rejection candle from earlier in the session is valid
+        # historical context but must never trigger an order now — the
+        # only moment Max's rule allows execution is the close of the
+        # candle that itself satisfies break→displacement→retest→reject.
+        # entry_timestamp_ms/current bar time_ms are only compared when
+        # both are known; otherwise the check is skipped (cannot verify).
+        current_bar_time_ms = bar.get("time_ms") if isinstance(bar, dict) else None
+        if (result.entry_timestamp_ms is not None
+                and current_bar_time_ms is not None
+                and result.entry_timestamp_ms != current_bar_time_ms):
+            log.info(
+                f"[{self._symbol}] SIGNAL_NOT_CURRENT "
+                f"setup_key={result.setup_key} "
+                f"entry_candle_time_ms={result.entry_timestamp_ms} "
+                f"current_bar_time_ms={current_bar_time_ms} — skipping"
             )
             return
 

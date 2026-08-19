@@ -35,7 +35,7 @@ def _make_orch(signal_results):
     return orch
 
 
-def _sig(setup_key="SHORT:1000", entry_ts=5000):
+def _sig(setup_key="SHORT:1000", entry_ts=1000):
     return SignalResult(
         status=SignalStatus.SIGNAL, direction="SHORT",
         pipeline_stage="SIGNAL", failed_stage=None,
@@ -56,7 +56,10 @@ class TestOneSetupOneTrade:
     """TEST 1: same setup, different rejection candle → one trade."""
 
     def test_same_setup_different_entry_candle_blocked(self):
-        sig1 = _sig("SHORT:1000", entry_ts=5000)
+        # sig1's entry_ts must match bar(1000) — the edge-trigger gate
+        # (added for the current-candle invariant) requires the entry
+        # candle timestamp to equal the current completed bar.
+        sig1 = _sig("SHORT:1000", entry_ts=1000)
         sig2 = _sig("SHORT:1000", entry_ts=6000)  # different entry candle
         sig3 = _sig("SHORT:1000", entry_ts=7000)  # yet another
         orch = _make_orch([sig1, sig2, sig3])
@@ -83,8 +86,13 @@ class TestManyRejectionCandles:
     """TEST 2: 5 different rejection candles on same setup → one trade."""
 
     def test_five_signals_one_trade(self):
-        signals = [_sig("SHORT:1000", entry_ts=5000 + i * 1000)
-                   for i in range(5)]
+        # First signal's entry_ts must match bar(1000) to clear the
+        # edge-trigger gate; the rest are blocked via setup_key before
+        # that gate is even reached, so their entry_ts is immaterial.
+        signals = [_sig("SHORT:1000", entry_ts=1000)] + [
+            _sig("SHORT:1000", entry_ts=5000 + i * 1000)
+            for i in range(1, 5)
+        ]
         orch = _make_orch(signals)
 
         # Only first signal accepted
@@ -103,8 +111,10 @@ class TestNewBreakAllowed:
     """TEST 3: different setup_key → second trade allowed."""
 
     def test_new_setup_after_consumed(self):
-        sig1 = _sig("SHORT:1000", entry_ts=5000)
-        sig2 = _sig("SHORT:5000", entry_ts=9000)  # DIFFERENT break
+        # Both entry_ts values are set to match their triggering bar
+        # so each clears the edge-trigger gate on its own merits.
+        sig1 = _sig("SHORT:1000", entry_ts=1000)
+        sig2 = _sig("SHORT:5000", entry_ts=2000)  # DIFFERENT break
         orch = _make_orch([sig1, sig2])
 
         # First trade
@@ -131,21 +141,21 @@ class TestFailedPreEntryNotConsumed:
     """
 
     def test_setup_consumed_at_acceptance(self):
-        sig = _sig("SHORT:1000", entry_ts=5000)
+        sig = _sig("SHORT:1000", entry_ts=1000)  # matches bar(1000)
         orch = _make_orch([sig])
 
         orch.on_bar(_bar(1000))
 
         # setup_key consumed IMMEDIATELY at acceptance
         assert "SHORT:1000" in orch._consumed_setups
-        assert "SHORT:1000:5000" in orch._consumed_signals
+        assert "SHORT:1000:1000" in orch._consumed_signals
 
 
 class TestConsumedSurvivesExitCycle:
     """Consumed sets survive full trade lifecycle."""
 
     def test_consumed_after_exit_to_waiting(self):
-        sig1 = _sig("SHORT:1000", 5000)
+        sig1 = _sig("SHORT:1000", 1000)  # matches bar(1000)
         sig2 = _sig("SHORT:1000", 6000)
         orch = _make_orch([sig1, sig2])
 

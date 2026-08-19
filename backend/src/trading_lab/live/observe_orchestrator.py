@@ -250,6 +250,22 @@ class ObserveOrchestrator:
         if result.signal_key and result.signal_key in self._consumed_signals:
             return None
 
+        # Edge-trigger gate: the entry/rejection candle found by the
+        # detector must BE the current completed bar, not a historical
+        # candle re-discovered by scanning the session from the start.
+        # See MaxBotTradeOrchestrator._check_for_signal for full rationale.
+        current_bar_time_ms = bar.get("time_ms") if isinstance(bar, dict) else None
+        if (result.entry_timestamp_ms is not None
+                and current_bar_time_ms is not None
+                and result.entry_timestamp_ms != current_bar_time_ms):
+            log.info(
+                f"[{self._symbol}] SIGNAL_NOT_CURRENT "
+                f"setup_key={result.setup_key} "
+                f"entry_candle_time_ms={result.entry_timestamp_ms} "
+                f"current_bar_time_ms={current_bar_time_ms} — skipping"
+            )
+            return None
+
         # Store pending signal — execution deferred outside callback
         self._pending_signal = result
         self._pending_signal_bar = bar
