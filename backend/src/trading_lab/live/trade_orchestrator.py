@@ -599,6 +599,25 @@ class MaxBotTradeOrchestrator:
                 f"{result.entry_timestamp_ms} < live boundary "
                 f"{self._live_boundary_ms} — skipping"
             )
+            # Mark consumed for SCANNING purposes only (Gap B, 2026-08-21
+            # audit). _live_boundary_ms above is what prevents this signal
+            # from ever being EXECUTED — that gate is unconditional and
+            # unaffected by this. But without also marking setup_key/
+            # signal_key consumed here, the detector would keep
+            # re-deriving and re-reporting this exact pre-restart setup
+            # on every subsequent bar for the rest of the session (it is
+            # never "consumed" by the normal accept-a-signal path below,
+            # since we return before reaching it), masking any
+            # genuinely new setup that forms later — the detector's break
+            # scan cursor never advances past a break that evaluate()'s
+            # scan loop does not yet know to skip. This can only ever
+            # mark a signal whose
+            # entry candle is provably in the past relative to bot
+            # startup, so it can never consume a live/current signal.
+            if result.setup_key:
+                self._consumed_setups.add(result.setup_key)
+            if result.signal_key:
+                self._consumed_signals.add(result.signal_key)
             return
 
         # Edge-trigger gate: the entry/rejection candle found by the

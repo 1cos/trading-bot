@@ -253,12 +253,19 @@ class LiveSignalDetector:
 
         Skips two kinds of stale breaks:
         1. Consumed setups (already traded, via setup_key)
-        2. Dead breaks — either explicitly invalidated by
-           validate_sequence() (SEQUENCE_INVALIDATED, at any point after
-           the break, before or after retest began), or failed at the
-           pre-displacement stage with subsequent candles showing
-           consecutive_orb_closes back inside the ORB (same rule,
-           applied earlier via _is_break_dead()).
+        2. Dead breaks:
+           - Explicitly invalidated by validate_sequence()
+             (SEQUENCE_INVALIDATED, at any point after the break, before
+             or after retest began).
+           - Structurally terminal at the displacement stage itself
+             (RETEST_BEFORE_DISPLACEMENT / DISPLACEMENT_TOO_SHORT) —
+             skipped unconditionally, since first_retest_contact_index
+             is a fixed historical fact once found and the displacement
+             window for this exact break_idx can never grow on a later
+             call. No additional ORB-reentry condition is required (see
+             Gap A, 2026-08-21 audit) — _is_break_dead() remains
+             available as a general-purpose helper but is no longer a
+             prerequisite for abandoning these two failed_stage values.
         """
         consumed = consumed_setup_keys or set()
         skip_before = 0
@@ -295,19 +302,26 @@ class LiveSignalDetector:
                 "RETEST_BEFORE_DISPLACEMENT",
                 "DISPLACEMENT_TOO_SHORT",
             ):
+                # Structurally terminal, unconditionally — no need to also
+                # require _is_break_dead() (ORB-band reentry). Once
+                # find_displacement() has located first_retest_contact_index
+                # for this break_idx, that index is a fixed historical fact:
+                # the displacement window between the break and the first
+                # retest contact can never grow on a later call with more
+                # candles, so a displacement_bar_count that was already
+                # zero (RETEST_BEFORE_DISPLACEMENT) or below min_displacement_bars
+                # (DISPLACEMENT_TOO_SHORT) can never become valid for this
+                # exact break_idx. Requiring an independent ORB-reentry
+                # condition before abandoning it left the detector able to
+                # get stuck re-reporting the same dead break indefinitely
+                # (as "DISP BUILDING" / "RETEST TOO EARLY") whenever price
+                # stayed outside the ORB without closing back in — see
+                # Gap A in the 2026-08-21 audit.
                 ctx = result.stage_context or {}
                 brk_idx = ctx.get("break_bar_index")
-                if brk_idx is not None and session and isinstance(session.get("candles"), list):
-                    candles = session["candles"]
-                    orb_high = ctx.get("orb_high")
-                    orb_low = ctx.get("orb_low")
-                    direction = ctx.get("direction", self._direction)
-                    threshold = self._engine_config.get("consecutive_orb_closes", 2)
-
-                    if self._is_break_dead(candles, brk_idx, direction,
-                                           orb_high, orb_low, threshold):
-                        skip_before = brk_idx + 1
-                        continue
+                if brk_idx is not None:
+                    skip_before = brk_idx + 1
+                    continue
 
             # Not a dead break — return as-is
             break
