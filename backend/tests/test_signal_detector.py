@@ -549,3 +549,60 @@ class TestLevelSourceReachesBuildLevel:
         assert result["status"] == "FAILED"
         assert result["failed_stage"] == "MISSING_SESSIONS_DATA"
 
+
+# ── Test: setup_key is level-source-aware (PDH/PDL micro-task 10) ────────────
+#
+# Direct test of the new identity property: same direction, same break
+# timestamp, different level_source -> different setup_key. This is the
+# collision this task exists to prevent (ORB vs PDH sharing a break
+# candle must never be treated as the same structural setup by
+# _consumed_setups/_consumed_signals or stale/restart handling).
+
+class TestSetupKeyLevelSourceCollisionPrevention:
+    def test_orb_and_pdh_same_break_produce_different_setup_keys(self):
+        bars = _all_bars_through_rejection()
+
+        # ORB detector: default level_source (ORB_HIGH), level_price=101.00
+        # (see _orb_bars() docstring at top of file).
+        d_orb = _make_detector(direction="LONG")
+        result_orb = d_orb.evaluate(_build_session_up_to(bars))
+        assert result_orb.status == SignalStatus.SIGNAL
+
+        # PDH detector: explicit PREVIOUS_DAY_HIGH, with a previous
+        # session whose high equals the exact same numeric level_price
+        # (101.00) as ORB_High. Break/displacement/retest/rejection
+        # geometry is entirely level_price-driven (not level_source-
+        # driven — see prior micro-task audits), so this makes the SAME
+        # candle (index 5) qualify as the break for both providers,
+        # producing an identical break timestamp on both sides.
+        d_pdh = _make_detector(direction="LONG", level_source="PREVIOUS_DAY_HIGH")
+        d_pdh.set_previous_sessions([{
+            "date": "2026-08-10",
+            "candles": [{"time_ms": 1, "open": 100.0, "high": 101.00,
+                         "low": 95.0, "close": 100.5, "volume": 500}],
+        }])
+        result_pdh = d_pdh.evaluate(_build_session_up_to(bars))
+        assert result_pdh.status == SignalStatus.SIGNAL
+
+        orb_break_ts = (result_orb.stage_context or {}).get("break_time_ms")
+        pdh_break_ts = (result_pdh.stage_context or {}).get("break_time_ms")
+        assert orb_break_ts is not None
+        assert orb_break_ts == pdh_break_ts, (
+            "test setup invalid: ORB and PDH must share the same break "
+            "candle for this to be a meaningful collision test"
+        )
+        assert result_orb.direction == result_pdh.direction == "LONG"
+
+        # The decisive assertion: setup_key/signal_key must differ,
+        # purely because of level_source, even though direction and
+        # break timestamp are identical.
+        assert result_orb.setup_key != result_pdh.setup_key
+        assert result_orb.signal_key != result_pdh.signal_key
+        assert result_orb.setup_key == f"LONG:ORB_HIGH:{orb_break_ts}"
+        assert result_pdh.setup_key == f"LONG:PREVIOUS_DAY_HIGH:{pdh_break_ts}"
+
+        # And therefore they can never collide in a shared consumed-set.
+        consumed = {result_orb.setup_key}
+        assert result_pdh.setup_key not in consumed
+
+

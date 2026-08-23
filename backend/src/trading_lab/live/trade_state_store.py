@@ -27,11 +27,17 @@ DEFAULT_TRADE_STATE_DIR = Path("logs/maxbot/trade_state")
 def build_trade_id(symbol: str, setup_key: str) -> str:
     """Deterministic trade identifier from symbol + setup_key.
 
-    setup_key is already "{direction}:{break_time_ms}" (see
-    signal_detector.py), so this is stable and collision-free across
-    genuinely distinct BDRR sequences. Different setups on the same
-    symbol in the same session therefore always produce different
-    trade_ids/filenames — no random UUID needed, no overwrite risk.
+    setup_key is already "{direction}:{level_source}:{break_time_ms}"
+    (see signal_detector.py), so this is stable and collision-free
+    across genuinely distinct BDRR sequences — including two setups
+    that share the same direction and break timestamp but originate
+    from different structural levels (e.g. ORB_HIGH vs
+    PREVIOUS_DAY_HIGH). Different setups on the same symbol in the
+    same session therefore always produce different trade_ids/
+    filenames — no random UUID needed, no overwrite risk. This
+    function treats setup_key as an opaque string (just sanitizes
+    colons for filename-safety) and does not depend on the exact
+    number of colon-separated fields.
     """
     return f"{symbol}_{setup_key.replace(':', '_')}"
 

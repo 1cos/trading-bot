@@ -407,7 +407,7 @@ class TestT11GapADirectProof:
 
         break_a_ts = _ms(5)
         break_b_ts = _ms(8)
-        expected_setup_key_b = f"SHORT:{break_b_ts}"
+        expected_setup_key_b = f"SHORT:ORB_LOW:{break_b_ts}"
 
         # The decisive assertion: the detector must reach a genuine
         # SIGNAL, and it must belong to Break B (idx8), not be stuck

@@ -81,7 +81,7 @@ def test_t9_restart_finds_new_long_after_invalidated_short():
 
     old_short_break_ts = _ms(5)
     new_long_break_ts = _ms(11)
-    expected_setup_key = f"LONG:{new_long_break_ts}"
+    expected_setup_key = f"LONG:ORB_HIGH:{new_long_break_ts}"
 
     # A fresh DualSignalDetector instance = simulating a brand-new,
     # post-restart process (no incremental state), evaluating the full
@@ -110,5 +110,5 @@ def test_t9_restart_finds_new_long_after_invalidated_short():
     assert result.setup_key == expected_setup_key
 
     # 5: the old SHORT setup_key must never be what's returned.
-    old_short_setup_key = f"SHORT:{old_short_break_ts}"
+    old_short_setup_key = f"SHORT:ORB_LOW:{old_short_break_ts}"
     assert result.setup_key != old_short_setup_key

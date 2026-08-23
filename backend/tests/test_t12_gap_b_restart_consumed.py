@@ -169,8 +169,8 @@ def test_t12_old_signal_before_boundary_does_not_block_new_setup():
     for bar in bars[11:]:
         orch.on_bar(bar)
 
-    old_setup_key = f"SHORT:{bars[5]['time_ms']}"
-    new_setup_key = f"SHORT:{bars[11]['time_ms']}"
+    old_setup_key = f"SHORT:ORB_LOW:{bars[5]['time_ms']}"
+    new_setup_key = f"SHORT:ORB_LOW:{bars[11]['time_ms']}"
 
     # The decisive assertion: a genuinely new setup (B) must have been
     # reached and accepted as a pending signal once all of its bars

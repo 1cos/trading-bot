@@ -112,7 +112,7 @@ def test_t6_consumed_setup_a_does_not_block_new_setup_b():
     result_a = detector_a.evaluate(_build_session(bars[:10]))
     assert result_a.status == SignalStatus.SIGNAL
     setup_key_a = result_a.setup_key
-    assert setup_key_a == f"SHORT:{_ms(5)}"
+    assert setup_key_a == f"SHORT:ORB_LOW:{_ms(5)}"
 
     # Now evaluate the FULL session (A + bounce + B) with A marked
     # consumed — a fresh detector instance, matching how the real
@@ -121,7 +121,7 @@ def test_t6_consumed_setup_a_does_not_block_new_setup_b():
     detector_full = LiveSignalDetector(symbol="SPY", direction="SHORT", tick_size=0.01)
     result = detector_full.evaluate(_build_session(bars), consumed_setup_keys={setup_key_a})
 
-    setup_key_b = f"SHORT:{_ms(11)}"
+    setup_key_b = f"SHORT:ORB_LOW:{_ms(11)}"
 
     # 1. Final result is SIGNAL.
     assert result.status == SignalStatus.SIGNAL

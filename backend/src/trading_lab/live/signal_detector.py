@@ -89,7 +89,7 @@ class SignalResult:
     failed_stage: str | None = None
     pipeline_stage: str | None = None   # human-readable stage label
     stage_context: dict | None = None   # key data from reached stages
-    setup_key: str | None = None        # structural identity: "direction:break_time_ms"
+    setup_key: str | None = None        # structural identity: "direction:level_source:break_time_ms"
     signal_key: str | None = None       # exact signal identity: "setup_key:entry_candle_time_ms"
     rejection_detail: dict | None = None  # raw rejection finder result (for trace)
 
@@ -598,15 +598,24 @@ class LiveSignalDetector:
         entry_ts_ms = sc_candles[conf_idx]["time_ms"]
 
         # Setup key: structural identity of this BDRR sequence.
-        # Same break + direction = same setup, regardless of which
-        # bar evaluates it.  A genuinely new setup will have a
-        # different break_time_ms (new break candle).
+        # Same break + direction + level_source = same setup, regardless
+        # of which bar evaluates it. A genuinely new setup will have a
+        # different break_time_ms (new break candle) OR a different
+        # level_source. level_source is included so that two setups
+        # sharing the same direction and break timestamp but built from
+        # different structural levels (e.g. ORB_HIGH vs
+        # PREVIOUS_DAY_HIGH) never collide in setup_key/signal_key,
+        # _consumed_setups/_consumed_signals, stale/restart handling
+        # (Fix B), or trade_id derivation — level_price is deliberately
+        # NOT included (it is not a stable structural identity component
+        # the way direction/level_source/break_ts are).
         break_time_ms = brk.get("break_candle_index")
         if break_time_ms is not None and break_time_ms < len(sc_candles):
             break_ts = sc_candles[break_time_ms]["time_ms"]
         else:
             break_ts = 0
-        setup_key = f"{self._direction}:{break_ts}"
+        setup_level_source = self._engine_config.get("level_source")
+        setup_key = f"{self._direction}:{setup_level_source}:{break_ts}"
         signal_key = f"{setup_key}:{entry_ts_ms}"
 
         return SignalResult(
