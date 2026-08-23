@@ -187,18 +187,22 @@ class LiveSignalDetector:
         entry_buffer_ticks: int = 0,
         stop_buffer_ticks: int = 0,
         exit_target_r: int = 2,
+        level_source: str | None = None,
     ):
         self._symbol = symbol
         self._direction = direction
         self._tick_size = tick_size
 
-        # Level source derived from direction (canonical mapping)
-        if direction == "LONG":
-            level_source = "ORB_HIGH"
-        elif direction == "SHORT":
-            level_source = "ORB_LOW"
-        else:
+        if direction not in ("LONG", "SHORT"):
             raise ValueError(f"direction must be LONG or SHORT, got {direction!r}")
+
+        # Level source: explicit override, or the canonical
+        # direction-derived default (LONG -> ORB_HIGH, SHORT -> ORB_LOW).
+        # Passing level_source=None (the default) preserves the exact
+        # prior behavior; this parameter is pure wiring/configurability —
+        # it does not decide when PDH/PDL should be used operationally.
+        if level_source is None:
+            level_source = "ORB_HIGH" if direction == "LONG" else "ORB_LOW"
 
         self._engine_config = {
             "timeframe_minutes": 1,
@@ -230,10 +234,34 @@ class LiveSignalDetector:
         self._exit_target_r = exit_target_r
         self._last_result: SignalResult | None = None
 
+        # Previous-session historical bars (all_sessions format:
+        # [{"date": "YYYY-MM-DD", "candles": [...]}]) — required by
+        # build_level() for cross-session providers (PREVIOUS_DAY_HIGH,
+        # PREVIOUS_DAY_LOW). Not used while level_source stays ORB_HIGH/
+        # ORB_LOW (see level_provider._build_orb_level, which never reads
+        # all_sessions). Populated post-construction via
+        # set_previous_sessions() once available (fetched at bot boot).
+        self._previous_sessions: list | None = None
+
     @property
     def last_result(self) -> SignalResult | None:
         """The result of the most recent evaluate() call."""
         return self._last_result
+
+    def set_previous_sessions(self, previous_sessions: list | None) -> None:
+        """Store previous-session historical bars for use by build_level().
+
+        Parameters
+        ----------
+        previous_sessions : list[dict] | None
+            Sessions in the all_sessions format expected by
+            level_provider.build_level(..., all_sessions=...):
+            [{"date": "YYYY-MM-DD", "candles": [...]}].
+            Currently unused operationally while level_source is ORB —
+            stored so a future PREVIOUS_DAY_HIGH/LOW level_source can
+            consume it without additional wiring.
+        """
+        self._previous_sessions = previous_sessions
 
     def evaluate(self, session: dict, consumed_setup_keys: set[str] | None = None) -> SignalResult:
         """Evaluate the current session snapshot for a valid signal.
@@ -403,7 +431,17 @@ class LiveSignalDetector:
         sc_candles = sc["candles"]
 
         # ── Stage 1b: Level (ORB) ────────────────────────────────────────
-        level_result = build_level(sc_candles, sc, self._engine_config)
+        # all_sessions is passed through unconditionally for forward
+        # compatibility with cross-session providers (PREVIOUS_DAY_HIGH/
+        # LOW). While self._engine_config["level_source"] stays ORB_HIGH/
+        # ORB_LOW, level_provider._build_orb_level() never reads
+        # all_sessions at all (it isn't even in that function's
+        # parameter list) — behavior here is unchanged from before this
+        # parameter was added.
+        level_result = build_level(
+            sc_candles, sc, self._engine_config,
+            all_sessions=self._previous_sessions,
+        )
         if level_result.get("status") != "OK":
             ctx = {"candle_count": len(sc_candles)}
             return _no_setup(level_result.get("failed_stage"), stage_context=ctx)

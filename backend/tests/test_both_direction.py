@@ -291,3 +291,45 @@ class TestLongPriority:
         dual = DualSignalDetector(mock_long, mock_short)
         result = dual.evaluate({})
         assert result.direction == "LONG"
+
+
+# ── Test: previous_sessions propagation (PDH/PDL micro-task 4) ───────────────
+
+_FAKE_SESSIONS_QQQ = [
+    {"date": "2026-08-10", "candles": [
+        {"time_ms": 1, "open": 585.0, "high": 590.0, "low": 580.0,
+         "close": 586.0, "volume": 1000},
+    ]},
+]
+
+
+class TestDualPreviousSessionsPropagation:
+    def test_long_and_short_receive_same_data(self):
+        """LONG and SHORT of the same symbol get the identical
+        previous_sessions payload via DualSignalDetector."""
+        long_sd = LiveSignalDetector(
+            symbol="QQQ", direction="LONG", tick_size=0.01,
+            market_timezone="America/New_York", session_open="09:30",
+        )
+        short_sd = LiveSignalDetector(
+            symbol="QQQ", direction="SHORT", tick_size=0.01,
+            market_timezone="America/New_York", session_open="09:30",
+        )
+        dual = DualSignalDetector(long_sd, short_sd)
+
+        dual.set_previous_sessions(_FAKE_SESSIONS_QQQ)
+
+        assert long_sd._previous_sessions == _FAKE_SESSIONS_QQQ
+        assert short_sd._previous_sessions == _FAKE_SESSIONS_QQQ
+        assert long_sd._previous_sessions is short_sd._previous_sessions
+
+    def test_propagates_through_mocked_sub_detectors(self):
+        mock_long = MagicMock()
+        mock_short = MagicMock()
+        dual = DualSignalDetector(mock_long, mock_short)
+
+        dual.set_previous_sessions(_FAKE_SESSIONS_QQQ)
+
+        mock_long.set_previous_sessions.assert_called_once_with(_FAKE_SESSIONS_QQQ)
+        mock_short.set_previous_sessions.assert_called_once_with(_FAKE_SESSIONS_QQQ)
+

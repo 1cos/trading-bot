@@ -5,7 +5,7 @@ All tests use mock IB. No real TWS/Gateway connection.
 
 import pytest
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -16,7 +16,7 @@ from trading_lab.live.bot_runner import (
     is_rth_bar,
 )
 from trading_lab.live.trade_orchestrator import LifecycleState
-from trading_lab.live.watchlist import parse_symbols
+from trading_lab.live.watchlist import parse_symbols, SymbolRuntime
 
 
 ET = ZoneInfo("America/New_York")
@@ -306,3 +306,175 @@ class TestNoDuplication:
         import trading_lab.live.watchlist as mod
         source = inspect.getsource(mod)
         assert "find_break" not in source
+
+
+# ── _compute_context_levels retains previous_sessions ───────────────────────
+
+class TestComputeContextLevelsRetainsSessions:
+    """previous_sessions must be stored on the runtime, not discarded,
+    without adding any second historical request."""
+
+    def _make_runner_with_symbol(self):
+        runner = MaxBotRunner(["QQQ"])
+        runner._ib = MagicMock()
+        rt = SymbolRuntime(symbol="QQQ")
+        rt.underlying_contract = MagicMock()
+        rt.enabled = True
+        runner._runtimes["QQQ"] = rt
+        return runner, rt
+
+    def test_previous_sessions_stored_on_runtime(self):
+        runner, rt = self._make_runner_with_symbol()
+        fake_sessions = [{
+            "date": "2026-08-10",
+            "candles": [{"time_ms": 1, "open": 100.0, "high": 102.0,
+                         "low": 97.0, "close": 101.0, "volume": 100}],
+        }]
+        with patch("trading_lab.live.bot_runner.fetch_previous_session_bars",
+                   return_value=fake_sessions) as mock_fetch, \
+             patch("trading_lab.live.bot_runner.fetch_premarket_bars",
+                   return_value=[]):
+            runner._compute_context_levels()
+
+        assert rt.previous_sessions == fake_sessions
+        mock_fetch.assert_called_once()
+
+    def test_context_levels_still_computed_as_before(self):
+        runner, rt = self._make_runner_with_symbol()
+        fake_sessions = [{
+            "date": "2026-08-10",
+            "candles": [{"time_ms": 1, "open": 100.0, "high": 102.0,
+                         "low": 97.0, "close": 101.0, "volume": 100}],
+        }]
+        with patch("trading_lab.live.bot_runner.fetch_previous_session_bars",
+                   return_value=fake_sessions), \
+             patch("trading_lab.live.bot_runner.fetch_premarket_bars",
+                   return_value=[]):
+            runner._compute_context_levels()
+
+        assert rt.context_levels is not None
+        assert rt.context_levels.pdh == 102.0
+        assert rt.context_levels.pdl == 97.0
+
+    def test_no_extra_historical_request_introduced(self):
+        """Exactly one previous-session fetch and one premarket fetch
+        per symbol — same call count as before this change."""
+        runner, rt = self._make_runner_with_symbol()
+        with patch("trading_lab.live.bot_runner.fetch_previous_session_bars",
+                   return_value=[]) as mock_sessions, \
+             patch("trading_lab.live.bot_runner.fetch_premarket_bars",
+                   return_value=[]) as mock_premarket:
+            runner._compute_context_levels()
+
+        assert mock_sessions.call_count == 1
+        assert mock_premarket.call_count == 1
+
+
+# ── previous_sessions reaches rt.signal_detector, isolated per symbol ────────
+
+class TestPreviousSessionsReachesDetector:
+    """End-to-end: SymbolRuntime.previous_sessions -> _compute_context_levels
+    -> rt.signal_detector.set_previous_sessions() -> detector._previous_sessions.
+    """
+
+    def _make_runner_with_symbol(self, symbol, signal_detector):
+        runner = MaxBotRunner([symbol])
+        runner._ib = MagicMock()
+        rt = SymbolRuntime(symbol=symbol)
+        rt.underlying_contract = MagicMock()
+        rt.enabled = True
+        rt.signal_detector = signal_detector
+        runner._runtimes[symbol] = rt
+        return runner, rt
+
+    def test_previous_sessions_reaches_signal_detector(self):
+        from trading_lab.live.signal_detector import LiveSignalDetector
+
+        sd = LiveSignalDetector(
+            symbol="QQQ", direction="LONG", tick_size=0.01,
+            market_timezone="America/New_York", session_open="09:30",
+        )
+        runner, rt = self._make_runner_with_symbol("QQQ", sd)
+        fake_sessions = [{
+            "date": "2026-08-10",
+            "candles": [{"time_ms": 1, "open": 100.0, "high": 102.0,
+                         "low": 97.0, "close": 101.0, "volume": 100}],
+        }]
+        with patch("trading_lab.live.bot_runner.fetch_previous_session_bars",
+                   return_value=fake_sessions), \
+             patch("trading_lab.live.bot_runner.fetch_premarket_bars",
+                   return_value=[]):
+            runner._compute_context_levels()
+
+        assert sd._previous_sessions == fake_sessions
+
+    def test_orb_level_source_untouched_by_wiring(self):
+        """Wiring must not flip level_source away from ORB."""
+        from trading_lab.live.signal_detector import LiveSignalDetector
+
+        sd = LiveSignalDetector(
+            symbol="QQQ", direction="LONG", tick_size=0.01,
+            market_timezone="America/New_York", session_open="09:30",
+        )
+        runner, rt = self._make_runner_with_symbol("QQQ", sd)
+        with patch("trading_lab.live.bot_runner.fetch_previous_session_bars",
+                   return_value=[]), \
+             patch("trading_lab.live.bot_runner.fetch_premarket_bars",
+                   return_value=[]):
+            runner._compute_context_levels()
+
+        assert sd._engine_config["level_source"] == "ORB_HIGH"
+
+    def test_symbols_do_not_cross_contaminate(self):
+        """Symbol A must not receive symbol B's previous_sessions, and
+        vice versa — each detector only sees its own fetch result."""
+        from trading_lab.live.signal_detector import LiveSignalDetector
+
+        sd_qqq = LiveSignalDetector(
+            symbol="QQQ", direction="LONG", tick_size=0.01,
+            market_timezone="America/New_York", session_open="09:30",
+        )
+        sd_nvda = LiveSignalDetector(
+            symbol="NVDA", direction="LONG", tick_size=0.01,
+            market_timezone="America/New_York", session_open="09:30",
+        )
+
+        runner = MaxBotRunner(["QQQ", "NVDA"])
+        runner._ib = MagicMock()
+
+        rt_qqq = SymbolRuntime(symbol="QQQ")
+        rt_qqq.underlying_contract = MagicMock(symbol="QQQ")
+        rt_qqq.enabled = True
+        rt_qqq.signal_detector = sd_qqq
+
+        rt_nvda = SymbolRuntime(symbol="NVDA")
+        rt_nvda.underlying_contract = MagicMock(symbol="NVDA")
+        rt_nvda.enabled = True
+        rt_nvda.signal_detector = sd_nvda
+
+        runner._runtimes["QQQ"] = rt_qqq
+        runner._runtimes["NVDA"] = rt_nvda
+
+        sessions_qqq = [{"date": "2026-08-10", "candles": [
+            {"time_ms": 1, "open": 585.0, "high": 590.0, "low": 580.0,
+             "close": 586.0, "volume": 1000}]}]
+        sessions_nvda = [{"date": "2026-08-10", "candles": [
+            {"time_ms": 1, "open": 120.0, "high": 125.0, "low": 118.0,
+             "close": 121.0, "volume": 1000}]}]
+
+        def fake_fetch(ib, stock, tz):
+            return sessions_qqq if stock.symbol == "QQQ" else sessions_nvda
+
+        with patch("trading_lab.live.bot_runner.fetch_previous_session_bars",
+                   side_effect=fake_fetch), \
+             patch("trading_lab.live.bot_runner.fetch_premarket_bars",
+                   return_value=[]):
+            runner._compute_context_levels()
+
+        assert rt_qqq.previous_sessions == sessions_qqq
+        assert rt_nvda.previous_sessions == sessions_nvda
+        assert sd_qqq._previous_sessions == sessions_qqq
+        assert sd_nvda._previous_sessions == sessions_nvda
+        # Cross-check: no contamination in either direction.
+        assert sd_qqq._previous_sessions != sessions_nvda
+        assert sd_nvda._previous_sessions != sessions_qqq

@@ -348,3 +348,204 @@ class TestFailedStage:
         sess = _build_session_up_to(_orb_bars())
         result = d.evaluate(sess)
         assert result.failed_stage is not None
+
+
+# ── Test: previous_sessions wiring (PDH/PDL micro-task 4) ────────────────────
+#
+# level_source stays ORB — these tests verify only that the data is
+# reachable on the detector and that passing it through to
+# build_level(all_sessions=...) does not change ORB behavior.
+
+_FAKE_PREVIOUS_SESSIONS = [
+    {"date": "2026-08-10", "candles": [
+        {"time_ms": 1, "open": 100.0, "high": 105.0, "low": 95.0,
+         "close": 101.0, "volume": 500},
+    ]},
+]
+
+
+class TestPreviousSessionsWiring:
+    def test_default_none(self):
+        """Before set_previous_sessions() is called, the detector has none."""
+        d = _make_detector()
+        assert d._previous_sessions is None
+
+    def test_set_previous_sessions_stores_data(self):
+        """previous_sessions reaches the detector correctly for its symbol."""
+        d = _make_detector()
+        d.set_previous_sessions(_FAKE_PREVIOUS_SESSIONS)
+        assert d._previous_sessions == _FAKE_PREVIOUS_SESSIONS
+
+    def test_orb_signal_unchanged_with_previous_sessions(self):
+        """Passing previous_sessions through must not alter the ORB
+        signal outcome — level_source stays ORB_HIGH, which ignores
+        all_sessions entirely (level_provider._build_orb_level does
+        not take that parameter)."""
+        bars = _all_bars_through_rejection()
+
+        d_without = _make_detector()
+        sess_without = _build_session_up_to(bars)
+        result_without = d_without.evaluate(sess_without)
+
+        d_with = _make_detector()
+        d_with.set_previous_sessions(_FAKE_PREVIOUS_SESSIONS)
+        sess_with = _build_session_up_to(bars)
+        result_with = d_with.evaluate(sess_with)
+
+        assert result_without.status == SignalStatus.SIGNAL
+        assert result_with.status == SignalStatus.SIGNAL
+        assert result_with.direction == result_without.direction
+        assert result_with.entry_price == result_without.entry_price
+        assert result_with.stop_price == result_without.stop_price
+        assert result_with.target_price == result_without.target_price
+        assert result_with.entry_timestamp_ms == result_without.entry_timestamp_ms
+
+    def test_orb_no_setup_unchanged_with_previous_sessions(self):
+        """Same NO_SETUP outcome with or without previous_sessions set,
+        for a partial (non-signal) session."""
+        bars = _orb_bars() + [_break_bar()]
+
+        d_without = _make_detector()
+        result_without = d_without.evaluate(_build_session_up_to(bars))
+
+        d_with = _make_detector()
+        d_with.set_previous_sessions(_FAKE_PREVIOUS_SESSIONS)
+        result_with = d_with.evaluate(_build_session_up_to(bars))
+
+        assert result_without.status == result_with.status == SignalStatus.NO_SETUP
+        assert result_without.failed_stage == result_with.failed_stage
+
+    def test_engine_config_level_source_still_orb(self):
+        """level_source is untouched by this wiring — still ORB."""
+        d = _make_detector()
+        d.set_previous_sessions(_FAKE_PREVIOUS_SESSIONS)
+        assert d._engine_config["level_source"] == "ORB_HIGH"
+
+
+# ── Test: explicit level_source constructor param (PDH/PDL micro-task 5) ─────
+#
+# level_source is pure configurability here — no dynamic selection logic,
+# no operational PDH/PDL signal generation, no engulfing/ORB-superato
+# decisions. Default (None) must reproduce the exact prior behavior.
+
+class TestDefaultLevelSourceUnchanged:
+    def test_long_default_still_orb_high(self):
+        d = _make_detector(direction="LONG")
+        assert d._engine_config["level_source"] == "ORB_HIGH"
+
+    def test_short_default_still_orb_low(self):
+        d = _make_detector(direction="SHORT")
+        assert d._engine_config["level_source"] == "ORB_LOW"
+
+    def test_explicit_none_same_as_omitted(self):
+        d_omitted = _make_detector(direction="LONG")
+        d_none = _make_detector(direction="LONG", level_source=None)
+        assert (d_omitted._engine_config["level_source"]
+                == d_none._engine_config["level_source"] == "ORB_HIGH")
+
+
+class TestExplicitLevelSourceConstruction:
+    def test_long_can_be_constructed_with_previous_day_high(self):
+        d = _make_detector(direction="LONG", level_source="PREVIOUS_DAY_HIGH")
+        assert d._engine_config["level_source"] == "PREVIOUS_DAY_HIGH"
+        # direction (BDRR sign logic) is untouched by level_source choice.
+        assert d._direction == "LONG"
+        assert d._engine_config["direction"] == "LONG"
+
+    def test_short_can_be_constructed_with_previous_day_low(self):
+        d = _make_detector(direction="SHORT", level_source="PREVIOUS_DAY_LOW")
+        assert d._engine_config["level_source"] == "PREVIOUS_DAY_LOW"
+        assert d._direction == "SHORT"
+        assert d._engine_config["direction"] == "SHORT"
+
+    def test_invalid_direction_still_rejected_regardless_of_level_source(self):
+        with pytest.raises(ValueError):
+            _make_detector(direction="SIDEWAYS", level_source="PREVIOUS_DAY_HIGH")
+
+
+class TestLevelSourceReachesBuildLevel:
+    """Verify the explicit level_source is not just stored, but actually
+    used by build_level() — and that a PDH level can be constructed from
+    previous_sessions already propagated (micro-task 4). No SIGNAL is
+    required here — only that level construction succeeds."""
+
+    def test_previous_day_high_level_built_from_propagated_sessions(self):
+        from trading_lab.level_provider import build_level
+        from trading_lab.session_context import build_session_context
+
+        d = LiveSignalDetector(
+            symbol="QQQ", direction="LONG", tick_size=0.01,
+            market_timezone="America/New_York", session_open="09:30",
+            level_source="PREVIOUS_DAY_HIGH",
+        )
+        previous_sessions = [{
+            "date": "2026-08-10",
+            "candles": [
+                {"time_ms": 1, "open": 100.0, "high": 105.0, "low": 95.0,
+                 "close": 101.0, "volume": 500},
+            ],
+        }]
+        d.set_previous_sessions(previous_sessions)
+
+        # Today's ORB-window bars (2026-08-11 09:30-09:34) — needed by
+        # _build_pdh_pdl_level for scan_from_index geometry.
+        today_bars = _orb_bars()
+        sc = build_session_context(today_bars, d._engine_config)
+        assert sc["status"] == "OK"
+
+        result = build_level(
+            sc["candles"], sc, d._engine_config,
+            all_sessions=d._previous_sessions,
+        )
+        assert result["status"] == "OK"
+        assert result["level_source"] == "PREVIOUS_DAY_HIGH"
+        assert result["level_price"] == 105.0
+
+    def test_previous_day_low_level_built_from_propagated_sessions(self):
+        from trading_lab.level_provider import build_level
+        from trading_lab.session_context import build_session_context
+
+        d = LiveSignalDetector(
+            symbol="QQQ", direction="SHORT", tick_size=0.01,
+            market_timezone="America/New_York", session_open="09:30",
+            level_source="PREVIOUS_DAY_LOW",
+        )
+        previous_sessions = [{
+            "date": "2026-08-10",
+            "candles": [
+                {"time_ms": 1, "open": 100.0, "high": 105.0, "low": 95.0,
+                 "close": 101.0, "volume": 500},
+            ],
+        }]
+        d.set_previous_sessions(previous_sessions)
+
+        today_bars = _orb_bars()
+        sc = build_session_context(today_bars, d._engine_config)
+        assert sc["status"] == "OK"
+
+        result = build_level(
+            sc["candles"], sc, d._engine_config,
+            all_sessions=d._previous_sessions,
+        )
+        assert result["status"] == "OK"
+        assert result["level_source"] == "PREVIOUS_DAY_LOW"
+        assert result["level_price"] == 95.0
+
+    def test_without_previous_sessions_pdh_fails_gracefully(self):
+        """Explicit PREVIOUS_DAY_HIGH with no previous_sessions propagated
+        yet must fail cleanly (MISSING_SESSIONS_DATA), not crash."""
+        from trading_lab.level_provider import build_level
+        from trading_lab.session_context import build_session_context
+
+        d = _make_detector(direction="LONG", level_source="PREVIOUS_DAY_HIGH")
+        assert d._previous_sessions is None
+
+        today_bars = _orb_bars()
+        sc = build_session_context(today_bars, d._engine_config)
+        result = build_level(
+            sc["candles"], sc, d._engine_config,
+            all_sessions=d._previous_sessions,
+        )
+        assert result["status"] == "FAILED"
+        assert result["failed_stage"] == "MISSING_SESSIONS_DATA"
+

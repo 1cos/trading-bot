@@ -258,6 +258,24 @@ class TestRunnerWiring:
         assert rt.context_levels.pdh == 585.0
 
 
+# ── Test: Runner retains previous_sessions (not just PDH/PDL scalars) ────────
+
+class TestRunnerRetainsPreviousSessions:
+    def test_field_default_none(self):
+        rt = SymbolRuntime(symbol="QQQ")
+        assert rt.previous_sessions is None  # default
+
+    def test_field_holds_all_sessions_format(self):
+        """previous_sessions must accept the same shape returned by
+        fetch_previous_session_bars() / consumed by compute_pdh_pdl()."""
+        rt = SymbolRuntime(symbol="QQQ")
+        sessions = [_session("2026-08-10", [(100.0, 95.0), (102.0, 97.0)])]
+        rt.previous_sessions = sessions
+        assert rt.previous_sessions == sessions
+        assert rt.previous_sessions[0]["date"] == "2026-08-10"
+        assert "candles" in rt.previous_sessions[0]
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # PMH / PML TESTS
 # ══════════════════════════════════════════════════════════════════════════════

@@ -51,6 +51,15 @@ class SymbolRuntime:
     broker_position_info : dict or None
         Details of the detected existing position (conId, localSymbol,
         right, strike, expiry, quantity), or None if not blocked.
+    previous_sessions : list[dict] or None
+        Previous-session historical bars as fetched at boot by
+        ``fetch_previous_session_bars()`` — the same ``all_sessions``
+        format expected by ``pdh_pdl_provider.compute_pdh_pdl()`` /
+        ``build_level(..., all_sessions=...)``:
+        ``[{"date": "YYYY-MM-DD", "candles": [...]}]``.
+        Retained here (not just consumed into ``context_levels``) so
+        it is available to the BDRR detector in a later task. Not
+        wired into any detector yet.
     """
 
     symbol: str
@@ -64,6 +73,7 @@ class SymbolRuntime:
     enabled: bool = True
     error: str | None = None
     context_levels: object | None = None  # ContextLevels (PDH/PDL/PMH/PML)
+    previous_sessions: list | None = None  # all_sessions format for PDH/PDL provider
 
     # Existing broker position reconciliation (startup safety gate).
     # broker_position_blocked is True when an existing, non-zero IBKR

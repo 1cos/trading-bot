@@ -132,6 +132,16 @@ class DualSignalDetector:
         """The result of the most recent evaluate() call."""
         return self._last_result
 
+    def set_previous_sessions(self, previous_sessions: list | None) -> None:
+        """Propagate previous-session historical bars to both directions.
+
+        LONG and SHORT are the same underlying symbol, so both detectors
+        receive the identical all_sessions data. See
+        LiveSignalDetector.set_previous_sessions() for the expected format.
+        """
+        self._long.set_previous_sessions(previous_sessions)
+        self._short.set_previous_sessions(previous_sessions)
+
     def evaluate(self, session: dict, consumed_setup_keys: set[str] | None = None) -> SignalResult:
         """Evaluate the session for both LONG and SHORT setups.
 

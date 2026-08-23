@@ -587,6 +587,18 @@ class MaxBotRunner:
                 sessions = fetch_previous_session_bars(
                     self._ib, rt.underlying_contract, self._tz,
                 )
+                # Retain the raw sessions (all_sessions format) on the
+                # runtime — not just the PDH/PDL scalars derived below —
+                # so a later PDH/PDL detector task can reuse this data
+                # without a second historical fetch.
+                rt.previous_sessions = sessions
+
+                # Propagate to the signal detector (LiveSignalDetector or
+                # DualSignalDetector) already built in _setup_symbol().
+                # level_source stays ORB for now — this only makes the
+                # data reachable at build_level() time for a future task.
+                if rt.signal_detector is not None:
+                    rt.signal_detector.set_previous_sessions(sessions)
 
                 # PMH/PML from today's premarket
                 pm_bars = fetch_premarket_bars(
