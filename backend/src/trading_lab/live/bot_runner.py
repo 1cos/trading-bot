@@ -64,6 +64,7 @@ from trading_lab.live.context_levels import (
     fetch_premarket_bars,
     compute_live_context_levels,
 )
+from trading_lab.live.pdh_pdl_candidate_evaluator import evaluate_pdh_pdl_candidate
 
 log = logging.getLogger("maxbot")
 
@@ -714,6 +715,63 @@ class MaxBotRunner:
             fed += 1
         log.info(f"Bootstrap {rt.symbol}: {fed} bars (context only, no signals)")
 
+    def _update_pdh_pdl_candidate(self, rt: SymbolRuntime) -> None:
+        """Observational-only PDH/PDL candidate wiring (micro-task 15).
+
+        Runs the eligibility-gated PDH/PDL BDRR pipeline
+        (check_orb_to_level_eligibility -> a fresh, explicitly-
+        configured LiveSignalDetector when eligible) for whichever
+        directions apply to this runtime's configured direction,
+        purely for observation. The ORB detector/orchestrator flow is
+        completely untouched by this call.
+
+        NEVER touches TradeOrchestrator/ObserveOrchestrator, NEVER
+        creates a pending order, NEVER talks to IBKR — the result is
+        only stored on rt.pdh_pdl_candidate for a future PWA/audit
+        view. No pending signal, execution state, or trade lifecycle
+        field is read or written here.
+        """
+        if not rt.session_builder:
+            return
+        session = rt.session_builder.current_session()
+        if session is None:
+            return
+
+        directions = []
+        if self._direction in ("LONG", "BOTH"):
+            directions.append("LONG")
+        if self._direction in ("SHORT", "BOTH"):
+            directions.append("SHORT")
+
+        candidate: dict = {}
+        for direction in directions:
+            level_source = (
+                "PREVIOUS_DAY_HIGH" if direction == "LONG" else "PREVIOUS_DAY_LOW"
+            )
+            try:
+                out = evaluate_pdh_pdl_candidate(
+                    session, rt.previous_sessions, symbol=rt.symbol,
+                    direction=direction, tick_size=self._tick_size,
+                    market_timezone=self._tz_str, session_open=self._session_open,
+                )
+            except Exception as e:
+                # Observational only — a failure here must never affect
+                # the ORB/execution path. Log and skip this direction.
+                log.debug(
+                    f"[{rt.symbol}] PDH/PDL candidate eval error "
+                    f"({direction}): {e}"
+                )
+                continue
+            candidate[direction] = {
+                "direction": direction,
+                "level_source": level_source,
+                "eligible": out["eligibility"].get("eligible", False),
+                "eligibility": out["eligibility"],
+                "signal_result": out["pdh_pdl_result"],
+            }
+
+        rt.pdh_pdl_candidate = candidate
+
     def _on_bar_update(self, rt: SymbolRuntime, bars, has_new_bar) -> None:
         """Bar callback — MUST NOT call any IBKR sync methods.
 
@@ -762,6 +820,13 @@ class MaxBotRunner:
             # This calls session_builder.add_bar + signal_detector.evaluate
             # but does NOT call any IBKR sync methods.
             result = rt.orchestrator.on_bar(candle)
+
+            # Observational-only PDH/PDL candidate wiring (micro-task 15).
+            # Runs AFTER the ORB orchestrator has already processed this
+            # bar (session_builder is now up to date) — completely
+            # separate from and never fed back into the orchestrator's
+            # own pending-signal/execution state.
+            self._update_pdh_pdl_candidate(rt)
 
             # Extract pipeline stage info from the signal detector's last result
             # (already evaluated inside orchestrator.on_bar, no second call)

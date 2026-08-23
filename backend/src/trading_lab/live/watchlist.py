@@ -60,6 +60,19 @@ class SymbolRuntime:
         Retained here (not just consumed into ``context_levels``) so
         it is available to the BDRR detector in a later task. Not
         wired into any detector yet.
+    pdh_pdl_candidate : dict[str, dict] or None
+        Observational-only PDH/PDL candidate result, keyed by
+        direction ("LONG" for PDH, "SHORT" for PDL) — only the
+        directions applicable to this runtime's configured direction
+        are populated. Each value is
+        ``evaluate_pdh_pdl_candidate()``'s return dict, enriched with
+        ``direction`` and ``level_source``:
+        ``{"direction": str, "level_source": str, "eligible": bool,
+        "eligibility": dict, "signal_result": SignalResult | None}``.
+        Recomputed every bar (see ``MaxBotRunner._on_bar_update``);
+        nothing here ever reaches TradeOrchestrator, creates a pending
+        order, or is sent to IBKR — it exists purely so a future
+        PWA/audit view can display it.
     """
 
     symbol: str
@@ -74,6 +87,7 @@ class SymbolRuntime:
     error: str | None = None
     context_levels: object | None = None  # ContextLevels (PDH/PDL/PMH/PML)
     previous_sessions: list | None = None  # all_sessions format for PDH/PDL provider
+    pdh_pdl_candidate: dict | None = None  # observational only — see docstring above
 
     # Existing broker position reconciliation (startup safety gate).
     # broker_position_blocked is True when an existing, non-zero IBKR
