@@ -48,6 +48,206 @@ BODY_RATIO_MAX = 0.40
 FAVORABLE_CLOSE_LOCATION_MIN = 0.80
 
 
+# ── Max Entry Candle / SINGLE_CANDLE_REJECTION geometry (extracted) ───────────
+#
+# This is the exact geometry logic that lived as the nested
+# evaluate_geometry() closure inside find_rejection(). It is extracted
+# here, unmodified rule-for-rule, as a standalone reusable pure
+# function so it can be called outside find_rejection()'s full
+# break/displacement/retest chain (e.g. for evaluating a single
+# candidate candle directly). find_rejection() itself now calls this
+# function for its SINGLE_CANDLE_REJECTION path instead of a nested
+# closure — no rule, threshold, or tick-handling behavior changed.
+
+
+def evaluate_single_candle_rejection_geometry(
+    candle: dict,
+    direction: str,
+    level_price: float,
+    tick_size: float,
+    *,
+    rejection_wick_ratio_min: float = REJECTION_WICK_RATIO_MIN,
+    body_ratio_max: float = BODY_RATIO_MAX,
+    favorable_close_location_min: float = FAVORABLE_CLOSE_LOCATION_MIN,
+    min_close_beyond_level_ticks: int | None = None,
+    confirmation_wick_penetration_pct_min: float = 0.20,
+) -> dict:
+    """Evaluate Max Entry Candle / SINGLE_CANDLE_REJECTION geometry for
+    one candle against one level. Pure function — no side effects, no
+    upstream break/displacement/retest chain required.
+
+    This is identical, rule-for-rule, to the geometry previously
+    computed only inside find_rejection()'s nested evaluate_geometry()
+    closure: same wick penetration, body geometry, close position,
+    direction handling, tick handling, thresholds, and pass/fail
+    result. No new parameter changes strategic behavior — the keyword
+    parameters here simply surface the exact same values find_rejection()
+    already resolved from config (defaulting to the same frozen
+    constants) so the function is callable standalone.
+
+    Parameters
+    ----------
+    candle : dict
+        A single candle (open/high/low/close/time_ms).
+    direction : str
+        "LONG" or "SHORT".
+    level_price : float
+        The level being evaluated against (raw price).
+    tick_size : float
+        Instrument tick size.
+    rejection_wick_ratio_min, body_ratio_max, favorable_close_location_min :
+        Same three qualification thresholds find_rejection() already
+        uses (defaults are the same frozen module constants).
+    min_close_beyond_level_ticks : int | None
+        Same optional gate find_rejection() already supports (default
+        None — disabled).
+    confirmation_wick_penetration_pct_min : float
+        Same wick-penetration-into-level-zone gate find_rejection()
+        already uses (default 0.20, matching today's default).
+
+    Returns
+    -------
+    dict
+        {"geometry": {...}, "failed_rules": [...], "qualifies": bool}
+        — identical shape to what evaluate_geometry() previously
+        returned.
+    """
+    is_short = direction == "SHORT"
+    level_ticks = price_to_ticks(level_price, tick_size)
+
+    high_ticks = price_to_ticks(candle["high"], tick_size)
+    low_ticks = price_to_ticks(candle["low"], tick_size)
+    open_ticks = price_to_ticks(candle["open"], tick_size)
+    close_ticks = price_to_ticks(candle["close"], tick_size)
+
+    range_ticks = high_ticks - low_ticks
+
+    if is_short:
+        # SHORT: penetration is how far above level, close_beyond is
+        # how far below level the close is (positive = favorable)
+        penetration_ticks = max(0, high_ticks - level_ticks)
+        close_beyond_level_ticks = level_ticks - close_ticks
+    else:
+        # LONG: penetration is how far below level
+        penetration_ticks = max(0, level_ticks - low_ticks)
+        close_beyond_level_ticks = close_ticks - level_ticks
+
+    if range_ticks == 0:
+        return {
+            "geometry": {
+                "range_ticks": 0,
+                "body_ticks": 0,
+                "rejection_wick_ticks": 0,
+                "opposite_wick_ticks": 0,
+                "rejection_wick_ratio": None,
+                "body_ratio": None,
+                "favorable_close_location": None,
+                "opposite_wick_ratio": None,
+                "penetration_through_level_ticks": penetration_ticks,
+                "penetration_through_level_points": ticks_to_points(
+                    penetration_ticks, tick_size
+                ),
+                "close_beyond_level_ticks": close_beyond_level_ticks,
+                "close_beyond_level_points": ticks_to_points(
+                    close_beyond_level_ticks, tick_size
+                ),
+            },
+            "failed_rules": ["ZERO_RANGE_CANDLE"],
+            "qualifies": False,
+        }
+
+    body_ticks = abs(close_ticks - open_ticks)
+
+    if is_short:
+        # SHORT rejection wick: upper wick that reaches into level
+        # rejection_wick = high - max(open, close)
+        rejection_wick_ticks = high_ticks - max(open_ticks, close_ticks)
+        # opposite wick = lower wick
+        opposite_wick_ticks = min(open_ticks, close_ticks) - low_ticks
+        # favorable close location: close near the low (bearish)
+        # = (high - close) / range
+        favorable_close_location = (high_ticks - close_ticks) / range_ticks
+    else:
+        # LONG rejection wick: lower wick that reaches into level
+        rejection_wick_ticks = min(open_ticks, close_ticks) - low_ticks
+        opposite_wick_ticks = high_ticks - max(open_ticks, close_ticks)
+        favorable_close_location = (close_ticks - low_ticks) / range_ticks
+
+    rejection_wick_ratio = rejection_wick_ticks / range_ticks
+    body_ratio = body_ticks / range_ticks
+    opposite_wick_ratio = opposite_wick_ticks / range_ticks
+
+    failed_rules: list[str] = []
+    if rejection_wick_ratio < rejection_wick_ratio_min:
+        failed_rules.append("REJECTION_WICK_RATIO_TOO_LOW")
+    if body_ratio > body_ratio_max:
+        failed_rules.append("BODY_RATIO_TOO_HIGH")
+    if favorable_close_location < favorable_close_location_min:
+        failed_rules.append("FAVORABLE_CLOSE_LOCATION_TOO_LOW")
+
+    # Close-beyond-level gate
+    if min_close_beyond_level_ticks is not None:
+        if close_beyond_level_ticks < min_close_beyond_level_ticks:
+            failed_rules.append("CLOSE_BEYOND_LEVEL_TOO_LOW")
+
+    # ── Body-outside-ORB gate ────────────────────────────────────────
+    # LONG: both open and close must be >= level (open allowed on level)
+    # SHORT: both open and close must be <= level (open allowed on level)
+    if is_short:
+        body_outside = (open_ticks <= level_ticks and close_ticks < level_ticks)
+    else:
+        body_outside = (open_ticks >= level_ticks and close_ticks > level_ticks)
+
+    # ── Wick penetration percentage gate ─────────────────────────────
+    # Measures what fraction of the rejection wick is inside the ORB.
+    if is_short:
+        wick_pen_ticks = max(0, high_ticks - level_ticks)
+        rej_wick_for_pen = rejection_wick_ticks
+    else:
+        wick_pen_ticks = max(0, level_ticks - low_ticks)
+        rej_wick_for_pen = rejection_wick_ticks
+
+    if rej_wick_for_pen > 0 and wick_pen_ticks > 0:
+        wick_penetration_pct = wick_pen_ticks / rej_wick_for_pen
+    else:
+        wick_penetration_pct = 0.0
+
+    if confirmation_wick_penetration_pct_min > 0:
+        if not body_outside:
+            failed_rules.append("BODY_INSIDE_ORB")
+        if rej_wick_for_pen <= 0:
+            failed_rules.append("NO_REJECTION_WICK")
+        elif wick_pen_ticks <= 0:
+            failed_rules.append("WICK_NO_PENETRATION")
+        elif wick_penetration_pct < confirmation_wick_penetration_pct_min:
+            failed_rules.append("WICK_PENETRATION_PCT_TOO_LOW")
+
+    return {
+        "geometry": {
+            "range_ticks": range_ticks,
+            "body_ticks": body_ticks,
+            "rejection_wick_ticks": rejection_wick_ticks,
+            "opposite_wick_ticks": opposite_wick_ticks,
+            "rejection_wick_ratio": rejection_wick_ratio,
+            "body_ratio": body_ratio,
+            "favorable_close_location": favorable_close_location,
+            "opposite_wick_ratio": opposite_wick_ratio,
+            "penetration_through_level_ticks": penetration_ticks,
+            "penetration_through_level_points": ticks_to_points(
+                penetration_ticks, tick_size
+            ),
+            "close_beyond_level_ticks": close_beyond_level_ticks,
+            "close_beyond_level_points": ticks_to_points(
+                close_beyond_level_ticks, tick_size
+            ),
+            "body_outside_orb": body_outside,
+            "wick_penetration_pct": round(wick_penetration_pct, 4),
+        },
+        "failed_rules": failed_rules,
+        "qualifies": len(failed_rules) == 0,
+    }
+
+
 # ── Config validation ────────────────────────────────────────────────────────
 
 _REQUIRED_CONFIG_KEYS = (
@@ -244,139 +444,6 @@ def find_rejection(
     tick_size = config["tick_size"]
     is_short = direction == "SHORT"
 
-    def evaluate_geometry(cnd: dict) -> dict:
-        high_ticks = price_to_ticks(cnd["high"], tick_size)
-        low_ticks = price_to_ticks(cnd["low"], tick_size)
-        open_ticks = price_to_ticks(cnd["open"], tick_size)
-        close_ticks = price_to_ticks(cnd["close"], tick_size)
-
-        range_ticks = high_ticks - low_ticks
-
-        if is_short:
-            # SHORT: penetration is how far above level, close_beyond is
-            # how far below level the close is (positive = favorable)
-            penetration_ticks = max(0, high_ticks - level_ticks)
-            close_beyond_level_ticks = level_ticks - close_ticks
-        else:
-            # LONG: penetration is how far below level
-            penetration_ticks = max(0, level_ticks - low_ticks)
-            close_beyond_level_ticks = close_ticks - level_ticks
-
-        if range_ticks == 0:
-            return {
-                "geometry": {
-                    "range_ticks": 0,
-                    "body_ticks": 0,
-                    "rejection_wick_ticks": 0,
-                    "opposite_wick_ticks": 0,
-                    "rejection_wick_ratio": None,
-                    "body_ratio": None,
-                    "favorable_close_location": None,
-                    "opposite_wick_ratio": None,
-                    "penetration_through_level_ticks": penetration_ticks,
-                    "penetration_through_level_points": ticks_to_points(
-                        penetration_ticks, tick_size
-                    ),
-                    "close_beyond_level_ticks": close_beyond_level_ticks,
-                    "close_beyond_level_points": ticks_to_points(
-                        close_beyond_level_ticks, tick_size
-                    ),
-                },
-                "failed_rules": ["ZERO_RANGE_CANDLE"],
-                "qualifies": False,
-            }
-
-        body_ticks = abs(close_ticks - open_ticks)
-
-        if is_short:
-            # SHORT rejection wick: upper wick that reaches into level
-            # rejection_wick = high - max(open, close)
-            rejection_wick_ticks = high_ticks - max(open_ticks, close_ticks)
-            # opposite wick = lower wick
-            opposite_wick_ticks = min(open_ticks, close_ticks) - low_ticks
-            # favorable close location: close near the low (bearish)
-            # = (high - close) / range
-            favorable_close_location = (high_ticks - close_ticks) / range_ticks
-        else:
-            # LONG rejection wick: lower wick that reaches into level
-            rejection_wick_ticks = min(open_ticks, close_ticks) - low_ticks
-            opposite_wick_ticks = high_ticks - max(open_ticks, close_ticks)
-            favorable_close_location = (close_ticks - low_ticks) / range_ticks
-
-        rejection_wick_ratio = rejection_wick_ticks / range_ticks
-        body_ratio = body_ticks / range_ticks
-        opposite_wick_ratio = opposite_wick_ticks / range_ticks
-
-        failed_rules: list[str] = []
-        if rejection_wick_ratio < wick_min:
-            failed_rules.append("REJECTION_WICK_RATIO_TOO_LOW")
-        if body_ratio > body_max:
-            failed_rules.append("BODY_RATIO_TOO_HIGH")
-        if favorable_close_location < FAVORABLE_CLOSE_LOCATION_MIN:
-            failed_rules.append("FAVORABLE_CLOSE_LOCATION_TOO_LOW")
-
-        # Close-beyond-level gate
-        if min_close_beyond is not None:
-            if close_beyond_level_ticks < min_close_beyond:
-                failed_rules.append("CLOSE_BEYOND_LEVEL_TOO_LOW")
-
-        # ── Body-outside-ORB gate ────────────────────────────────────────
-        # LONG: both open and close must be >= level (open allowed on level)
-        # SHORT: both open and close must be <= level (open allowed on level)
-        if is_short:
-            body_outside = (open_ticks <= level_ticks and close_ticks < level_ticks)
-        else:
-            body_outside = (open_ticks >= level_ticks and close_ticks > level_ticks)
-
-        # ── Wick penetration percentage gate ─────────────────────────────
-        # Measures what fraction of the rejection wick is inside the ORB.
-        if is_short:
-            wick_pen_ticks = max(0, high_ticks - level_ticks)
-            rej_wick_for_pen = rejection_wick_ticks
-        else:
-            wick_pen_ticks = max(0, level_ticks - low_ticks)
-            rej_wick_for_pen = rejection_wick_ticks
-
-        if rej_wick_for_pen > 0 and wick_pen_ticks > 0:
-            wick_penetration_pct = wick_pen_ticks / rej_wick_for_pen
-        else:
-            wick_penetration_pct = 0.0
-
-        if wick_pen_min > 0:
-            if not body_outside:
-                failed_rules.append("BODY_INSIDE_ORB")
-            if rej_wick_for_pen <= 0:
-                failed_rules.append("NO_REJECTION_WICK")
-            elif wick_pen_ticks <= 0:
-                failed_rules.append("WICK_NO_PENETRATION")
-            elif wick_penetration_pct < wick_pen_min:
-                failed_rules.append("WICK_PENETRATION_PCT_TOO_LOW")
-
-        return {
-            "geometry": {
-                "range_ticks": range_ticks,
-                "body_ticks": body_ticks,
-                "rejection_wick_ticks": rejection_wick_ticks,
-                "opposite_wick_ticks": opposite_wick_ticks,
-                "rejection_wick_ratio": rejection_wick_ratio,
-                "body_ratio": body_ratio,
-                "favorable_close_location": favorable_close_location,
-                "opposite_wick_ratio": opposite_wick_ratio,
-                "penetration_through_level_ticks": penetration_ticks,
-                "penetration_through_level_points": ticks_to_points(
-                    penetration_ticks, tick_size
-                ),
-                "close_beyond_level_ticks": close_beyond_level_ticks,
-                "close_beyond_level_points": ticks_to_points(
-                    close_beyond_level_ticks, tick_size
-                ),
-                "body_outside_orb": body_outside,
-                "wick_penetration_pct": round(wick_penetration_pct, 4),
-            },
-            "failed_rules": failed_rules,
-            "qualifies": len(failed_rules) == 0,
-        }
-
     # ── ATR cache (O(n), computed once) ─────────────────────────────────
     # Used by the News Candle filter (spec §9).  previous_atr for candle
     # i is atr_cache[i-1]; candle i is never included in its own ATR.
@@ -476,7 +543,13 @@ def find_rejection(
                 i += 1
                 continue
 
-        result = evaluate_geometry(cnd)
+        result = evaluate_single_candle_rejection_geometry(
+            cnd, direction, level_price, tick_size,
+            rejection_wick_ratio_min=wick_min,
+            body_ratio_max=body_max,
+            min_close_beyond_level_ticks=min_close_beyond,
+            confirmation_wick_penetration_pct_min=wick_pen_min,
+        )
         atr_class = _classify_atr(i, cnd)
         is_nc = _inject_atr(result, atr_class)
 
@@ -577,7 +650,13 @@ def find_rejection(
                     # ── TWO_CANDLE qualifies? ────────────────────────
                     if tc_attempted and not tc_failed_rules:
                         # Build geometry for second candle
-                        result2 = evaluate_geometry(cnd2)
+                        result2 = evaluate_single_candle_rejection_geometry(
+                            cnd2, direction, level_price, tick_size,
+                            rejection_wick_ratio_min=wick_min,
+                            body_ratio_max=body_max,
+                            min_close_beyond_level_ticks=min_close_beyond,
+                            confirmation_wick_penetration_pct_min=wick_pen_min,
+                        )
                         atr_class2_final = _classify_atr(j, cnd2)
                         _inject_atr(result2, atr_class2_final)
 
