@@ -73,6 +73,15 @@ class SymbolRuntime:
         nothing here ever reaches TradeOrchestrator, creates a pending
         order, or is sent to IBKR — it exists purely so a future
         PWA/audit view can display it.
+    premarket_bars : list[dict] or None
+        Today's raw premarket 1-minute candles as fetched at boot by
+        ``fetch_premarket_bars()`` — the same shape as any other
+        candle dict (``time_ms``/``open``/``high``/``low``/``close``/
+        ``volume``), covering the 04:00-09:30 ET window up to boot
+        time. Retained here (not just consumed into
+        ``context_levels`` for the PMH/PML scalars) so it is available
+        for future premarket-break-recognition work. Not used for
+        break/eligibility/retest detection yet.
     """
 
     symbol: str
@@ -88,6 +97,7 @@ class SymbolRuntime:
     context_levels: object | None = None  # ContextLevels (PDH/PDL/PMH/PML)
     previous_sessions: list | None = None  # all_sessions format for PDH/PDL provider
     pdh_pdl_candidate: dict | None = None  # observational only — see docstring above
+    premarket_bars: list | None = None  # raw premarket 1m candles — see docstring above
 
     # Existing broker position reconciliation (startup safety gate).
     # broker_position_blocked is True when an existing, non-zero IBKR

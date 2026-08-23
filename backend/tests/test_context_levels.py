@@ -276,6 +276,26 @@ class TestRunnerRetainsPreviousSessions:
         assert "candles" in rt.previous_sessions[0]
 
 
+# ── Test: Runner retains premarket_bars (PM1 — micro-task 18) ────────────────
+
+class TestRunnerRetainsPremarketBars:
+    def test_field_default_none(self):
+        rt = SymbolRuntime(symbol="QQQ")
+        assert rt.premarket_bars is None  # default
+
+    def test_field_holds_raw_candle_list(self):
+        """premarket_bars must accept the same candle-dict shape
+        returned by fetch_premarket_bars()."""
+        rt = SymbolRuntime(symbol="QQQ")
+        bars = [
+            {"time_ms": 1, "open": 100.0, "high": 101.0, "low": 99.0,
+             "close": 100.5, "volume": 500},
+        ]
+        rt.premarket_bars = bars
+        assert rt.premarket_bars == bars
+        assert rt.premarket_bars[0]["open"] == 100.0
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # PMH / PML TESTS
 # ══════════════════════════════════════════════════════════════════════════════

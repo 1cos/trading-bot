@@ -370,6 +370,104 @@ class TestComputeContextLevelsRetainsSessions:
         assert mock_premarket.call_count == 1
 
 
+# ── premarket_bars retained on runtime (PM2, PM4, PM5 — micro-task 18) ───────
+
+class TestComputeContextLevelsRetainsPremarketBars:
+    """premarket_bars must be stored on the runtime, not discarded,
+    without adding any second historical request, and PMH/PML/
+    context_levels must remain computed exactly as before."""
+
+    def _make_runner_with_symbol(self, symbol="QQQ"):
+        runner = MaxBotRunner([symbol])
+        runner._ib = MagicMock()
+        rt = SymbolRuntime(symbol=symbol)
+        rt.underlying_contract = MagicMock()
+        rt.enabled = True
+        runner._runtimes[symbol] = rt
+        return runner, rt
+
+    def test_pm2_premarket_bars_stored_on_runtime(self):
+        runner, rt = self._make_runner_with_symbol()
+        fake_pm_bars = [
+            {"time_ms": 1, "open": 100.0, "high": 101.5, "low": 99.5,
+             "close": 100.8, "volume": 300},
+            {"time_ms": 2, "open": 100.8, "high": 102.0, "low": 100.5,
+             "close": 101.9, "volume": 250},
+        ]
+        with patch("trading_lab.live.bot_runner.fetch_previous_session_bars",
+                   return_value=[]), \
+             patch("trading_lab.live.bot_runner.fetch_premarket_bars",
+                   return_value=fake_pm_bars) as mock_pm:
+            runner._compute_context_levels()
+
+        assert rt.premarket_bars == fake_pm_bars
+        mock_pm.assert_called_once()
+
+    def test_pm4_pmh_pml_context_levels_unchanged(self):
+        runner, rt = self._make_runner_with_symbol()
+        fake_pm_bars = [
+            {"time_ms": 1, "open": 100.0, "high": 101.5, "low": 99.5,
+             "close": 100.8, "volume": 300},
+            {"time_ms": 2, "open": 100.8, "high": 102.0, "low": 100.5,
+             "close": 101.9, "volume": 250},
+        ]
+        with patch("trading_lab.live.bot_runner.fetch_previous_session_bars",
+                   return_value=[]), \
+             patch("trading_lab.live.bot_runner.fetch_premarket_bars",
+                   return_value=fake_pm_bars):
+            runner._compute_context_levels()
+
+        assert rt.context_levels is not None
+        assert rt.context_levels.pmh == 102.0
+        assert rt.context_levels.pml == 99.5
+
+    def test_pm5_no_extra_historical_request_introduced(self):
+        """Exactly one premarket fetch per symbol — same call count as
+        before this change; no second/new reqHistoricalData call."""
+        runner, rt = self._make_runner_with_symbol()
+        with patch("trading_lab.live.bot_runner.fetch_previous_session_bars",
+                   return_value=[]), \
+             patch("trading_lab.live.bot_runner.fetch_premarket_bars",
+                   return_value=[]) as mock_pm:
+            runner._compute_context_levels()
+
+        assert mock_pm.call_count == 1
+
+    def test_pm3_two_symbols_no_cross_contamination(self):
+        runner = MaxBotRunner(["QQQ", "NVDA"])
+        runner._ib = MagicMock()
+
+        rt_qqq = SymbolRuntime(symbol="QQQ")
+        rt_qqq.underlying_contract = MagicMock(symbol="QQQ")
+        rt_qqq.enabled = True
+
+        rt_nvda = SymbolRuntime(symbol="NVDA")
+        rt_nvda.underlying_contract = MagicMock(symbol="NVDA")
+        rt_nvda.enabled = True
+
+        runner._runtimes["QQQ"] = rt_qqq
+        runner._runtimes["NVDA"] = rt_nvda
+
+        pm_bars_qqq = [{"time_ms": 1, "open": 585.0, "high": 590.0,
+                        "low": 580.0, "close": 586.0, "volume": 1000}]
+        pm_bars_nvda = [{"time_ms": 1, "open": 120.0, "high": 125.0,
+                         "low": 118.0, "close": 121.0, "volume": 1000}]
+
+        def fake_fetch_pm(ib, stock, tz, today_date):
+            return pm_bars_qqq if stock.symbol == "QQQ" else pm_bars_nvda
+
+        with patch("trading_lab.live.bot_runner.fetch_previous_session_bars",
+                   return_value=[]), \
+             patch("trading_lab.live.bot_runner.fetch_premarket_bars",
+                   side_effect=fake_fetch_pm):
+            runner._compute_context_levels()
+
+        assert rt_qqq.premarket_bars == pm_bars_qqq
+        assert rt_nvda.premarket_bars == pm_bars_nvda
+        assert rt_qqq.premarket_bars != pm_bars_nvda
+        assert rt_nvda.premarket_bars != pm_bars_qqq
+
+
 # ── previous_sessions reaches rt.signal_detector, isolated per symbol ────────
 
 class TestPreviousSessionsReachesDetector:

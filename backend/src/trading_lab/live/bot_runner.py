@@ -605,6 +605,11 @@ class MaxBotRunner:
                 pm_bars = fetch_premarket_bars(
                     self._ib, rt.underlying_contract, self._tz, today,
                 )
+                # Retain the raw premarket bars (no transformation) —
+                # not just the PMH/PML scalars computed below — so they
+                # are available for future premarket-break-recognition
+                # work without a second historical fetch.
+                rt.premarket_bars = pm_bars
 
                 ctx = compute_live_context_levels(
                     sym, today, sessions,
