@@ -82,6 +82,26 @@ class SymbolRuntime:
         ``context_levels`` for the PMH/PML scalars) so it is available
         for future premarket-break-recognition work. Not used for
         break/eligibility/retest detection yet.
+    premarket_context : dict[str, dict] or None
+        Observational-only PDH/PDL premarket classification, keyed by
+        direction ("LONG" for PDH, "SHORT" for PDL) — only the
+        directions applicable to this runtime's configured direction
+        are populated, mirroring ``pdh_pdl_candidate``. Each value is
+        ``{"level_source": str, "level_price": float,
+        "break_origin": "NONE" | "PREMARKET_OBSERVED" |
+        "PREMARKET_CARRY_IN", "break_timestamp_ms": int | None}`` —
+        exactly ``premarket_break_classifier.classify_premarket_context()``'s
+        own output shape (plus the level price/source for convenience),
+        never enriched with displacement, retest, or sequence-validity
+        fields. Computed once at boot (see
+        ``MaxBotRunner._update_premarket_context``), when both
+        ``premarket_bars`` and ``context_levels`` first become
+        available — premarket data and PDH/PDL are both fixed for the
+        rest of the session, so there is nothing to recompute per bar.
+        This is pure history/context: it is never read by
+        ``evaluate_pdh_pdl_candidate()``, ``LiveSignalDetector``, or
+        any other trading code, and can never change a SIGNAL/NO_SETUP
+        outcome, entry, stop, target, or setup_key.
     """
 
     symbol: str
@@ -98,6 +118,7 @@ class SymbolRuntime:
     previous_sessions: list | None = None  # all_sessions format for PDH/PDL provider
     pdh_pdl_candidate: dict | None = None  # observational only — see docstring above
     premarket_bars: list | None = None  # raw premarket 1m candles — see docstring above
+    premarket_context: dict | None = None  # observational only — see docstring above
 
     # Existing broker position reconciliation (startup safety gate).
     # broker_position_blocked is True when an existing, non-zero IBKR

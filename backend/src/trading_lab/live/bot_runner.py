@@ -65,6 +65,7 @@ from trading_lab.live.context_levels import (
     compute_live_context_levels,
 )
 from trading_lab.live.pdh_pdl_candidate_evaluator import evaluate_pdh_pdl_candidate
+from trading_lab.premarket_break_classifier import classify_premarket_context
 
 log = logging.getLogger("maxbot")
 
@@ -618,6 +619,14 @@ class MaxBotRunner:
                 )
                 rt.context_levels = ctx
 
+                try:
+                    self._update_premarket_context(rt)
+                except Exception as e:
+                    # Observational only — a failure here must never
+                    # affect context_levels, PDH/PDL, or anything else
+                    # computed in this loop.
+                    log.debug(f"[{sym}] premarket context error: {e}")
+
                 parts = []
                 if ctx.pdh is not None:
                     parts.append(f"PDH={ctx.pdh:.2f} PDL={ctx.pdl:.2f} (from {ctx.prev_date})")
@@ -719,6 +728,62 @@ class MaxBotRunner:
                 rt.session_builder.add_bar(candle)
             fed += 1
         log.info(f"Bootstrap {rt.symbol}: {fed} bars (context only, no signals)")
+
+    def _update_premarket_context(self, rt: SymbolRuntime) -> None:
+        """Observational-only PDH/PDL premarket classification.
+
+        Computed once at boot, right after ``rt.premarket_bars`` and
+        ``rt.context_levels`` (PDH/PDL) both become available in
+        ``_compute_context_levels()`` — both are fixed for the rest of
+        the session, so there is nothing to recompute per bar.
+
+        Calls ONLY ``premarket_break_classifier.classify_premarket_context()``
+        — no displacement, no retest, no sequence validation. The
+        result is pure history ("did PDH/PDL already break in
+        premarket, and when") stored on ``rt.premarket_context`` for a
+        future PWA/audit view.
+
+        NEVER calls the candidate evaluator, the signal detector, or
+        the orchestrator. NEVER writes to ``rt.pdh_pdl_candidate``.
+        NEVER creates a trade. This method's only side effect is
+        setting ``rt.premarket_context``.
+        """
+        ctx = rt.context_levels
+        if ctx is None:
+            return
+
+        directions = []
+        if self._direction in ("LONG", "BOTH"):
+            directions.append("LONG")
+        if self._direction in ("SHORT", "BOTH"):
+            directions.append("SHORT")
+
+        result: dict = {}
+        for direction in directions:
+            if direction == "LONG":
+                level_source = "PREVIOUS_DAY_HIGH"
+                level_price = ctx.pdh
+            else:
+                level_source = "PREVIOUS_DAY_LOW"
+                level_price = ctx.pdl
+
+            if level_price is None:
+                # No invented values — omit this direction entirely
+                # rather than guessing.
+                continue
+
+            classification = classify_premarket_context(
+                rt.premarket_bars, level_price=level_price,
+                direction=direction, level_source=level_source,
+            )
+            result[direction] = {
+                "level_source": level_source,
+                "level_price": level_price,
+                "break_origin": classification["break_origin"],
+                "break_timestamp_ms": classification["break_timestamp_ms"],
+            }
+
+        rt.premarket_context = result
 
     def _update_pdh_pdl_candidate(self, rt: SymbolRuntime) -> None:
         """Observational-only PDH/PDL candidate wiring (micro-task 15).
