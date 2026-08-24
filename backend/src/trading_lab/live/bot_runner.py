@@ -65,6 +65,10 @@ from trading_lab.live.context_levels import (
     compute_live_context_levels,
 )
 from trading_lab.live.pdh_pdl_candidate_evaluator import evaluate_pdh_pdl_candidate
+from trading_lab.live.multi_source_signal_detector_adapter import (
+    ENABLE_PDH_PDL_LIVE,
+    MultiSourceSignalDetectorAdapter,
+)
 from trading_lab.premarket_break_classifier import classify_premarket_context
 
 log = logging.getLogger("maxbot")
@@ -434,21 +438,49 @@ class MaxBotRunner:
         rt.session_builder = sb
 
         # Signal detector
+        #
+        # Wired through MultiSourceSignalDetectorAdapter (still
+        # ORB-only in effect while ENABLE_PDH_PDL_LIVE is False -- see
+        # multi_source_signal_detector_adapter.py's own module
+        # docstring: disabled means a byte-identical passthrough to
+        # the wrapped ORB LiveSignalDetector's own evaluate() result).
+        # Each side is wrapped individually before DualSignalDetector
+        # combines them for BOTH mode, so the adapter path covers
+        # every direction configuration the same way, not just the
+        # single-direction case.
         if self._direction == "BOTH":
-            long_sd = LiveSignalDetector(
+            long_orb = LiveSignalDetector(
                 symbol=sym, direction="LONG", tick_size=self._tick_size,
                 market_timezone=self._tz_str, session_open=self._session_open,
             )
-            short_sd = LiveSignalDetector(
+            short_orb = LiveSignalDetector(
                 symbol=sym, direction="SHORT", tick_size=self._tick_size,
                 market_timezone=self._tz_str, session_open=self._session_open,
             )
+            long_sd = MultiSourceSignalDetectorAdapter(
+                symbol=sym, direction="LONG", orb_detector=long_orb,
+                tick_size=self._tick_size, market_timezone=self._tz_str,
+                session_open=self._session_open,
+                enable_pdh_pdl_live=ENABLE_PDH_PDL_LIVE,
+            )
+            short_sd = MultiSourceSignalDetectorAdapter(
+                symbol=sym, direction="SHORT", orb_detector=short_orb,
+                tick_size=self._tick_size, market_timezone=self._tz_str,
+                session_open=self._session_open,
+                enable_pdh_pdl_live=ENABLE_PDH_PDL_LIVE,
+            )
             sd = DualSignalDetector(long_sd, short_sd)
         else:
-            sd = LiveSignalDetector(
+            orb_sd = LiveSignalDetector(
                 symbol=sym, direction=self._direction,
                 tick_size=self._tick_size, market_timezone=self._tz_str,
                 session_open=self._session_open,
+            )
+            sd = MultiSourceSignalDetectorAdapter(
+                symbol=sym, direction=self._direction, orb_detector=orb_sd,
+                tick_size=self._tick_size, market_timezone=self._tz_str,
+                session_open=self._session_open,
+                enable_pdh_pdl_live=ENABLE_PDH_PDL_LIVE,
             )
         rt.signal_detector = sd
 

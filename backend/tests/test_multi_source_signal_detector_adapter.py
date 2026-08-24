@@ -21,9 +21,12 @@ Covers:
       with TradeOrchestrator's own source code completely untouched.
     - Existing orchestrator test suite remains green (no modification
       anywhere in trade_orchestrator.py).
-    - Static guardrails: not imported by bot_runner.py or
-      trade_orchestrator.py; does not touch DailyTradeManager,
-      execution, IBKR, or PWA code.
+    - Static guardrails: does not touch DailyTradeManager, execution,
+      IBKR, or PWA code. (bot_runner.py DOES now import and construct
+      this adapter as of the "wire into live runtime" task -- see
+      test_bot_runner_multi_source_wiring.py for that wiring's own
+      dedicated tests; this file's own guardrail below confirms the
+      import is present and intentional, not confirms its absence.)
 """
 
 from __future__ import annotations
@@ -580,7 +583,17 @@ class TestTradeOrchestratorFileUntouched:
 # ═════════════════════════════════════════════════════════════════════════
 
 class TestGuardrails:
-    def test_not_imported_by_bot_runner(self):
+    def test_bot_runner_now_imports_the_adapter_by_design(self):
+        """As of the "wire MultiSourceSignalDetectorAdapter into live
+        bot runtime" task, bot_runner.py IS expected to import and
+        construct this adapter -- see
+        test_bot_runner_multi_source_wiring.py's own T1-T4 tests for
+        the dedicated coverage of that wiring itself. This test
+        replaces an earlier, now-obsolete guardrail from before that
+        task existed (which asserted the opposite); keeping a test
+        here at all -- rather than deleting it -- documents that the
+        absence-of-import invariant was deliberately retired, not
+        silently dropped."""
         import ast
         import inspect
         from trading_lab.live import bot_runner as mod
@@ -591,8 +604,7 @@ class TestGuardrails:
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 for alias in node.names:
                     imported_names.add(alias.asname or alias.name)
-        assert "MultiSourceSignalDetectorAdapter" not in imported_names
-        assert "multi_source_signal_detector_adapter" not in imported_names
+        assert "MultiSourceSignalDetectorAdapter" in imported_names
 
     def test_module_does_not_import_daily_trade_manager_or_ibkr_or_execution(self):
         import ast
