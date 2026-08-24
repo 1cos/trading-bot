@@ -1,4 +1,5 @@
-"""Same-entry-candle SignalResult dedup — pure, standalone primitive.
+"""Same-entry-candle SignalResult dedup, plus a pure current-bar
+actionable-candidate collector. Standalone primitives only.
 
 Strategic rule (Max, confirmed 2026-08-24 audit):
 
@@ -8,14 +9,21 @@ Strategic rule (Max, confirmed 2026-08-24 audit):
     Max Entry Candle. The level(s) that contributed may be preserved
     as metadata/confluence, but must never generate separate orders.
 
-This module implements only that narrow rule. It does NOT:
-    - decide priority between structurally distinct setups that fire
-      at different entry_timestamp_ms (still an open question — see
-      the arbitration-policy audit);
-    - handle opposite-direction same-timestamp signals (a different,
+dedupe_same_entry_signals() implements only that narrow rule.
+collect_actionable_signals() (below it) adds the current-bar
+eligibility filter — same symbol/direction/entry_timestamp_ms
+candidates are only ever folded together if BOTH survive the
+edge-trigger/consumed/stale gates a live orchestrator would apply.
+Neither function:
+    - decides priority between structurally distinct setups that fire
+      at different entry_timestamp_ms (proven not to happen for
+      genuinely-actionable same-direction candidates on the same bar —
+      see the 2026-08-24 "distinct-entry arbitration" audit — so this
+      remains out of scope by design, not by omission);
+    - handles opposite-direction same-timestamp signals (a different,
       still-open problem — deliberately left untouched here, see
       dedupe_same_entry_signals()'s docstring);
-    - implement any Decision Engine, confluence grading, or ATR-based
+    - implements any Decision Engine, confluence grading, or ATR-based
       merge (that lives on the research track in
       confluence_zone_builder.py / contracts/zone.py and is a
       geometrically different problem: merging levels at build time,
@@ -24,7 +32,9 @@ This module implements only that narrow rule. It does NOT:
 This module is a pure, standalone primitive. It is NOT imported or
 called from bot_runner.py, trade_orchestrator.py,
 pdh_pdl_candidate_evaluator.py, LiveSignalDetector, or any execution
-path. Wiring is a separate, future task.
+path. Wiring — both collecting candidates from real detectors, and
+consuming this module's output in the orchestrator — is a separate,
+future task for both functions.
 
 Why a wrapper instead of extending SignalResult
 ------------------------------------------------
@@ -52,7 +62,7 @@ underlyings (see test D6).
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 
 from trading_lab.live.signal_detector import SignalResult, SignalStatus
@@ -274,3 +284,144 @@ def dedupe_same_entry_signals(
                 ))
 
     return result
+
+
+# ── Current-bar actionable collector ────────────────────────────────────────
+#
+# Audit basis (2026-08-24, "Pure current-bar multi-source candidate
+# collector" task): re-read against
+# MaxBotTradeOrchestrator._check_for_signal() to separate the guards
+# that belong to per-candidate eligibility (replicated below) from
+# guards that are global runtime/account state and must stay in the
+# orchestrator (NOT replicated here):
+#
+#   Candidate-eligibility invariants (replicated in _is_actionable()):
+#     - status == SignalStatus.SIGNAL
+#     - setup_key not in consumed_setup_keys
+#     - signal_key not in consumed_signal_keys
+#     - not stale: entry_timestamp_ms >= live_boundary_ms (when a
+#       boundary is set and entry_timestamp_ms is known)
+#     - current-bar edge-trigger: entry_timestamp_ms == current_bar_time_ms
+#       (when entry_timestamp_ms is known — mirrors the orchestrator's
+#       own "only compared when both are known" behavior; a SIGNAL
+#       result with entry_timestamp_ms=None is never produced by a real
+#       detector, but this module never assumes that guarantee, same
+#       posture as dedupe_same_entry_signals() above)
+#
+#   Global runtime/account guards (NOT replicated — stay in the
+#   orchestrator/runtime, out of scope for a pure candidate collector):
+#     - DailyTradeManager.can_trade (daily trade count, day-finished,
+#       active-trade lock)
+#     - existing broker option position block
+#     - pending-order / execution lifecycle state
+#
+# One deliberate divergence from the orchestrator's own behavior:
+# _check_for_signal()'s stale branch mutates the orchestrator's own
+# _consumed_setups/_consumed_signals (marking a stale signal consumed
+# "for scanning purposes only", see that method's docstring) as a
+# side effect of rejecting it. This module is a pure function and
+# NEVER mutates consumed_setup_keys/consumed_signal_keys under any
+# branch — that bookkeeping remains the orchestrator's responsibility.
+# A non-current historical candidate is excluded here exactly like
+# _check_for_signal()'s own edge-trigger gate, but this collector
+# never adds it to any consumed set on the caller's behalf.
+
+
+def _is_actionable(
+    signal: SignalResult,
+    current_bar_time_ms: int,
+    live_boundary_ms: int,
+    consumed_setup_keys: Collection[str],
+    consumed_signal_keys: Collection[str],
+) -> bool:
+    """True iff `signal` would survive every per-candidate eligibility
+    guard in _check_for_signal(), in the same order: status, consumed
+    setup, consumed signal, stale/live-boundary, then the current-bar
+    edge-trigger. Pure — reads only, never mutates any argument."""
+    if signal.status != SignalStatus.SIGNAL:
+        return False
+    if signal.setup_key and signal.setup_key in consumed_setup_keys:
+        return False
+    if signal.signal_key and signal.signal_key in consumed_signal_keys:
+        return False
+    if (live_boundary_ms > 0
+            and signal.entry_timestamp_ms
+            and signal.entry_timestamp_ms < live_boundary_ms):
+        return False
+    if (signal.entry_timestamp_ms is not None
+            and signal.entry_timestamp_ms != current_bar_time_ms):
+        return False
+    return True
+
+
+def collect_actionable_signals(
+    observations: Sequence[SignalObservation],
+    current_bar_time_ms: int,
+    live_boundary_ms: int = 0,
+    consumed_setup_keys: Collection[str] = (),
+    consumed_signal_keys: Collection[str] = (),
+) -> list[DedupedSignalCandidate]:
+    """Filter `observations` down to those actionable on the current
+    bar, then fold same-entry-candle survivors via
+    dedupe_same_entry_signals() (reused directly, never duplicated).
+
+    "Actionable" means the SignalResult would pass every per-candidate
+    guard in MaxBotTradeOrchestrator._check_for_signal() — see
+    _is_actionable() and the module-level note above for the exact
+    invariants replicated and the ones deliberately left out (those
+    are global runtime/account state, not candidate properties, and
+    belong in the orchestrator).
+
+    This function does NOT run any detector and does NOT import
+    LiveSignalDetector, evaluate_pdh_pdl_candidate, or
+    DualSignalDetector — it only classifies/filters SignalResults it
+    is handed. Collecting candidates from detectors is a separate,
+    future task.
+
+    Pure: never mutates `observations`, any SignalResult/
+    SignalObservation within it, or `consumed_setup_keys`/
+    consumed_signal_keys` (read-only membership checks only). Calling
+    this twice with the same arguments returns equal output.
+
+    This module is a pure, standalone primitive — like
+    dedupe_same_entry_signals() above, it is NOT imported or called
+    from bot_runner.py, trade_orchestrator.py,
+    pdh_pdl_candidate_evaluator.py, LiveSignalDetector, or any
+    execution path. Wiring detector collection into this function is a
+    separate, future task.
+
+    Parameters
+    ----------
+    observations : Sequence[SignalObservation]
+        Already-produced candidates to classify, in the order they
+        should be considered (same ordering semantics as
+        dedupe_same_entry_signals(): first-in becomes canonical within
+        a merged group, and determines contributing_level_sources
+        order).
+    current_bar_time_ms : int
+        time_ms of the current completed bar — the single edge-trigger
+        reference every candidate is checked against.
+    live_boundary_ms : int, default 0
+        Same meaning as MaxBotTradeOrchestrator._live_boundary_ms — 0
+        means no restart boundary is in effect (the stale check is
+        skipped entirely, matching the orchestrator's own `> 0` guard).
+    consumed_setup_keys, consumed_signal_keys : Collection[str]
+        Already-consumed keys from the caller's own bookkeeping
+        (e.g. an orchestrator's `_consumed_setups`/`_consumed_signals`).
+        Read-only here — never mutated.
+
+    Returns
+    -------
+    list[DedupedSignalCandidate]
+        One executable candidate per distinct (symbol, direction,
+        entry_timestamp_ms) group among the actionable SIGNAL inputs,
+        exactly as returned by dedupe_same_entry_signals().
+    """
+    actionable = [
+        obs for obs in observations
+        if _is_actionable(
+            obs.signal, current_bar_time_ms, live_boundary_ms,
+            consumed_setup_keys, consumed_signal_keys,
+        )
+    ]
+    return dedupe_same_entry_signals(actionable)

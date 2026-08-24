@@ -30,6 +30,7 @@ from trading_lab.live.session_builder_live import LiveSessionBuilder
 from trading_lab.live.signal_dedup import (
     DedupedSignalCandidate,
     SignalObservation,
+    collect_actionable_signals,
     dedupe_same_entry_signals,
 )
 from trading_lab.live.signal_detector import (
@@ -467,3 +468,244 @@ class TestCanonicalSelectionIsInputOrder:
         # it was listed first — reversing the input order would flip
         # this, proving it carries no strategic meaning.
         assert out[0].signal is s_pdh
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# collect_actionable_signals() — current-bar actionable collector (C1-C15)
+# ═════════════════════════════════════════════════════════════════════════
+#
+# C1 single current signal
+# C2 old + current
+# C3 ORB + PDH same current candle
+# C4 opposite directions same current candle
+# C5 stale current signal
+# C6 consumed setup
+# C7 consumed signal
+# C8 historical not-current
+# C9 future timestamp
+# C10 non-SIGNAL
+# C11 deterministic output
+# C12 inputs/consumed sets unchanged
+# C13 existing dedup metadata preserved
+# C14 no runtime wiring
+# C15 no detector imports/execution
+
+
+class TestC1SingleCurrentSignal:
+    def test_current_signal_becomes_one_candidate(self):
+        s = _signal(entry_ts=1_000, level_source="ORB_HIGH")
+        out = collect_actionable_signals(
+            [SignalObservation(symbol="QQQ", signal=s)],
+            current_bar_time_ms=1_000,
+        )
+        assert len(out) == 1
+        assert out[0].signal is s
+
+
+class TestC2OldPlusCurrent:
+    def test_old_filtered_current_survives(self):
+        s_old = _signal(entry_ts=1_000, level_source="ORB_HIGH", setup_key="LONG:ORB_HIGH:500")
+        s_current = _signal(entry_ts=2_000, level_source="PREVIOUS_DAY_HIGH",
+                             setup_key="LONG:PREVIOUS_DAY_HIGH:1500")
+        out = collect_actionable_signals(
+            [
+                SignalObservation(symbol="QQQ", signal=s_old),
+                SignalObservation(symbol="QQQ", signal=s_current),
+            ],
+            current_bar_time_ms=2_000,
+        )
+        assert len(out) == 1
+        assert out[0].signal.entry_timestamp_ms == 2_000
+        assert out[0].signal is s_current
+
+
+class TestC3OrbPdhSameCurrentCandle:
+    def test_real_detector_outputs_merge_into_one_candidate(self):
+        # Real ORB + real PDH SignalResults from the actual detector
+        # pipeline (same fixture used by D1), sharing one entry candle.
+        orb_result, pdh_result = _long_same_candle_signals()
+        out = collect_actionable_signals(
+            [
+                SignalObservation(symbol="QQQ", signal=orb_result),
+                SignalObservation(symbol="QQQ", signal=pdh_result),
+            ],
+            current_bar_time_ms=orb_result.entry_timestamp_ms,
+        )
+        assert len(out) == 1
+        assert set(out[0].contributing_level_sources) == {"ORB_HIGH", "PREVIOUS_DAY_HIGH"}
+
+
+class TestC4OppositeDirectionsSameCurrentBar:
+    def test_never_merged_both_survive_as_separate_candidates(self):
+        bar = _bar(1_000, 100.5, 101.5, 100.0, 101.2)
+        s_long = _signal(direction="LONG", entry_ts=1_000, level_source="ORB_HIGH",
+                          confirmation_bar=bar)
+        s_short = _signal(direction="SHORT", entry_ts=1_000, level_source="PREVIOUS_DAY_LOW",
+                           confirmation_bar=bar)
+        out = collect_actionable_signals(
+            [
+                SignalObservation(symbol="QQQ", signal=s_long),
+                SignalObservation(symbol="QQQ", signal=s_short),
+            ],
+            current_bar_time_ms=1_000,
+        )
+        assert len(out) == 2
+        assert {c.signal.direction for c in out} == {"LONG", "SHORT"}
+
+
+class TestC5StaleCurrentSignal:
+    def test_stale_excludes_even_though_current_bar_condition_holds(self):
+        s = _signal(entry_ts=1_000, level_source="ORB_HIGH")
+        out = collect_actionable_signals(
+            [SignalObservation(symbol="QQQ", signal=s)],
+            current_bar_time_ms=1_000,
+            live_boundary_ms=1_001,  # boundary just after the entry candle
+        )
+        assert out == []
+
+
+class TestC6ConsumedSetup:
+    def test_consumed_setup_excluded(self):
+        s = _signal(entry_ts=1_000, level_source="ORB_HIGH", setup_key="LONG:ORB_HIGH:500")
+        out = collect_actionable_signals(
+            [SignalObservation(symbol="QQQ", signal=s)],
+            current_bar_time_ms=1_000,
+            consumed_setup_keys={"LONG:ORB_HIGH:500"},
+        )
+        assert out == []
+
+
+class TestC7ConsumedSignal:
+    def test_consumed_signal_excluded(self):
+        s = _signal(entry_ts=1_000, level_source="ORB_HIGH", setup_key="LONG:ORB_HIGH:500")
+        out = collect_actionable_signals(
+            [SignalObservation(symbol="QQQ", signal=s)],
+            current_bar_time_ms=1_000,
+            consumed_signal_keys={s.signal_key},
+        )
+        assert out == []
+
+
+class TestC8HistoricalNotCurrent:
+    def test_excluded_and_consumed_sets_not_auto_populated(self):
+        s = _signal(entry_ts=1_000, level_source="ORB_HIGH", setup_key="LONG:ORB_HIGH:500")
+        consumed_setups = set()
+        consumed_signals = set()
+        out = collect_actionable_signals(
+            [SignalObservation(symbol="QQQ", signal=s)],
+            current_bar_time_ms=2_000,  # later than entry_timestamp_ms=1_000
+            consumed_setup_keys=consumed_setups,
+            consumed_signal_keys=consumed_signals,
+        )
+        assert out == []
+        # Coherent with _check_for_signal(): a non-current historical
+        # candidate is excluded, but never auto-added to consumed sets.
+        assert consumed_setups == set()
+        assert consumed_signals == set()
+
+
+class TestC9FutureTimestamp:
+    def test_future_timestamp_excluded_no_crash(self):
+        s = _signal(entry_ts=3_000, level_source="ORB_HIGH")
+        out = collect_actionable_signals(
+            [SignalObservation(symbol="QQQ", signal=s)],
+            current_bar_time_ms=2_000,  # earlier than entry_timestamp_ms=3_000
+        )
+        assert out == []
+
+
+class TestC10NonSignal:
+    def test_no_setup_never_executable(self):
+        out = collect_actionable_signals(
+            [SignalObservation(symbol="QQQ", signal=_no_setup())],
+            current_bar_time_ms=1_000,
+        )
+        assert out == []
+
+
+class TestC11DeterministicOutput:
+    def test_same_input_same_output(self):
+        s1 = _signal(entry_ts=1_000, level_source="ORB_HIGH")
+        s2 = _signal(entry_ts=1_000, level_source="PREVIOUS_DAY_HIGH",
+                      confirmation_bar=s1.detection_result.confirmation_bar)
+        obs = [
+            SignalObservation(symbol="QQQ", signal=s1),
+            SignalObservation(symbol="QQQ", signal=s2),
+        ]
+        out1 = collect_actionable_signals(obs, current_bar_time_ms=1_000)
+        out2 = collect_actionable_signals(obs, current_bar_time_ms=1_000)
+        assert out1 == out2
+
+
+class TestC12InputsAndConsumedSetsUnchanged:
+    def test_purity(self):
+        s1 = _signal(entry_ts=1_000, level_source="ORB_HIGH", setup_key="LONG:ORB_HIGH:500")
+        s2 = _signal(entry_ts=2_000, level_source="PREVIOUS_DAY_HIGH",
+                      setup_key="LONG:PREVIOUS_DAY_HIGH:1500")
+        obs = [
+            SignalObservation(symbol="QQQ", signal=s1),
+            SignalObservation(symbol="QQQ", signal=s2),
+        ]
+        obs_snapshot = list(obs)
+        consumed_setups = {"SOME:OTHER:KEY"}
+        consumed_setups_snapshot = set(consumed_setups)
+        consumed_signals = {"SOME:OTHER:SIGNAL"}
+        consumed_signals_snapshot = set(consumed_signals)
+
+        collect_actionable_signals(
+            obs, current_bar_time_ms=2_000,
+            consumed_setup_keys=consumed_setups,
+            consumed_signal_keys=consumed_signals,
+        )
+
+        assert obs == obs_snapshot
+        assert s1.status == SignalStatus.SIGNAL  # untouched dataclass
+        assert consumed_setups == consumed_setups_snapshot
+        assert consumed_signals == consumed_signals_snapshot
+
+
+class TestC13ExistingDedupMetadataPreserved:
+    def test_contributing_level_sources_survives_the_collector(self):
+        orb_result, pdh_result = _long_same_candle_signals()
+        out = collect_actionable_signals(
+            [
+                SignalObservation(symbol="QQQ", signal=orb_result),
+                SignalObservation(symbol="QQQ", signal=pdh_result),
+            ],
+            current_bar_time_ms=orb_result.entry_timestamp_ms,
+        )
+        assert len(out) == 1
+        assert out[0].contributing_level_sources == ("ORB_HIGH", "PREVIOUS_DAY_HIGH")
+
+
+class TestC14NoRuntimeWiring:
+    def test_collector_name_absent_from_orchestrator_and_runner(self):
+        import inspect
+        from trading_lab.live import bot_runner, trade_orchestrator, pdh_pdl_candidate_evaluator, signal_detector
+        for mod in (bot_runner, trade_orchestrator, pdh_pdl_candidate_evaluator, signal_detector):
+            src = inspect.getsource(mod)
+            assert "collect_actionable_signals" not in src
+            assert "signal_dedup" not in src
+
+
+class TestC15NoDetectorImportsOrExecution:
+    def test_module_does_not_import_detector_classes(self):
+        # AST-based, not a raw substring search: the module's own
+        # docstrings legitimately name LiveSignalDetector/
+        # evaluate_pdh_pdl_candidate/DualSignalDetector in prose (to
+        # document what this module deliberately does NOT do), so a
+        # substring check on full source would false-positive on its
+        # own documentation. This checks actual import statements only.
+        import ast
+        import inspect
+        from trading_lab.live import signal_dedup
+        src = inspect.getsource(signal_dedup)
+        tree = ast.parse(src)
+        imported_names = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                for alias in node.names:
+                    imported_names.add(alias.asname or alias.name)
+        assert "LiveSignalDetector" not in imported_names
+        assert "evaluate_pdh_pdl_candidate" not in imported_names
+        assert "DualSignalDetector" not in imported_names
