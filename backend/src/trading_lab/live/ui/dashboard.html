@@ -459,7 +459,36 @@ function appendEvents(events) {
       cls = d.result === 'WIN' ? 'event-win' : 'event-loss';
     }
 
-    div.innerHTML = `<span class="event-time">${ts}</span>${sym}<span class="event-high ${cls}">${text}</span>`;
+    // Premarket context — audit timeline only, factual note, no signal styling
+    let pmHtml = '';
+    if (e.event_type === 'SYMBOL_ENABLED' && d.premarket_context && Object.keys(d.premarket_context).length) {
+      const pmLines = [];
+      for (const dir of ['LONG', 'SHORT']) {
+        const info = d.premarket_context[dir];
+        if (!info) continue;
+        const levelLabel = info.level_source === 'PREVIOUS_DAY_HIGH' ? 'PDH'
+                          : info.level_source === 'PREVIOUS_DAY_LOW' ? 'PDL'
+                          : (dir === 'LONG' ? 'PDH' : 'PDL');
+        let line = null;
+        if (info.break_origin === 'NONE') {
+          line = `${levelLabel}: No premarket break observed`;
+        } else if (info.break_origin === 'PREMARKET_OBSERVED') {
+          if (info.break_timestamp_ms) {
+            const bts = new Date(info.break_timestamp_ms).toLocaleTimeString('en-US', {timeZone:'America/Chicago', hour12:false, hour:'2-digit', minute:'2-digit'});
+            line = `${levelLabel}: Premarket break observed at ${bts} CT`;
+          } else {
+            line = `${levelLabel}: Premarket break observed`;
+          }
+        } else if (info.break_origin === 'PREMARKET_CARRY_IN') {
+          line = `${levelLabel}: Already beyond level on first premarket bar`;
+        }
+        // Unknown break_origin: omit this direction, never invent text
+        if (line) pmLines.push(line);
+      }
+      if (pmLines.length) pmHtml = pmLines.map(l => `<div class="sym-detail">${l}</div>`).join('');
+    }
+
+    div.innerHTML = `<span class="event-time">${ts}</span>${sym}<span class="event-high ${cls}">${text}</span>${pmHtml}`;
     container.insertBefore(div, container.firstChild);
   }
 }
