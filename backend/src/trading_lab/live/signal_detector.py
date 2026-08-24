@@ -450,13 +450,12 @@ class LiveSignalDetector:
         orb_low = level_result.get("orb_low")
         level_price = level_result.get("level_price")
         level_source = self._engine_config.get("level_source")
-        direction = "LONG" if level_source == "ORB_HIGH" else "SHORT"
         orb_ctx = {
             "orb_high": float(orb_high) if orb_high else None,
             "orb_low": float(orb_low) if orb_low else None,
             "level": float(level_price) if level_price else None,
             "level_source": level_source,
-            "direction": direction,
+            "direction": self._direction,
         }
 
         # ── Stage 2: Break ───────────────────────────────────────────────
