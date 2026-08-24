@@ -640,6 +640,7 @@ class MaxBotRunner:
                     log.info(f"CONTEXT {sym}: {' | '.join(parts)}")
 
                 ctx_data = ctx.to_dict()
+                ctx_data["premarket_context"] = rt.premarket_context or {}
                 self._emit(EventType.SYMBOL_ENABLED, symbol=sym, data=ctx_data)
 
             except Exception as e:
