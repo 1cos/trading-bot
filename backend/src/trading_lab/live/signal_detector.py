@@ -506,8 +506,40 @@ class LiveSignalDetector:
                              stage_context={**disp_ctx,
                                             "invalidation_index": max_vi})
 
+        return self._stage4_5(sc_candles, level_result, brk, disp,
+                              break_ctx, disp_ctx, session)
+
+    def _stage4_5(
+        self,
+        candles: list[dict],
+        level_result: dict,
+        brk: dict,
+        disp: dict,
+        break_ctx: dict,
+        disp_ctx: dict,
+        session: dict,
+    ) -> SignalResult:
+        """Stage 4 (retest) + Stage 5 (rejection) + SignalResult assembly.
+
+        Shared tail, byte-identical to the pre-extraction inline code.
+        Used by both the normal fresh-break path (_evaluate_inner,
+        reached only after a successful Stage 3b validate_sequence) and
+        the seeded path (evaluate_seeded, given an already break/
+        displacement/sequence-valid structure). This method does NOT
+        call find_break(), find_displacement(), or validate_sequence()
+        — it assumes break/displacement validity for `candles` is
+        already established by the caller, and only searches for the
+        retest window and evaluates rejection geometry.
+
+        `candles` must be the exact array `brk`/`disp` were computed
+        against — find_retest_window()/find_rejection() defensively
+        verify every index against it and fail safely (surfaced here as
+        NO_SETUP) if it does not match.
+        """
+        engine_config = self._engine_config
+
         # ── Stage 4: Retest window ───────────────────────────────────────
-        retest = find_retest_window(sc_candles, level_result, brk, disp, engine_config)
+        retest = find_retest_window(candles, level_result, brk, disp, engine_config)
         if retest.get("status") != "OK":
             return _no_setup(retest.get("failed_stage"),
                              stage_context=disp_ctx)
@@ -517,12 +549,12 @@ class LiveSignalDetector:
         warmup = session.get("warmup_candles")
         warmup_pc = session.get("warmup_previous_close")
         if warmup and isinstance(warmup, list) and len(warmup) > 0:
-            combined = list(warmup) + list(sc_candles)
+            combined = list(warmup) + list(candles)
             full_atr = atr_series(combined, 14, initial_previous_close=warmup_pc)
             warmed_atr_cache = full_atr[len(warmup):]
 
         rej = find_rejection(
-            sc_candles, level_result, brk, disp, retest, engine_config,
+            candles, level_result, brk, disp, retest, engine_config,
             _atr_cache=warmed_atr_cache,
         )
         if rej.get("status") != "OK":
@@ -535,8 +567,8 @@ class LiveSignalDetector:
                 retest_ctx["failed_rules"] = failed_rules
             # Include the last candidate candle info
             last_idx = retest.get("retest_window_end_index")
-            if last_idx and last_idx < len(sc_candles):
-                last_c = sc_candles[last_idx]
+            if last_idx and last_idx < len(candles):
+                last_c = candles[last_idx]
                 retest_ctx["last_candle_close"] = float(last_c["close"])
                 retest_ctx["last_candle_time_ms"] = last_c["time_ms"]
             return _no_setup(rej.get("failed_stage"),
@@ -594,7 +626,7 @@ class LiveSignalDetector:
 
         # Entry candle timestamp
         conf_idx = rej["confirmation_candle_index"]
-        entry_ts_ms = sc_candles[conf_idx]["time_ms"]
+        entry_ts_ms = candles[conf_idx]["time_ms"]
 
         # Setup key: structural identity of this BDRR sequence.
         # Same break + direction + level_source = same setup, regardless
@@ -609,8 +641,8 @@ class LiveSignalDetector:
         # NOT included (it is not a stable structural identity component
         # the way direction/level_source/break_ts are).
         break_time_ms = brk.get("break_candle_index")
-        if break_time_ms is not None and break_time_ms < len(sc_candles):
-            break_ts = sc_candles[break_time_ms]["time_ms"]
+        if break_time_ms is not None and break_time_ms < len(candles):
+            break_ts = candles[break_time_ms]["time_ms"]
         else:
             break_ts = 0
         setup_level_source = self._engine_config.get("level_source")
@@ -631,3 +663,121 @@ class LiveSignalDetector:
             pipeline_stage="SIGNAL",
             stage_context=break_ctx,
         )
+
+    # ── Seeded path (additive, not wired) ───────────────────────────────
+
+    def evaluate_seeded(
+        self,
+        candles: list[dict],
+        level_result: dict,
+        break_result: dict,
+        displacement_result: dict,
+    ) -> SignalResult:
+        """Evaluate Stage 4 (retest) + Stage 5 (rejection) ONLY, given a
+        break and displacement structure the caller has already found
+        and already validated — e.g. a BDRR structure observed on
+        premarket bars, already passed through find_displacement() and
+        validate_sequence() by the caller.
+
+        This method does NOT call find_break(), find_displacement(), or
+        validate_sequence() — it trusts break_result/displacement_result
+        completely and performs no re-validation of its own. Passing a
+        seed that has not actually passed validate_sequence() (or that
+        is stale/invalidated) will silently produce an incorrect signal;
+        ensuring the seed represents a currently-valid structure is
+        entirely the caller's responsibility.
+
+        This is a generic BDRR seeding primitive: it has no knowledge of
+        premarket bars, PMH/PML, or any specific classifier — it only
+        deals in the canonical break_result/displacement_result/
+        level_result envelope shapes find_break()/find_displacement()
+        already produce. Not called from anywhere else in this codebase
+        yet; not wired to the candidate evaluator or the live runtime by
+        this change.
+
+        Parameters
+        ----------
+        candles : list[dict]
+            The exact candle array `break_result` and
+            `displacement_result` were computed against (e.g. a
+            premarket + RTH concatenation, chronologically sorted).
+            Every index inside break_result/displacement_result MUST
+            refer to a position in THIS exact array —
+            find_retest_window()/find_rejection() defensively verify
+            this via candle timestamp and fail safely (surfaced here as
+            NO_SETUP/INVALID_INPUT) if the indices do not line up with
+            `candles`. Indices computed against a different array (e.g.
+            premarket bars alone) are NOT valid here.
+        level_result : dict
+            The canonical LevelResult envelope (Stage 1b output shape)
+            — the same "orb"-shaped dict find_break()/
+            find_displacement()/find_retest_window()/find_rejection()
+            already require, with indices resolved against `candles`.
+        break_result : dict
+            Stage 2 output shape (find_break()'s return contract),
+            computed by the caller against `candles`.
+        displacement_result : dict
+            Stage 3 output shape (find_displacement()'s return
+            contract), computed by the caller against `candles`,
+            representing a structure the caller has already confirmed
+            is not INVALIDATED per validate_sequence().
+
+        Returns
+        -------
+        SignalResult
+            Same contract as evaluate(). setup_key/signal_key use the
+            real break_result["break_candle_index"] timestamp resolved
+            against `candles` — i.e. the true (e.g. premarket) break
+            time, never a synthetic RTH break.
+        """
+        if not isinstance(candles, list) or len(candles) == 0:
+            return _no_setup("NO_CANDLES")
+
+        level_source = self._engine_config.get("level_source")
+        orb_ctx = {
+            "orb_high": None,
+            "orb_low": None,
+            "level": None,
+            "level_source": level_source,
+            "direction": self._direction,
+        }
+        if isinstance(level_result, dict):
+            orb_high = level_result.get("orb_high")
+            orb_low = level_result.get("orb_low")
+            level_price = level_result.get("level_price")
+            orb_ctx = {
+                "orb_high": float(orb_high) if orb_high else None,
+                "orb_low": float(orb_low) if orb_low else None,
+                "level": float(level_price) if level_price else None,
+                "level_source": level_source,
+                "direction": self._direction,
+            }
+
+        break_candle = break_result.get("break_candle") if isinstance(break_result, dict) else None
+        break_ctx = {
+            **orb_ctx,
+            "break_bar_index": break_result.get("break_candle_index") if isinstance(break_result, dict) else None,
+            "break_close": float(break_candle["close"]) if break_candle else None,
+            "break_time_ms": break_candle["time_ms"] if break_candle else None,
+            "break_level": orb_ctx.get("level"),
+        }
+        min_req = self._engine_config.get("min_displacement_bars") or 3
+        disp_ctx = {
+            **break_ctx,
+            "displacement_bars": displacement_result.get("displacement_bar_count") if isinstance(displacement_result, dict) else None,
+            "displacement_required": min_req,
+            "displacement_end_index": displacement_result.get("displacement_end_index") if isinstance(displacement_result, dict) else None,
+        }
+
+        date = level_result.get("date", "") if isinstance(level_result, dict) else ""
+        synthetic_session = {
+            "symbol": self._symbol,
+            "date": date,
+            "market_timezone": self._engine_config.get("timezone"),
+            "session_open_utc_ms": candles[0]["time_ms"],
+            "session_close_utc_ms": candles[-1]["time_ms"],
+            "timeframe": "1m",
+        }
+
+        return self._stage4_5(candles, level_result, break_result, displacement_result,
+                              break_ctx, disp_ctx, synthetic_session)

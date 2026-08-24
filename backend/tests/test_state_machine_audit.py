@@ -124,30 +124,77 @@ class TestStaleSetupCannotSignal:
         assert result.status == SignalStatus.NO_SETUP
 
     def test_pipeline_stages_are_sequential(self):
-        """Verify stage ordering: each stage requires previous to pass."""
-        # The pipeline in _evaluate_inner is:
-        # 1. session context → 2. ORB/level → 3. break → 4. displacement
-        # → 5. sequence validation → 6. retest → 7. rejection → SIGNAL
-        #
-        # Each stage returns early on failure — no skipping.
-        # This means a stale displacement (stuck at RETEST_BEFORE_DISPLACEMENT)
-        # can NEVER reach rejection or SIGNAL.
+        """Verify stage ordering: each stage requires previous to pass.
+
+        The pipeline is split across two methods (extracted so
+        evaluate_seeded() can reuse Stage 4/5 without duplicating them):
+
+            _evaluate_inner():
+                1. session context → 2. ORB/level → 3. break
+                → 4. displacement → 5. sequence validation → _stage4_5()
+
+            _stage4_5() (shared by _evaluate_inner() and evaluate_seeded()):
+                6. retest → 7. rejection → SIGNAL
+
+        Each stage returns early on failure — no skipping. This means a
+        stale displacement (stuck at RETEST_BEFORE_DISPLACEMENT) can
+        NEVER reach retest, rejection, or SIGNAL — verified in two
+        parts, one per method, since the calls no longer share one
+        function's source text.
+        """
         import inspect
         from trading_lab.live.signal_detector import LiveSignalDetector
-        source = inspect.getsource(LiveSignalDetector._evaluate_inner)
 
-        # find_displacement comes before find_retest_window
-        disp_pos = source.find("find_displacement")
-        retest_pos = source.find("find_retest_window")
-        rej_pos = source.find("find_rejection")
-        assert disp_pos < retest_pos < rej_pos, (
-            "Pipeline stages must be sequential: displacement → retest → rejection"
+        # ── Part A: _evaluate_inner() — break → displacement →
+        # validate_sequence → _stage4_5(), each with an early return on
+        # failure before the next stage is reached. ────────────────────
+        inner_source = inspect.getsource(LiveSignalDetector._evaluate_inner)
+
+        break_pos = inner_source.find("find_break")
+        disp_pos = inner_source.find("find_displacement")
+        seq_pos = inner_source.find("validate_sequence")
+        stage45_pos = inner_source.find("_stage4_5")
+        assert break_pos < disp_pos < seq_pos < stage45_pos, (
+            "Pipeline stages must be sequential: "
+            "break → displacement → sequence validation → _stage4_5"
         )
 
-        # Each stage has an early return on failure
-        after_disp = source[disp_pos:retest_pos]
+        after_break = inner_source[break_pos:disp_pos]
+        assert "return _no_setup" in after_break, (
+            "Break failure must return early before displacement"
+        )
+        after_disp = inner_source[disp_pos:seq_pos]
         assert "return _no_setup" in after_disp, (
-            "Displacement failure must return early before retest"
+            "Displacement failure must return early before sequence validation"
+        )
+        after_seq = inner_source[seq_pos:stage45_pos]
+        assert "return _no_setup" in after_seq, (
+            "Sequence invalidation must return early before _stage4_5"
+        )
+
+        # ── Part B: _stage4_5() — retest → rejection, with an early
+        # return on retest failure before rejection is reached. This is
+        # the same guarantee the pre-extraction test checked, now
+        # located in the method that actually performs it and shared
+        # by both the normal path and evaluate_seeded(). ───────────────
+        stage45_source = inspect.getsource(LiveSignalDetector._stage4_5)
+
+        # Search for the actual call sites (assignment pattern), not
+        # prose mentions of these function names in the docstring above
+        # them.
+        retest_pos = stage45_source.find("retest = find_retest_window(")
+        rej_pos = stage45_source.find("rej = find_rejection(")
+        assert retest_pos != -1 and rej_pos != -1, (
+            "Could not locate the real find_retest_window()/find_rejection() "
+            "call sites in _stage4_5 (only docstring mentions?)"
+        )
+        assert retest_pos < rej_pos, (
+            "Pipeline stages must be sequential: retest → rejection"
+        )
+
+        after_retest = stage45_source[retest_pos:rej_pos]
+        assert "return _no_setup" in after_retest, (
+            "Retest failure must return early before rejection"
         )
 
 
