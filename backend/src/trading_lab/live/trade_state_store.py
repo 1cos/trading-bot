@@ -196,6 +196,14 @@ _SETUP_SNAPSHOT_FIELDS = (
     "confirmation_penetration", "confirmation_close_beyond_level",
     # Provenance
     "schema_version", "result_id", "produced_at", "engine_version",
+    # Session — the canonical trading date and market timezone the
+    # engine itself used (SessionMetadata: date, market_timezone,
+    # session_open/close_utc_ms, timeframe_seconds). Carried so a trade
+    # states which session it belongs to instead of a later reader
+    # having to re-derive it from entry_timestamp_ms with a timezone
+    # nothing in the record exposes. Copied from the contract, never
+    # recomputed, and no parallel trade_date/timezone field is added.
+    "session",
 )
 
 
