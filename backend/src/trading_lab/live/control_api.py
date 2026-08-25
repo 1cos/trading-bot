@@ -32,6 +32,12 @@ from enum import StrEnum, unique
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
+from trading_lab.live.autostart import (
+    AUTOSTART_WINDOW_END,
+    AUTOSTART_WINDOW_START,
+    AutoStartConfig,
+    AutoStartScheduler,
+)
 from trading_lab.live.trade_state_store import (
     DEFAULT_TRADE_STATE_DIR,
     build_trade_performance_summary,
@@ -535,6 +541,35 @@ def get_lan_ip() -> str:
         return "?"
 
 
+# Default session for the scheduler. The project has no canonical
+# config source today — the watchlist exists only as the value= of an
+# <input> in dashboard.html, and the endpoint's own defaults (no
+# symbols, OBSERVE_ONLY) are not what anyone actually starts. These
+# mirror the dashboard form so auto-start launches the same bot a human
+# would, and the env vars keep it in one place instead of a third copy.
+_AUTOSTART_DEFAULT_SYMBOLS = (
+    "SPY,QQQ,AAPL,TSLA,NVDA,AMD,AMZN,TSLL,NFLX,GOOGL,"
+    "SOFI,META,MU,INTC,SNDK,PLTR,MSFT"
+)
+
+
+def autostart_config_from_env() -> AutoStartConfig:
+    """Session the 08:00 CT auto-start will launch.
+
+    MAXBOT_AUTOSTART_SYMBOLS / _DIRECTION / _MODE / _TRADE_LIMITS,
+    following the MAXBOT_* convention start_maxbot.sh already uses.
+    """
+    raw = os.environ.get("MAXBOT_AUTOSTART_SYMBOLS", _AUTOSTART_DEFAULT_SYMBOLS)
+    symbols = [s.strip().upper() for s in raw.split(",") if s.strip()]
+    limits = os.environ.get("MAXBOT_AUTOSTART_TRADE_LIMITS", "0")
+    return AutoStartConfig(
+        symbols=symbols,
+        direction=os.environ.get("MAXBOT_AUTOSTART_DIRECTION", "BOTH"),
+        execution_mode=os.environ.get("MAXBOT_AUTOSTART_MODE", "PAPER_EXECUTE"),
+        trade_limits_enabled=limits not in ("0", "false", "no", ""),
+    )
+
+
 def run_server(
     bind_host: str | None = None,
     api_port: int | None = None,
@@ -580,6 +615,23 @@ def run_server(
         default_port=ibp,
         default_client_id=ibc,
     )
+
+    # Auto-start inside 08:00-14:00 America/Chicago, Mon-Fri. Armed only
+    # here, in the real server process — create_app() must stay
+    # side-effect free so tests and imports never spawn a thread or a
+    # session. Disable with MAXBOT_AUTOSTART=0.
+    if os.environ.get("MAXBOT_AUTOSTART", "1") not in ("0", "false", "no"):
+        acfg = autostart_config_from_env()
+        AutoStartScheduler(ctrl, acfg).start_background()
+        print(
+            f"Auto-start: {AUTOSTART_WINDOW_START:%H:%M}"
+            f"-{AUTOSTART_WINDOW_END:%H:%M} America/Chicago, Mon-Fri "
+            f"({acfg.execution_mode}, {len(acfg.symbols)} symbols)"
+        )
+    else:
+        print("Auto-start: disabled (MAXBOT_AUTOSTART=0)")
+    print()
+
     app = create_app(ctrl)
     app.run(host=host, port=port, debug=False, use_reloader=False)
 
