@@ -264,8 +264,15 @@ let pollTimer = null;
 let connOk = true;
 
 // Token
-function getToken() { return localStorage.getItem('maxbot_token') || ''; }
-function saveToken() { localStorage.setItem('maxbot_token', document.getElementById('cfg-token').value); }
+// Trim on both sides. Pasting a token on iOS — from a password
+// manager, Notes, or a long-press paste — routinely carries a leading
+// space or a trailing newline, and _check_token() compares the value
+// exactly: an invisible character reads as "Invalid or missing API
+// token" with a token that looks perfectly right on screen.
+// Trimming on read as well as on write means a value already stored
+// with whitespace is repaired on the next use, with nothing to clear.
+function getToken() { return (localStorage.getItem('maxbot_token') || '').trim(); }
+function saveToken() { localStorage.setItem('maxbot_token', document.getElementById('cfg-token').value.trim()); }
 document.getElementById('cfg-token').value = getToken();
 
 function authHeaders() {
