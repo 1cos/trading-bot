@@ -34,6 +34,7 @@ from flask_cors import CORS
 
 from trading_lab.live.trade_state_store import (
     DEFAULT_TRADE_STATE_DIR,
+    build_trade_performance_summary,
     load_trades,
 )
 
@@ -343,10 +344,18 @@ class MaxBotController:
         Deliberately does NOT touch self._runner: this is the one view
         that must work while the bot is stopped, and after a crash that
         never produced a session log. Returns the records as stored,
-        with no aggregation — P&L roll-ups are a separate concern.
+        plus a day/week/month performance summary derived from that same
+        list.
         """
         trades = load_trades(self._trade_state_dir)
-        return {"trades": trades, "count": len(trades)}
+        return {
+            "trades": trades,
+            "count": len(trades),
+            # Additive: existing consumers of trades/count are unaffected.
+            # Computed from the same list, not from a second filesystem
+            # read, so the summary can never disagree with the rows.
+            "performance": build_trade_performance_summary(trades),
+        }
 
     def export_session_json(self) -> dict | None:
         """Export full session as JSON-serializable dict."""

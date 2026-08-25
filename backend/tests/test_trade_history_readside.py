@@ -340,7 +340,8 @@ class TestT2Endpoint:
     def test_empty_history_returns_empty_list(self, tmp_path):
         client, _ = _client(tmp_path)
         data = client.get("/api/trades").get_json()
-        assert data == {"trades": [], "count": 0}
+        assert data["trades"] == []
+        assert data["count"] == 0
 
     def test_endpoint_does_not_use_session_log(self, tmp_path):
         """Non deve dipendere dal runner nemmeno quando esiste."""
@@ -354,10 +355,24 @@ class TestT2Endpoint:
         assert data["count"] == 1
         runner.session_log.assert_not_called()
 
-    def test_no_aggregated_pnl_yet(self, tmp_path):
+    def test_aggregation_stays_under_performance(self, tmp_path):
+        """Le metriche aggregate vivono sotto "performance", mai come
+        chiavi di primo livello: il payload resta trades/count/
+        performance e i consumer esistenti non devono distinguere
+        una riga da una somma.
+
+        (Sostituisce il precedente test_no_aggregated_pnl_yet, che
+        fissava il confine di scope "nessuna aggregazione" del
+        read-side. L'aggregazione e' stata poi aggiunta di proposito,
+        in forma additiva; cio' che va ancora protetto e' che non
+        inquini il livello superiore.)
+        """
         _write(tmp_path, "a", _closed())
-        data = client_data = _client(tmp_path)[0].get("/api/trades").get_json()
-        assert set(data) == {"trades", "count"}
+        client, _ = _client(tmp_path)
+        data = client.get("/api/trades").get_json()
+
+        assert set(data) == {"trades", "count", "performance"}
         for k in ("today_pnl", "week_pnl", "month_pnl", "win_rate",
-                  "cumulative_pnl"):
+                  "cumulative_pnl", "gross_pnl"):
             assert k not in data
+        assert "today" in data["performance"]

@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -454,3 +454,163 @@ def _today_in(tz_name: str, now: datetime | None) -> str:
     if reference.tzinfo is None:
         reference = reference.replace(tzinfo=timezone.utc)
     return reference.astimezone(tz).strftime("%Y-%m-%d")
+
+
+# ── Performance summary ──────────────────────────────────────────────────────
+
+# Fallback note shown when no closed record carried its own. The real
+# text always comes from the persisted record: the caveat is the
+# system's, not this function's, and it must not be softened or hidden.
+_DEFAULT_GROSS_PNL_NOTE = "before commissions, assumes multiplier=100"
+
+
+def _empty_period() -> dict:
+    return {
+        "gross_pnl": 0.0,
+        "closed_trades": 0,
+        "closed_without_pnl": 0,
+        "wins": 0,
+        "losses": 0,
+        "win_rate": None,
+    }
+
+
+def _finalize_period(period: dict) -> dict:
+    decided = period["wins"] + period["losses"]
+    # null, never 0.0: "no decided trade yet" and "lost every trade"
+    # are different facts and must not render the same.
+    period["win_rate"] = (period["wins"] / decided) if decided else None
+    period["gross_pnl"] = round(period["gross_pnl"], 2)
+    return period
+
+
+def build_trade_performance_summary(
+    trades: list[dict],
+    as_of_date: date | None = None,
+) -> dict:
+    """Aggregate persisted trades into day / week / month performance.
+
+    Pure: takes what load_trades() returned and computes from it. Does
+    not read the filesystem, does not touch the session log, and never
+    modifies the records it is given.
+
+    Attribution — a trade belongs to the session it was TAKEN in, using
+    _session_date_of(): setup_snapshot.session.date when present, else
+    entry_timestamp_ms in the record's own market timezone. Exit time is
+    deliberately not used: it is an event wall-clock, not market time,
+    and a trade closing after midnight would land on the wrong day.
+
+    Week is Monday..as_of_date, month is the 1st..as_of_date, both on
+    that canonical trading date.
+
+    Only state == "CLOSED" with a numeric outcome.gross_pnl contributes
+    to gross_pnl. OPEN, LEGACY_OPEN and REQUIRES_ATTENTION never do:
+    they have no outcome, and folding them in as $0 would quietly
+    dilute the result. They are counted separately so they stay visible.
+
+    A CLOSED record whose gross_pnl is missing or non-numeric still
+    counts as a closed trade (it happened) and still counts toward
+    wins/losses if outcome.result says so — but it is excluded from the
+    money sum and surfaced as ``closed_without_pnl``, so the gap between
+    "trades closed" and "trades priced" is visible rather than hidden.
+
+    Parameters
+    ----------
+    trades : list[dict]
+        Records as returned by load_trades().
+    as_of_date : date or None
+        Reference trading date. Defaults to today in the fallback
+        market timezone.
+
+    Returns
+    -------
+    dict
+        today/week/month periods plus open, legacy-open and
+        requires-attention counts, and the persisted gross_pnl caveat.
+    """
+    if as_of_date is None:
+        as_of_date = datetime.now(ZoneInfo(_FALLBACK_MARKET_TIMEZONE)).date()
+
+    week_start = as_of_date - timedelta(days=as_of_date.weekday())  # Monday
+    month_start = as_of_date.replace(day=1)
+
+    periods = {
+        "today": _empty_period(),
+        "week": _empty_period(),
+        "month": _empty_period(),
+    }
+    open_count = 0
+    legacy_open_count = 0
+    attention_count = 0
+    note = None
+
+    for record in trades:
+        state = str(record.get("state") or "")
+
+        if state == "REQUIRES_ATTENTION":
+            attention_count += 1
+            continue
+        if state == "OPEN":
+            if record.get("history_status") == "LEGACY_OPEN":
+                legacy_open_count += 1
+            else:
+                open_count += 1
+            continue
+        if state != "CLOSED":
+            continue
+
+        session_date, _ = _session_date_of(record)
+        if not session_date:
+            continue
+        try:
+            trade_date = date.fromisoformat(session_date)
+        except ValueError:
+            log.warning(
+                f"trade_state: unparseable session date {session_date!r} on "
+                f"{record.get('trade_id')!r} — excluded from performance"
+            )
+            continue
+
+        buckets = []
+        if trade_date == as_of_date:
+            buckets.append("today")
+        if week_start <= trade_date <= as_of_date:
+            buckets.append("week")
+        if month_start <= trade_date <= as_of_date:
+            buckets.append("month")
+        if not buckets:
+            continue
+
+        outcome = record.get("outcome")
+        outcome = outcome if isinstance(outcome, dict) else {}
+        note = note or outcome.get("gross_pnl_note")
+
+        pnl = outcome.get("gross_pnl")
+        # bool is an int subclass — exclude it explicitly.
+        has_pnl = isinstance(pnl, (int, float)) and not isinstance(pnl, bool)
+        result = outcome.get("result")
+
+        for name in buckets:
+            period = periods[name]
+            period["closed_trades"] += 1
+            if has_pnl:
+                period["gross_pnl"] += float(pnl)
+            else:
+                period["closed_without_pnl"] += 1
+            if result == "WIN":
+                period["wins"] += 1
+            elif result == "LOSS":
+                period["losses"] += 1
+
+    return {
+        "as_of_date": as_of_date.isoformat(),
+        "week_start": week_start.isoformat(),
+        "month_start": month_start.isoformat(),
+        "today": _finalize_period(periods["today"]),
+        "week": _finalize_period(periods["week"]),
+        "month": _finalize_period(periods["month"]),
+        "open_count": open_count,
+        "legacy_open_count": legacy_open_count,
+        "attention_count": attention_count,
+        "gross_pnl_note": note or _DEFAULT_GROSS_PNL_NOTE,
+    }
