@@ -40,6 +40,7 @@ from trading_lab.live.option_order_builder import build_option_entry_order
 from trading_lab.live.signal_detector import SignalStatus
 from trading_lab.live.trade_state_store import (
     DEFAULT_TRADE_STATE_DIR,
+    build_setup_snapshot,
     build_trade_id,
     persist_open_trade,
 )
@@ -166,6 +167,12 @@ class MaxBotTradeOrchestrator:
         self._active_setup_key: str | None = None
         self._active_signal_key: str | None = None
         self._active_entry_timestamp_ms: int | None = None
+        # Frozen, plain-JSON copy of the DetectionResult behind the
+        # active trade — the structural "why" (break/displacement/
+        # retest/confirmation). Same lifetime problem as the keys
+        # above: it lives only inside execute_pending_signal()'s local
+        # `result` unless captured here.
+        self._active_setup_snapshot: dict | None = None
 
         # Exit retry state
         self._exit_retry_count: int = 0
@@ -708,6 +715,14 @@ class MaxBotTradeOrchestrator:
         self._active_setup_key = result.setup_key
         self._active_signal_key = result.signal_key
         self._active_entry_timestamp_ms = result.entry_timestamp_ms
+        # Same reason, for the structural "why" behind the trade:
+        # result.detection_result holds the break/displacement/retest/
+        # confirmation the detector already computed, and dies with
+        # `result`. Frozen to plain JSON here so the OPEN trade record
+        # can carry it. Copy only — nothing is recomputed.
+        self._active_setup_snapshot = build_setup_snapshot(
+            result.detection_result,
+            rejection_detail=result.rejection_detail)
 
         resolved_direction = result.direction
 
@@ -872,6 +887,11 @@ class MaxBotTradeOrchestrator:
                 "entry_fill_price": fill_result.average_fill_price,
                 "state": "OPEN",
             }
+            # Additive: absent on records written before this existed,
+            # and omitted entirely when there is nothing to snapshot,
+            # so the previous record shape stays valid either way.
+            if self._active_setup_snapshot is not None:
+                record["setup_snapshot"] = self._active_setup_snapshot
             path = persist_open_trade(record, base_dir=self._trade_state_dir)
             log.info(f"[{self._symbol}] TRADE_STATE_PERSISTED trade_id={trade_id} path={path}")
         except Exception as e:
@@ -895,6 +915,7 @@ class MaxBotTradeOrchestrator:
         self._active_setup_key = None
         self._active_signal_key = None
         self._active_entry_timestamp_ms = None
+        self._active_setup_snapshot = None
         self._trade_events = {}
         self._emitted_terminal = set()
         self._exit_retry_count = 0

@@ -70,3 +70,89 @@ def persist_open_trade(record: dict, base_dir: Path | str = DEFAULT_TRADE_STATE_
     os.replace(tmp_path, final_path)
 
     return final_path
+
+
+# ── Setup snapshot ───────────────────────────────────────────────────────────
+
+# The structural fields copied out of DetectionResult/v1 — the "why"
+# behind a trade. Order is the contract's own; every one of these is
+# produced by the detector and is simply carried over here.
+_SETUP_SNAPSHOT_FIELDS = (
+    # Level
+    "level_source", "level_price", "level_bar", "direction",
+    # Break
+    "break_bar", "directional_break_distance",
+    # Displacement
+    "displacement_window", "displacement_bar_count",
+    "displacement_pts", "displacement_pct",
+    # Retest
+    "retest_window", "retest_bar_count",
+    "failed_retest_count", "failed_retests",
+    "bars_break_to_first_retest", "bars_break_to_confirmation",
+    "retest_closest_approach", "retest_penetration_through_level",
+    "retest_displacement_retracement_pct",
+    # Confirmation / Max Entry Candle
+    "confirmation_bar", "confirmation_rej_wick", "confirmation_body",
+    "confirmation_opp_wick", "confirmation_favorable_close_location",
+    "confirmation_penetration", "confirmation_close_beyond_level",
+    # Provenance
+    "schema_version", "result_id", "produced_at", "engine_version",
+)
+
+
+def build_setup_snapshot(detection_result: object,
+                        rejection_detail: object = None) -> dict | None:
+    """Freeze the structural reason for a trade into plain JSON.
+
+    Copies — never recomputes — the break / displacement / retest /
+    confirmation data the detector already produced, so a completed
+    trade can later be explained without re-running anything. The
+    source is DetectionResult/v1's own ``to_dict()``, so this function
+    owns no serialization rules of its own and cannot drift from the
+    contract.
+
+    The result is a detached, pure-JSON value: no live reference to the
+    DetectionResult or to any detector object survives in it, and
+    mutating the original afterwards cannot change what was persisted.
+
+    Returns None when there is nothing to snapshot (no detection result,
+    or an object that does not expose the contract's to_dict()) —
+    persistence of the trade itself must never depend on this.
+
+    ``entry_pattern_type`` (SINGLE_CANDLE_REJECTION vs
+    TWO_CANDLE_ENGULFING_RECOVERY) comes from `rejection_detail` — the
+    raw rejection_finder result carried on SignalResult — because
+    DetectionResult/v1 has no field for it and that contract is frozen
+    for JS parity (38 fields, guarded by TestNoExtraFields). The key is
+    always present in the output: None when the caller has no
+    rejection_detail, so older callers and older records keep the same
+    shape.
+
+    Parameters
+    ----------
+    detection_result : DetectionResult/v1 or None
+        Source of every structural field.
+    rejection_detail : dict or None
+        ``SignalResult.rejection_detail``. Only ``entry_pattern_type``
+        is read from it; anything else is ignored. A non-dict or a dict
+        without that key yields None rather than an error.
+    """
+    if detection_result is None:
+        return None
+    to_dict = getattr(detection_result, "to_dict", None)
+    if not callable(to_dict):
+        return None
+
+    full = to_dict()
+    if not isinstance(full, dict):
+        return None
+
+    snapshot = {k: full[k] for k in _SETUP_SNAPSHOT_FIELDS if k in full}
+    pattern = None
+    if isinstance(rejection_detail, dict):
+        pattern = rejection_detail.get("entry_pattern_type")
+    snapshot["entry_pattern_type"] = pattern
+
+    # Round-trip through JSON: guarantees the stored value is plain
+    # JSON and fully detached from the source object in one step.
+    return json.loads(json.dumps(snapshot, default=str))

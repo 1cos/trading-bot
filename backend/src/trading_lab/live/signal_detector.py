@@ -662,6 +662,16 @@ class LiveSignalDetector:
             signal_key=signal_key,
             pipeline_stage="SIGNAL",
             stage_context=break_ctx,
+            # Same raw rejection-finder result the NO_SETUP branch
+            # already attaches. It is the only carrier of
+            # entry_pattern_type (SINGLE_CANDLE_REJECTION vs
+            # TWO_CANDLE_ENGULFING_RECOVERY): rejection_finder produces
+            # it, and DetectionResult/v1 has no field for it — that
+            # contract is frozen for JS parity. Without this the pattern
+            # died here, and an executed trade could not say which
+            # pattern it entered on. Pure passthrough: nothing is
+            # recomputed and no detection value is derived from it.
+            rejection_detail=rej,
         )
 
     # ── Seeded path (additive, not wired) ───────────────────────────────
