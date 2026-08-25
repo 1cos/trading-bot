@@ -141,6 +141,27 @@ def is_rth_bar(time_ms: int, tz: ZoneInfo, open_hhmm: str, close_hhmm: str) -> b
 # ── Runner ───────────────────────────────────────────────────────────────────
 
 
+def _chart_levels(rt) -> dict:
+    """Structural levels for a trade's entry chart, read from the
+    runtime at the moment of the entry fill.
+
+    ORB high/low come from the detector's own stage context (already
+    mirrored onto the runtime); PDH/PDL/PMH/PML from the context layer.
+    Values are passed through untouched — never recomputed from the
+    candles — and anything unavailable stays absent, so the record can
+    say "not known" instead of guessing a price.
+    """
+    ctx = getattr(rt, "context_levels", None)
+    return {
+        "orb_high": getattr(rt, "orb_high", None),
+        "orb_low": getattr(rt, "orb_low", None),
+        "pdh": getattr(ctx, "pdh", None),
+        "pdl": getattr(ctx, "pdl", None),
+        "pmh": getattr(ctx, "pmh", None),
+        "pml": getattr(ctx, "pml", None),
+    }
+
+
 def _format_stage(pipeline_stage: str, failed_stage: str | None,
                   ctx: dict) -> str:
     """Format pipeline stage into a detailed human-readable log suffix.
@@ -516,6 +537,12 @@ class MaxBotRunner:
                 signal_detector=sd, trade_manager=tm,
                 option_selector=os_, entry_executor=ee,
                 exit_executor=xe, emit=self._emit,
+                # Read lazily at entry time, not now: context_levels is
+                # computed later in _compute_context_levels(), and
+                # orb_high/low only once a bar has been evaluated.
+                # A closure over this runtime keeps the orchestrator
+                # free of any runner dependency.
+                chart_levels_provider=lambda rt=rt: _chart_levels(rt),
             )
 
     def _qualify_all(self) -> None:

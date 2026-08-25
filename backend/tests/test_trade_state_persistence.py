@@ -341,7 +341,16 @@ class TestSndkShapedRoundTrip:
         assert path.exists()
 
         record = json.loads(path.read_text())
-        assert record == {
+        # I blocchi additivi (setup_snapshot, chart_context) sono
+        # verificati dalle loro suite. Qui l'intento e' che i valori
+        # SNDK preesistenti sopravvivano ESATTAMENTE al round-trip, e
+        # che nessun campo storico sia sparito: il confronto e' quindi
+        # sui campi originali, non sulla forma totale del record.
+        additive = {"setup_snapshot", "chart_context"}
+        core = {k: v for k, v in record.items() if k not in additive}
+        assert set(record) - set(core) <= additive, (
+            f"campi inattesi: {set(record) - set(core) - additive}")
+        assert core == {
             "trade_id": "SNDK_SHORT_1787146500000",
             "symbol": "SNDK",
             "setup_key": "SHORT:1787146500000",

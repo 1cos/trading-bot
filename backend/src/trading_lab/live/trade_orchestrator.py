@@ -50,6 +50,17 @@ from trading_lab.live.underlying_exit_monitor import ExitState, UnderlyingExitMo
 
 log = logging.getLogger("maxbot")
 
+# Entry chart window. Anchored to the setup's own break candle rather
+# than a flat "last N bars": the structure is what makes the chart
+# readable, and a setup can be 8 bars long or 60.
+CHART_BARS_BEFORE_BREAK = 5
+# Safety cap. Trimmed from the OLDEST end, so break, displacement,
+# retest and the entry candle always survive — losing lead-in context
+# is acceptable, losing the setup is not.
+CHART_MAX_BARS = 120
+
+_CHART_LEVEL_KEYS = ("orb_high", "orb_low", "pdh", "pdl", "pmh", "pml")
+
 
 # Keys lifted from the TRADE_COMPLETED summary into the CLOSED record's
 # "outcome" block. Deliberately excludes what the OPEN record already
@@ -143,6 +154,7 @@ class MaxBotTradeOrchestrator:
         exit_target_r: int = 2,
         emit=None,
         trade_state_dir: object | None = None,
+        chart_levels_provider=None,
     ):
         self._symbol = underlying_symbol
         self._direction = direction
@@ -156,6 +168,14 @@ class MaxBotTradeOrchestrator:
         self._exit_target_r = exit_target_r
         self._emit_fn = emit  # optional callback(event_type, symbol, **kw)
         self._trade_state_dir = trade_state_dir if trade_state_dir is not None else DEFAULT_TRADE_STATE_DIR
+        # Structural levels for the entry chart (ORB high/low, PDH/PDL,
+        # PMH/PML). Injected as a CALLABLE, not values: the orchestrator
+        # is built in _setup_symbol() before context_levels exists and
+        # before any ORB is known, so a snapshot taken at construction
+        # would be all None. bot_runner passes a closure over its own
+        # SymbolRuntime — no circular import, no global lookup, and the
+        # orchestrator still owns nothing it should not own.
+        self._chart_levels_provider = chart_levels_provider
 
         self._lifecycle = LifecycleState.WAITING_FOR_SIGNAL
         self._fill_activator = FillActivator(trade_manager)
@@ -934,10 +954,103 @@ class MaxBotTradeOrchestrator:
             # so the previous record shape stays valid either way.
             if self._active_setup_snapshot is not None:
                 record["setup_snapshot"] = self._active_setup_snapshot
+            # Additive, best-effort: a chart is an audit nicety and must
+            # never cost a trade its OPEN record.
+            try:
+                chart_context = self._build_chart_context()
+            except Exception as e:
+                log.error(f"[{self._symbol}] chart context capture failed: {e}")
+                chart_context = None
+            if chart_context is not None:
+                record["chart_context"] = chart_context
             path = persist_open_trade(record, base_dir=self._trade_state_dir)
             log.info(f"[{self._symbol}] TRADE_STATE_PERSISTED trade_id={trade_id} path={path}")
         except Exception as e:
             log.error(f"[{self._symbol}] Failed to persist OPEN trade state: {e}")
+
+    def _build_chart_context(self) -> dict | None:
+        """Freeze what the entry chart will need, from memory only.
+
+        The candles and the structural levels live solely in the
+        runner's memory: after a restart they are gone, and the trade
+        record alone cannot show what MaxBot was looking at. This
+        copies them into the record while they still exist.
+
+        Reads only session_builder (already owned) and the injected
+        levels provider. Never calls IBKR, never recomputes a level
+        from the candles, never invents a missing one — an unavailable
+        level is null, which a chart can render as "not drawn" but a
+        wrong number cannot.
+
+        Window: CHART_BARS_BEFORE_BREAK bars before the break candle
+        through the entry candle inclusive, capped at CHART_MAX_BARS by
+        dropping the oldest bars first. Fewer bars before the break than
+        asked for simply means the session started there.
+
+        Deliberately carries no break/displacement/retest/confirmation
+        data: that is setup_snapshot's job, and duplicating it would
+        create two versions of one truth.
+        """
+        session = self._session_builder.current_session()
+        if session is None:
+            return None
+        candles = session.get("candles") or []
+
+        entry_ms = self._active_entry_timestamp_ms
+        end = len(candles)
+        if entry_ms is not None:
+            for i, c in enumerate(candles):
+                if c.get("time_ms") == entry_ms:
+                    end = i + 1
+                    break
+
+        start = 0
+        snapshot = self._active_setup_snapshot or {}
+        break_bar = snapshot.get("break_bar") or {}
+        break_ms = break_bar.get("bar_utc_ms")
+        if break_ms is not None:
+            for i, c in enumerate(candles[:end]):
+                if c.get("time_ms") == break_ms:
+                    start = max(0, i - CHART_BARS_BEFORE_BREAK)
+                    break
+
+        window = candles[start:end]
+        if len(window) > CHART_MAX_BARS:
+            window = window[-CHART_MAX_BARS:]
+
+        levels = {k: None for k in _CHART_LEVEL_KEYS}
+        if self._chart_levels_provider is not None:
+            try:
+                provided = self._chart_levels_provider()
+            except Exception as e:
+                log.debug(f"[{self._symbol}] chart levels unavailable: {e}")
+                provided = None
+            if isinstance(provided, dict):
+                for k in _CHART_LEVEL_KEYS:
+                    v = provided.get(k)
+                    # bool is an int subclass — never a price.
+                    if isinstance(v, (int, float)) and not isinstance(v, bool):
+                        levels[k] = float(v)
+
+        # Fresh dicts, not references: the session builder keeps growing
+        # and the levels keep changing after this point.
+        frozen = [
+            {"time_ms": c.get("time_ms"), "open": c.get("open"),
+             "high": c.get("high"), "low": c.get("low"),
+             "close": c.get("close"), "volume": c.get("volume")}
+            for c in window
+        ]
+        return {
+            "timeframe_seconds": 60,
+            "market_timezone": session.get("market_timezone"),
+            "candles": frozen,
+            "levels": levels,
+            "window": {
+                "start_time_ms": frozen[0]["time_ms"] if frozen else None,
+                "end_time_ms": frozen[-1]["time_ms"] if frozen else None,
+                "entry_time_ms": entry_ms,
+            },
+        }
 
     def _persist_closed_trade_state(self, summary: dict) -> None:
         """Flip the on-disk trade-state record to CLOSED.
