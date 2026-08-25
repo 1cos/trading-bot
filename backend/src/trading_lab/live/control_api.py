@@ -4,7 +4,7 @@ Exposes bot runtime state, session telemetry, and start/stop control
 for the future iPhone PWA.
 
 Endpoints:
-    GET  /api/bot/status      — aggregate bot state
+    GET  /api/bot/status      — aggregate bot state + START defaults
     GET  /api/bot/symbols     — per-symbol status
     GET  /api/events          — event timeline (supports ?since=N)
     GET  /api/session         — session summary
@@ -38,6 +38,7 @@ from trading_lab.live.autostart import (
     AutoStartConfig,
     AutoStartScheduler,
 )
+from trading_lab.live.start_config import start_config_defaults
 from trading_lab.live.trade_state_store import (
     DEFAULT_TRADE_STATE_DIR,
     build_trade_performance_summary,
@@ -205,6 +206,12 @@ class MaxBotController:
             "state": str(self._state),
             "error": self._error,
         }
+
+        # Canonical defaults for the manual START form. Shipped on the
+        # status the dashboard already polls, so the form has one
+        # server-side source instead of a hardcoded copy in the markup —
+        # and no extra endpoint or poll to maintain.
+        result["start_defaults"] = start_config_defaults()
 
         # Always include config if available
         if self._config:
@@ -541,32 +548,40 @@ def get_lan_ip() -> str:
         return "?"
 
 
-# Default session for the scheduler. The project has no canonical
-# config source today — the watchlist exists only as the value= of an
-# <input> in dashboard.html, and the endpoint's own defaults (no
-# symbols, OBSERVE_ONLY) are not what anyone actually starts. These
-# mirror the dashboard form so auto-start launches the same bot a human
-# would, and the env vars keep it in one place instead of a third copy.
-_AUTOSTART_DEFAULT_SYMBOLS = (
-    "SPY,QQQ,AAPL,TSLA,NVDA,AMD,AMZN,TSLL,NFLX,GOOGL,"
-    "SOFI,META,MU,INTC,SNDK,PLTR,MSFT"
-)
-
-
 def autostart_config_from_env() -> AutoStartConfig:
     """Session the 08:00 CT auto-start will launch.
 
-    MAXBOT_AUTOSTART_SYMBOLS / _DIRECTION / _MODE / _TRADE_LIMITS,
-    following the MAXBOT_* convention start_maxbot.sh already uses.
+    Starts from the canonical defaults (start_config.py) — the same ones
+    the PWA form is populated with — and applies MAXBOT_AUTOSTART_*
+    overrides on top, following the MAXBOT_* convention
+    start_maxbot.sh already uses.
+
+    The overrides are scoped to auto-start by design: setting
+    MAXBOT_AUTOSTART_MODE=OBSERVE_ONLY makes the unattended morning
+    session observe-only without silently changing what a human gets
+    when they open the dashboard and press START.
     """
-    raw = os.environ.get("MAXBOT_AUTOSTART_SYMBOLS", _AUTOSTART_DEFAULT_SYMBOLS)
-    symbols = [s.strip().upper() for s in raw.split(",") if s.strip()]
-    limits = os.environ.get("MAXBOT_AUTOSTART_TRADE_LIMITS", "0")
+    defaults = start_config_defaults()
+
+    raw = os.environ.get("MAXBOT_AUTOSTART_SYMBOLS")
+    if raw is None:
+        symbols = defaults["symbols"]
+    else:
+        symbols = [s.strip().upper() for s in raw.split(",") if s.strip()]
+
+    limits = os.environ.get("MAXBOT_AUTOSTART_TRADE_LIMITS")
+    if limits is None:
+        trade_limits = defaults["trade_limits_enabled"]
+    else:
+        trade_limits = limits not in ("0", "false", "no", "")
+
     return AutoStartConfig(
         symbols=symbols,
-        direction=os.environ.get("MAXBOT_AUTOSTART_DIRECTION", "BOTH"),
-        execution_mode=os.environ.get("MAXBOT_AUTOSTART_MODE", "PAPER_EXECUTE"),
-        trade_limits_enabled=limits not in ("0", "false", "no", ""),
+        direction=os.environ.get("MAXBOT_AUTOSTART_DIRECTION",
+                                 defaults["direction"]),
+        execution_mode=os.environ.get("MAXBOT_AUTOSTART_MODE",
+                                      defaults["execution_mode"]),
+        trade_limits_enabled=trade_limits,
     )
 
 

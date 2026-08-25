@@ -193,11 +193,15 @@ body{padding-top:var(--safe-top);padding-bottom:var(--safe-bottom)}
     </div>
     <div class="field">
       <label>Watchlist (comma separated)</label>
-      <input id="cfg-symbols" type="text" value="SPY,QQQ,AAPL,TSLA,NVDA,AMD,AMZN,TSLL,NFLX,GOOGL,SOFI,META,MU,INTC,SNDK,PLTR,MSFT">
+      <!-- No hardcoded watchlist: the canonical defaults come from
+           /api/bot/status (start_config.py), so manual START and the
+           08:00 CT auto-start cannot drift apart. -->
+      <input id="cfg-symbols" type="text" placeholder="loading defaults…" oninput="onSymbolsTyped()">
     </div>
   </div>
   <div class="controls">
-    <button id="btn-start" class="btn btn-start" onclick="confirmStart()">START MAXBOT</button>
+    <button id="btn-start" class="btn btn-start" onclick="confirmStart()" disabled>LOADING…</button>
+    <div id="cfg-warning" class="hidden" style="padding:8px 12px;margin-bottom:8px;background:#f59e0b22;border:1px solid var(--amber);border-radius:6px;color:var(--amber);font-size:13px"></div>
   </div>
 </div>
 
@@ -271,11 +275,53 @@ function authHeaders() {
   return h;
 }
 
+// ── Canonical START defaults ───────────────────────────────────────
+// The form is populated from the server, once, on the first status
+// that carries them. Applied once and never again: re-applying on
+// every 2s poll would wipe whatever the user is typing.
+let defaultsApplied = false;
+
+function applyStartDefaults(d) {
+  if (defaultsApplied || !d || !Array.isArray(d.symbols) || !d.symbols.length) return;
+  document.getElementById('cfg-symbols').value = d.symbols.join(',');
+  if (d.direction) document.getElementById('cfg-dir').value = d.direction;
+  if (d.execution_mode) document.getElementById('cfg-mode').value = d.execution_mode;
+  defaultsApplied = true;
+
+  const btn = document.getElementById('btn-start');
+  btn.disabled = false;
+  btn.textContent = 'START MAXBOT';
+  document.getElementById('cfg-warning').classList.add('hidden');
+}
+
+// Fail visibly, never silently: without defaults the form would send an
+// empty watchlist, and a START must not be one tap away from that.
+function warnDefaultsUnavailable() {
+  if (defaultsApplied) return;
+  const el = document.getElementById('cfg-warning');
+  el.textContent = 'Start defaults unavailable \u2014 enter a watchlist manually to enable START.';
+  el.classList.remove('hidden');
+}
+
+// Typing a watchlist by hand unblocks START even if the server never
+// delivered defaults.
+function onSymbolsTyped() {
+  const has = document.getElementById('cfg-symbols').value
+    .split(',').map(s => s.trim()).filter(Boolean).length > 0;
+  const btn = document.getElementById('btn-start');
+  btn.disabled = !has;
+  btn.textContent = has ? 'START MAXBOT' : 'LOADING\u2026';
+}
+
 // Start flow
 function confirmStart() {
   const mode = document.getElementById('cfg-mode').value;
   const dir = document.getElementById('cfg-dir').value;
   const syms = document.getElementById('cfg-symbols').value;
+  if (!syms.split(',').map(s => s.trim()).filter(Boolean).length) {
+    warnDefaultsUnavailable();
+    return;
+  }
   const modeLabel = mode === 'PAPER_EXECUTE' ? 'PAPER' : 'OBSERVE ONLY';
   document.getElementById('confirm-text').innerHTML =
     `<b>${modeLabel}</b><br>${syms.split(',').length} symbols<br>Direction: ${dir}<br>${mode === 'PAPER_EXECUTE' ? 'Orders: PAPER only' : 'No orders will be placed'}`;
@@ -323,6 +369,7 @@ async function pollStatus() {
   } catch(e) {
     connOk = false;
     document.getElementById('conn-lost').classList.remove('hidden');
+    warnDefaultsUnavailable();
   }
 }
 
@@ -355,6 +402,7 @@ async function pollSession() {
 
 // Render
 function updateStatus(d) {
+  applyStartDefaults(d.start_defaults);
   const prev = botState;
   botState = d.state || 'STOPPED';
   const chip = document.getElementById('state-chip');

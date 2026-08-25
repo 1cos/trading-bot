@@ -65,11 +65,37 @@ class TestDefaultDirection:
 # ── Test 5: Default watchlist populated ──────────────────────────────────────
 
 class TestDefaultWatchlist:
-    def test_watchlist(self, client):
-        r = client.get("/")
-        assert b"QQQ" in r.data
-        assert b"SPY" in r.data
-        assert b"NVDA" in r.data
+    """La dashboard deve avere una watchlist di default utilizzabile.
+
+    Prima veniva verificata come stringa hardcoded nel markup. Ora la
+    source canonica e' server-side (start_config.py) e la dashboard la
+    riceve da /api/bot/status: l'intento e' lo stesso, la verifica e'
+    piu' stretta (i simboli esatti dall'API, non "QQQ compare da
+    qualche parte nell'HTML").
+    """
+
+    def test_defaults_served_by_the_api(self, client):
+        d = client.get("/api/bot/status").get_json()
+        syms = d["start_defaults"]["symbols"]
+        for expected in ("SPY", "QQQ", "NVDA"):
+            assert expected in syms
+        assert len(syms) == 17
+
+    def test_dashboard_consumes_the_api_defaults(self, client):
+        html = client.get("/").data.decode()
+        assert "start_defaults" in html
+        assert "applyStartDefaults" in html
+
+    def test_watchlist_is_not_hardcoded_in_the_markup(self):
+        """Il markup non deve piu' essere una seconda source."""
+        html = client_html()
+        assert "SPY,QQQ,AAPL" not in html
+
+
+def client_html() -> str:
+    from pathlib import Path
+    return (Path(__file__).resolve().parents[1]
+            / "src/trading_lab/live/ui/dashboard.html").read_text()
 
 
 # ── Test 6: LIVE mode absent ────────────────────────────────────────────────
