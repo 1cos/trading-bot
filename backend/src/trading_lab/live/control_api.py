@@ -8,6 +8,7 @@ Endpoints:
     GET  /api/bot/symbols     — per-symbol status
     GET  /api/events          — event timeline (supports ?since=N)
     GET  /api/session         — session summary
+    GET  /api/trades          — persisted trade history (works stopped)
     GET  /api/session/export  — JSON session export
     POST /api/bot/start       — start the bot
     POST /api/bot/stop        — stop the bot
@@ -30,6 +31,11 @@ from enum import StrEnum, unique
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+
+from trading_lab.live.trade_state_store import (
+    DEFAULT_TRADE_STATE_DIR,
+    load_trades,
+)
 
 log = logging.getLogger("maxbot.api")
 
@@ -66,10 +72,17 @@ class MaxBotController:
         default_host: str = "127.0.0.1",
         default_port: int = 7497,
         default_client_id: int = 1,
+        trade_state_dir=None,
     ):
         self._ibkr_host = default_host
         self._ibkr_port = default_port
         self._ibkr_client_id = default_client_id
+        # Persisted trade history lives on disk, not in the runner, so
+        # it stays readable while the bot is stopped.
+        self._trade_state_dir = (
+            trade_state_dir if trade_state_dir is not None
+            else DEFAULT_TRADE_STATE_DIR
+        )
         self._state = BotState.STOPPED
         self._runner = None
         self._thread: threading.Thread | None = None
@@ -324,6 +337,17 @@ class MaxBotController:
             "metadata": log_obj.metadata,
         }
 
+    def get_trades(self) -> dict:
+        """Persisted trade history, read from disk.
+
+        Deliberately does NOT touch self._runner: this is the one view
+        that must work while the bot is stopped, and after a crash that
+        never produced a session log. Returns the records as stored,
+        with no aggregation — P&L roll-ups are a separate concern.
+        """
+        trades = load_trades(self._trade_state_dir)
+        return {"trades": trades, "count": len(trades)}
+
     def export_session_json(self) -> dict | None:
         """Export full session as JSON-serializable dict."""
         runner = self._runner
@@ -427,6 +451,11 @@ def create_app(controller: MaxBotController | None = None) -> Flask:
         if data is None:
             return jsonify({"error": "No session available"}), 404
         return jsonify(data)
+
+    @app.route("/api/trades")
+    def trades():
+        """Persisted trade history. Works with the bot stopped."""
+        return jsonify(ctrl.get_trades())
 
     @app.route("/api/trace/<symbol>")
     def symbol_trace(symbol):
