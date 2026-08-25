@@ -38,6 +38,9 @@ class EventType(StrEnum):
     # Strategy
     SIGNAL = "SIGNAL"
 
+    # Observation / audit (never a trading decision — see pd_audit.py)
+    PD_AUDIT = "PD_AUDIT"
+
     # Option selection
     OPTION_SELECTED = "OPTION_SELECTED"
 
@@ -266,7 +269,11 @@ class SessionEventLog:
                 for key in ("underlying_entry", "underlying_stop",
                             "underlying_target", "strike", "expiration",
                             "limit_price", "fill_price", "exit_reason",
-                            "result", "gross_pnl", "error"):
+                            "result", "gross_pnl", "error",
+                            # PD_AUDIT payload (see pd_audit.py)
+                            "level_source", "level_price", "current_price",
+                            "eligible", "failed_reason", "pipeline_stage",
+                            "current_state", "setup_key"):
                     if key in e.data:
                         highlights.append(f"{key}={e.data[key]}")
                 if highlights:

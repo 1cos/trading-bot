@@ -21,9 +21,15 @@ DetectorAdapter into live bot runtime" task:
           execute_pending_signal() still receives/acts on a genuine
           SignalResult produced through the unmodified execution
           path (a real order gets submitted end-to-end).
-    T4 -- ENABLE_PDH_PDL_LIVE remains False by default, both as the
+    T4 -- ENABLE_PDH_PDL_LIVE is True -- the official, committed
+          decision as of 2026-08-24 ("Enable live parallel PDH/PDL
+          execution with audit telemetry"). Asserted both as the
           module-level constant and as what every adapter constructed
-          by _setup_symbol() actually received.
+          by _setup_symbol() actually received, plus the strongest
+          form: PDH/PDL really is evaluated through the wired runtime
+          path. The disabled path stays covered via an explicitly
+          disabled adapter, so its byte-identical-passthrough
+          guarantee is not lost with the default flip.
 """
 
 from __future__ import annotations
@@ -363,46 +369,85 @@ class TestT3NoExecutionChanges:
 
 
 # ═════════════════════════════════════════════════════════════════════════
-# T4 -- Guardrail: ENABLE_PDH_PDL_LIVE stays False by default
+# T4 -- Guardrail: ENABLE_PDH_PDL_LIVE is ON (official decision)
 # ═════════════════════════════════════════════════════════════════════════
 
 class TestT4Guardrail:
-    def test_module_constant_is_false(self):
-        assert ENABLE_PDH_PDL_LIVE is False
+    """PDH/PDL LIVE = ON is a deliberate, committed decision, not a
+    leftover local edit. These assertions are the mirror image of the
+    original default-off guardrails — same strength, opposite polarity
+    — so an accidental revert to False fails loudly instead of
+    silently disabling live PDH/PDL execution overnight."""
 
-    def test_adapters_constructed_by_setup_symbol_are_disabled(self):
+    def test_module_constant_is_true(self):
+        assert ENABLE_PDH_PDL_LIVE is True
+
+    def test_adapters_constructed_by_setup_symbol_are_enabled(self):
         runner = MaxBotRunner("QQQ", "LONG", execution_mode="OBSERVE_ONLY")
         runner._ib = _mock_ib()
         runner._verify_paper()
         runner._setup_all_symbols()
         sd = runner._runtimes["QQQ"].signal_detector
-        assert sd._enable_pdh_pdl_live is False
+        assert sd._enable_pdh_pdl_live is True
 
-    def test_both_mode_adapters_also_disabled(self):
+    def test_both_mode_adapters_also_enabled(self):
         runner = MaxBotRunner("QQQ", "BOTH", execution_mode="OBSERVE_ONLY")
         runner._ib = _mock_ib()
         runner._verify_paper()
         runner._setup_all_symbols()
         sd = runner._runtimes["QQQ"].signal_detector
-        assert sd._long._enable_pdh_pdl_live is False
-        assert sd._short._enable_pdh_pdl_live is False
+        assert sd._long._enable_pdh_pdl_live is True
+        assert sd._short._enable_pdh_pdl_live is True
 
-    def test_pdh_pdl_never_evaluated_through_the_wired_runtime_path(self, monkeypatch):
-        """Strongest form of T4: proves zero PDH/PDL evaluation work
-        happens anywhere in the wired runtime path while the flag is
-        at its default, not just that the flag reads False."""
+    def test_pdh_pdl_is_evaluated_through_the_wired_runtime_path(self, monkeypatch):
+        """Strongest form of T4, inverted: proves PDH/PDL evaluation
+        work really happens in the wired runtime path, not merely that
+        the flag reads True."""
         import trading_lab.live.multi_source_signal_detector_adapter as mod
 
-        def _boom(*a, **k):
-            raise AssertionError("evaluate_pdh_pdl_candidate must not be called "
-                                  "through the default-disabled wired runtime path")
+        calls = []
+        original = mod.evaluate_pdh_pdl_candidate
 
-        monkeypatch.setattr(mod, "evaluate_pdh_pdl_candidate", _boom)
+        def _counting(*a, **k):
+            calls.append(k.get("direction"))
+            return original(*a, **k)
+
+        monkeypatch.setattr(mod, "evaluate_pdh_pdl_candidate", _counting)
 
         runner = MaxBotRunner("QQQ", "LONG", execution_mode="OBSERVE_ONLY")
         runner._ib = _mock_ib()
         runner._verify_paper()
         runner._setup_all_symbols()
         session = _build_session(_long_signal_bars())
-        result = runner._runtimes["QQQ"].signal_detector.evaluate(session)  # must not raise
+        result = runner._runtimes["QQQ"].signal_detector.evaluate(session)
+
+        assert calls == ["LONG"], "PDH/PDL must be evaluated exactly once"
+        # The ORB signal in this fixture is unaffected by PDH/PDL running.
         assert result.status == SignalStatus.SIGNAL
+
+    def test_explicitly_disabled_adapter_is_still_a_pure_orb_passthrough(self):
+        """The default flipped to True, but the disabled path must keep
+        its guarantee: enable_pdh_pdl_live=False does zero PDH/PDL work
+        and returns the wrapped ORB detector's own result object."""
+        import trading_lab.live.multi_source_signal_detector_adapter as mod
+
+        def _boom(*a, **k):
+            raise AssertionError(
+                "evaluate_pdh_pdl_candidate must not be called by an "
+                "explicitly disabled adapter")
+
+        orb = LiveSignalDetector(symbol="QQQ", direction="LONG", tick_size=0.01)
+        adapter = MultiSourceSignalDetectorAdapter(
+            symbol="QQQ", direction="LONG", orb_detector=orb, tick_size=0.01,
+            enable_pdh_pdl_live=False,
+        )
+        session = _build_session(_long_signal_bars())
+
+        saved = mod.evaluate_pdh_pdl_candidate
+        mod.evaluate_pdh_pdl_candidate = _boom
+        try:
+            wrapped = adapter.evaluate(session)
+        finally:
+            mod.evaluate_pdh_pdl_candidate = saved
+
+        assert _trading_relevant(wrapped) == _trading_relevant(orb.evaluate(session))

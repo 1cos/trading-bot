@@ -72,13 +72,18 @@ from trading_lab.live.pdh_pdl_candidate_evaluator import evaluate_pdh_pdl_candid
 from trading_lab.live.signal_dedup import SignalObservation, collect_actionable_signals
 from trading_lab.live.signal_detector import LiveSignalDetector, SignalResult, SignalStatus
 
-# Feature flag -- OFF by default. There is currently no config/env-var
-# loader wired to this constant (that is out of scope for this
-# minimal adapter); flipping live behavior requires either editing
-# this default or passing enable_pdh_pdl_live=True explicitly to the
-# constructor (e.g. from tests, or a future bot_runner.py change that
-# is NOT part of this task).
-ENABLE_PDH_PDL_LIVE = False
+# Feature flag -- ON. PDH/PDL is evaluated on the live execution path
+# and a PD signal can open a real PAPER_EXECUTE trade. This is the
+# committed, deliberate default as of 2026-08-24, guarded by
+# test_bot_runner_multi_source_wiring.py's TestT4Guardrail and proven
+# end-to-end by test_pdh_pdl_live_readiness.py -- not a leftover local
+# edit. Turning it back to False disables live PDH/PDL entirely and
+# reverts the adapter to a byte-identical ORB passthrough.
+#
+# There is still no config/env-var loader wired to this constant;
+# changing live behavior means editing this default or passing
+# enable_pdh_pdl_live=False explicitly to the constructor.
+ENABLE_PDH_PDL_LIVE = True
 
 
 class MultiSourceSignalDetectorAdapter:

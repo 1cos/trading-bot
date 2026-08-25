@@ -69,6 +69,12 @@ from trading_lab.live.multi_source_signal_detector_adapter import (
     ENABLE_PDH_PDL_LIVE,
     MultiSourceSignalDetectorAdapter,
 )
+from trading_lab.live.pd_audit import (
+    PD_AUDIT_EMIT_EVERY_BAR,
+    build_pd_audit_record,
+    format_pd_audit_line,
+    pd_audit_state_key,
+)
 from trading_lab.premarket_break_classifier import classify_premarket_context
 
 log = logging.getLogger("maxbot")
@@ -262,6 +268,11 @@ class MaxBotRunner:
         self._runtimes: dict[str, SymbolRuntime] = {}
         self._running = False
         self._paper_account: str | None = None
+
+        # PD_AUDIT emission bookkeeping (observation only — never read
+        # by any trading path). (symbol, direction) -> (state_key,
+        # evaluations seen since the last emitted record).
+        self._pd_audit_last: dict[tuple[str, str], tuple] = {}
 
         # Execution queue — defers IBKR sync work outside callbacks
         self._execution_queue = ExecutionQueue()
@@ -829,10 +840,12 @@ class MaxBotRunner:
         completely untouched by this call.
 
         NEVER touches TradeOrchestrator/ObserveOrchestrator, NEVER
-        creates a pending order, NEVER talks to IBKR — the result is
-        only stored on rt.pdh_pdl_candidate for a future PWA/audit
-        view. No pending signal, execution state, or trade lifecycle
-        field is read or written here.
+        creates a pending order, NEVER talks to IBKR. The result is
+        stored on rt.pdh_pdl_candidate for a future PWA view and
+        emitted as a PD_AUDIT event (see _emit_pd_audit) so the
+        verdict survives the process. No pending signal or trade
+        lifecycle field is written here; the orchestrator's lifecycle
+        is read, read-only, purely to label the audit record.
         """
         if not rt.session_builder:
             return
@@ -873,7 +886,85 @@ class MaxBotRunner:
                 "signal_result": out["pdh_pdl_result"],
             }
 
+            # PD_AUDIT telemetry — reports the evaluation that just
+            # happened above, never triggers a new one. Wrapped so a
+            # logging failure can never propagate into the bar
+            # callback, matching this method's own observational-only
+            # contract.
+            try:
+                self._emit_pd_audit(
+                    rt, direction, level_source, session, out,
+                )
+            except Exception as e:
+                log.debug(f"[{rt.symbol}] PD_AUDIT emit error ({direction}): {e}")
+
         rt.pdh_pdl_candidate = candidate
+
+    def _emit_pd_audit(
+        self, rt: SymbolRuntime, direction: str, level_source: str,
+        session: dict, out: dict,
+    ) -> None:
+        """Emit one PD_AUDIT event for an evaluation that already ran.
+
+        Pure telemetry: reads `out` (the result
+        ``evaluate_pdh_pdl_candidate()`` just returned), the context
+        layer's PDH/PDL, the current bar's close, and the
+        orchestrator's lifecycle — then records them. Nothing here
+        computes eligibility, builds a level, or influences any
+        detector, state machine, or entry decision.
+
+        The evaluation mirrored here is the same one
+        MultiSourceSignalDetectorAdapter performs on the execution
+        path: both call ``evaluate_pdh_pdl_candidate()`` with
+        identical parameters (bot_runner constructs the adapter
+        without entry_model/buffer overrides, so both use the same
+        defaults), so this record cannot report a verdict different
+        from the one the live detector saw.
+
+        Emission is change-based by default — see pd_audit.py's
+        "Emission policy". Every evaluation stays accounted for via
+        ``evaluations_since_last_emit``.
+        """
+        ctx = rt.context_levels
+        level_price = None
+        if ctx is not None:
+            # Same value the evaluator itself uses: compute_live_context_
+            # levels() delegates PDH/PDL to compute_pdh_pdl(), which is
+            # exactly what evaluate_pdh_pdl_candidate() calls.
+            level_price = ctx.pdh if direction == "LONG" else ctx.pdl
+
+        candles = session.get("candles") if isinstance(session, dict) else None
+        current_price = candles[-1]["close"] if candles else None
+        bar_time_ms = candles[-1]["time_ms"] if candles else None
+
+        current_state = None
+        if rt.orchestrator is not None:
+            current_state = rt.orchestrator.lifecycle
+
+        key = (rt.symbol, direction)
+        prev = self._pd_audit_last.get(key)
+        seen = (prev[1] + 1) if prev else 1
+
+        record = build_pd_audit_record(
+            symbol=rt.symbol, direction=direction,
+            level_source=level_source, level_price=level_price,
+            current_price=current_price, bar_time_ms=bar_time_ms,
+            eligibility=out.get("eligibility"),
+            signal_result=out.get("pdh_pdl_result"),
+            current_state=current_state,
+            evaluations_since_last_emit=seen,
+        )
+        state_key = pd_audit_state_key(record)
+
+        if PD_AUDIT_EMIT_EVERY_BAR or prev is None or prev[0] != state_key:
+            log.info(format_pd_audit_line(record))
+            self._emit(
+                EventType.PD_AUDIT, symbol=rt.symbol,
+                direction=direction, data=record,
+            )
+            self._pd_audit_last[key] = (state_key, 0)
+        else:
+            self._pd_audit_last[key] = (state_key, seen)
 
     def _on_bar_update(self, rt: SymbolRuntime, bars, has_new_bar) -> None:
         """Bar callback — MUST NOT call any IBKR sync methods.
