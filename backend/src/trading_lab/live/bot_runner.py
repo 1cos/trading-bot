@@ -742,7 +742,8 @@ class MaxBotRunner:
                 rt.error = str(e)
                 log.error(f"SUBSCRIPTION FAILED {sym}: {e}")
 
-    def _bootstrap_symbol(self, rt: SymbolRuntime) -> None:
+    def _bootstrap_symbol(self, rt: SymbolRuntime,
+                          catch_up_after_ms: int | None = None) -> None:
         """Feed historical bars into session builder for context only.
 
         Bootstrap bars are from previous sessions (loaded via reqHistoricalData
@@ -753,6 +754,28 @@ class MaxBotRunner:
         SAFETY: marks ALL bars (including the last one) in processed_times
         to prevent _on_bar_update or _poll_bars_fallback from processing
         historical bars as if they were live.
+
+        Parameters
+        ----------
+        catch_up_after_ms : int or None
+            None (boot, via _subscribe_all) keeps the behavior described
+            above exactly: every RTH bar is context, none is live.
+
+            When set (mid-session resubscribe, via _resubscribe_symbol),
+            it is the timestamp of the last bar this symbol REALLY
+            processed. Bars at or before it are context, same as at boot.
+            Bars after it are LIVE bars that arrived during the feed gap
+            and were never evaluated — they are deliberately left
+            untouched here (not marked, not fed) so the normal
+            _on_bar_update / _poll_bars_fallback path processes them
+            through the ordinary pipeline. This also leaves the last
+            bar alone, which mid-session is still forming: marking it
+            would freeze partial OHLC into the session for good, since
+            processed_times would block its final version.
+
+            The boot assumption ("the last bar is just yesterday's last
+            historical bar") is true pre-market and false mid-session —
+            that difference is the whole reason this parameter exists.
         """
         if not rt.bars:
             return
@@ -760,10 +783,17 @@ class MaxBotRunner:
         # pre-market, it's just the last historical bar from yesterday.
         completed = list(rt.bars)
         fed = 0
+        held_back = 0
         for bar in completed:
             candle = ibkr_bar_to_candle(bar, self._tz)
             if not is_rth_bar(candle["time_ms"], self._tz,
                               self._session_open, self._session_close):
+                continue
+            if (catch_up_after_ms is not None
+                    and candle["time_ms"] > catch_up_after_ms):
+                # Live bar missed during the gap — leave it to the
+                # normal path. Never marked, never pre-fed.
+                held_back += 1
                 continue
             if candle["time_ms"] in rt.processed_times:
                 continue
@@ -771,7 +801,11 @@ class MaxBotRunner:
             if rt.session_builder:
                 rt.session_builder.add_bar(candle)
             fed += 1
-        log.info(f"Bootstrap {rt.symbol}: {fed} bars (context only, no signals)")
+        suffix = f", {held_back} left for catch-up" if held_back else ""
+        log.info(
+            f"Bootstrap {rt.symbol}: {fed} bars (context only, no signals)"
+            f"{suffix}"
+        )
 
     def _update_premarket_context(self, rt: SymbolRuntime) -> None:
         """Observational-only PDH/PDL premarket classification.
@@ -1210,8 +1244,12 @@ class MaxBotRunner:
             rt.subscription_start_time = _time.monotonic()
             rt.feed_status = "INITIALIZING"  # wait for first live bar
 
-            # Bootstrap new bars (dedup via processed_times)
-            self._bootstrap_symbol(rt)
+            # Bootstrap new bars (dedup via processed_times), but ONLY
+            # up to the last bar this symbol really processed. Anything
+            # newer arrived during the feed gap and is a live bar that
+            # was never evaluated — it must reach the orchestrator
+            # through the normal path, not be silently marked as seen.
+            self._bootstrap_symbol(rt, catch_up_after_ms=rt.last_bar_time_ms)
 
             # Register exactly ONE callback on the NEW BarDataList
             def make_callback(runtime):
@@ -1285,6 +1323,11 @@ class MaxBotRunner:
         Uses the same dedup (processed_times) and code path as
         _on_bar_update, so bars are never processed twice.
         Does NOT process the last bar (it's the live/incomplete bar).
+
+        Scans EVERY completed bar, oldest first — not just the newest
+        one. A mid-session resubscribe can hand back a snapshot holding
+        several bars that were never evaluated during the feed gap, and
+        only the oldest-first full scan recovers all of them, in order.
         """
         for sym, rt in self._runtimes.items():
             if not rt.enabled or rt.bars is None:
@@ -1294,87 +1337,97 @@ class MaxBotRunner:
                 if len(bars) < 2:
                     continue
 
-                # Check the completed bar (second-to-last)
-                completed_bar = bars[-2]
-                candle = ibkr_bar_to_candle(completed_bar, self._tz)
+                # Every COMPLETED bar, oldest first. The last bar is
+                # still forming and is never processed here.
+                #
+                # Scanning the whole completed range instead of only
+                # bars[-2] is what makes a multi-bar gap recoverable:
+                # after a mid-session resubscribe the snapshot can hold
+                # several never-evaluated bars at once, and a bar that
+                # is not bars[-2] at this instant never becomes bars[-2]
+                # again — it would be lost for good. processed_times
+                # keeps this idempotent, so an already-seen bar costs
+                # one set lookup and nothing more.
+                for completed_bar in list(bars)[:-1]:
+                    candle = ibkr_bar_to_candle(completed_bar, self._tz)
 
-                # Quick check: already processed?
-                if candle["time_ms"] in rt.processed_times:
-                    continue
+                    # Quick check: already processed?
+                    if candle["time_ms"] in rt.processed_times:
+                        continue
 
-                # Not yet processed — this bar was missed by updateEvent.
-                # Feed it through the normal path.
-                if not is_rth_bar(candle["time_ms"], self._tz,
-                                  self._session_open, self._session_close):
-                    continue
+                    # Not yet processed — this bar was missed by updateEvent.
+                    # Feed it through the normal path.
+                    if not is_rth_bar(candle["time_ms"], self._tz,
+                                      self._session_open, self._session_close):
+                        continue
 
-                # Track feed health
-                rt.last_bar_time_ms = candle["time_ms"]
-                if rt.feed_status != "LIVE":
-                    log.info(
-                        f"[{sym}] POLL FALLBACK — first bar detected, "
-                        f"transitioning to LIVE"
-                    )
-                rt.feed_status = "LIVE"
-
-                rt.processed_times.add(candle["time_ms"])
-                rt.processed_bar_count += 1
-
-                # ── LIVE BOUNDARY CHECK ──────────────────────────────
-                if not self._is_live_bar(candle, rt):
-                    if rt.session_builder:
-                        rt.session_builder.add_bar(candle)
-                    continue
-
-                # ONE signal evaluation via orchestrator
-                result = rt.orchestrator.on_bar(candle)
-
-                # Extract pipeline stage info
-                stage_info = ""
-                if rt.signal_detector:
-                    last = rt.signal_detector.last_result
-                    if last and last.pipeline_stage:
-                        rt.pipeline_stage = last.pipeline_stage
-                        ctx = last.stage_context or {}
-                        rt.last_stage_context = ctx
-                        if ctx.get("orb_high") is not None:
-                            rt.orb_high = ctx["orb_high"]
-                            rt.orb_low = ctx["orb_low"]
-                        stage_info = _format_stage(
-                            last.pipeline_stage, last.failed_stage, ctx
+                    # Track feed health
+                    rt.last_bar_time_ms = candle["time_ms"]
+                    if rt.feed_status != "LIVE":
+                        log.info(
+                            f"[{sym}] POLL FALLBACK — first bar detected, "
+                            f"transitioning to LIVE"
                         )
-                    if last and last.status == SignalStatus.SIGNAL:
-                        rt.pipeline_stage = "SIGNAL"
+                    rt.feed_status = "LIVE"
 
-                # Enqueue if signal detected
-                if rt.orchestrator.has_pending_signal:
-                    item = ExecutionWorkItem(
-                        symbol=rt.symbol,
-                        work_type=WorkItemType.SIGNAL_EXECUTION,
-                        signal_result=None,
-                        bar_time_ms=candle["time_ms"],
-                    )
-                    self._execution_queue.enqueue(item)
+                    rt.processed_times.add(candle["time_ms"])
+                    rt.processed_bar_count += 1
 
-                time_str = datetime.fromtimestamp(
-                    candle["time_ms"] / 1000, tz=self._tz
-                ).strftime("%H:%M")
+                    # ── LIVE BOUNDARY CHECK ──────────────────────────────
+                    if not self._is_live_bar(candle, rt):
+                        if rt.session_builder:
+                            rt.session_builder.add_bar(candle)
+                        continue
 
-                if self._execution_mode == ExecutionMode.OBSERVE_ONLY:
-                    state = rt.orchestrator.lifecycle
-                    log.info(
-                        f"[{sym}] {time_str} C={candle['close']:.2f} → "
-                        f"{state}{stage_info} (poll)"
-                    )
-                else:
-                    log.info(
-                        f"[{sym}] {time_str} C={candle['close']:.2f} → "
-                        f"{result.lifecycle if result else '?'}{stage_info} "
-                        f"(poll)"
-                    )
+                    # ONE signal evaluation via orchestrator
+                    result = rt.orchestrator.on_bar(candle)
 
-                # Record decision trace for PWA
-                self._record_trace(rt, candle, time_str)
+                    # Extract pipeline stage info
+                    stage_info = ""
+                    if rt.signal_detector:
+                        last = rt.signal_detector.last_result
+                        if last and last.pipeline_stage:
+                            rt.pipeline_stage = last.pipeline_stage
+                            ctx = last.stage_context or {}
+                            rt.last_stage_context = ctx
+                            if ctx.get("orb_high") is not None:
+                                rt.orb_high = ctx["orb_high"]
+                                rt.orb_low = ctx["orb_low"]
+                            stage_info = _format_stage(
+                                last.pipeline_stage, last.failed_stage, ctx
+                            )
+                        if last and last.status == SignalStatus.SIGNAL:
+                            rt.pipeline_stage = "SIGNAL"
+
+                    # Enqueue if signal detected
+                    if rt.orchestrator.has_pending_signal:
+                        item = ExecutionWorkItem(
+                            symbol=rt.symbol,
+                            work_type=WorkItemType.SIGNAL_EXECUTION,
+                            signal_result=None,
+                            bar_time_ms=candle["time_ms"],
+                        )
+                        self._execution_queue.enqueue(item)
+
+                    time_str = datetime.fromtimestamp(
+                        candle["time_ms"] / 1000, tz=self._tz
+                    ).strftime("%H:%M")
+
+                    if self._execution_mode == ExecutionMode.OBSERVE_ONLY:
+                        state = rt.orchestrator.lifecycle
+                        log.info(
+                            f"[{sym}] {time_str} C={candle['close']:.2f} → "
+                            f"{state}{stage_info} (poll)"
+                        )
+                    else:
+                        log.info(
+                            f"[{sym}] {time_str} C={candle['close']:.2f} → "
+                            f"{result.lifecycle if result else '?'}{stage_info} "
+                            f"(poll)"
+                        )
+
+                    # Record decision trace for PWA
+                    self._record_trace(rt, candle, time_str)
             except Exception as e:
                 log.error(f"[{sym}] Poll fallback error: {e}", exc_info=True)
 
