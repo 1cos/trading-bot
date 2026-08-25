@@ -100,6 +100,48 @@ body{padding-top:var(--safe-top);padding-bottom:var(--safe-bottom)}
 .settings-row label{font-size:12px;color:var(--dim)}
 .settings-row input{width:180px;padding:6px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px}
 
+/* Journal */
+.perf-grid{display:flex;gap:8px;margin-bottom:8px}
+.perf-card{flex:1;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 10px}
+.perf-period{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
+.perf-pnl{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;margin:2px 0;overflow-wrap:anywhere}
+.perf-meta{font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
+.pnl-pos{color:var(--green)}
+.pnl-neg{color:var(--red)}
+.pnl-none{color:var(--dim)}
+.perf-note{font-size:10px;color:var(--dim);margin-bottom:8px;line-height:1.35}
+.perf-counters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.chip{font-size:11px;font-weight:600;padding:3px 8px;border-radius:4px;background:#7a7a8f22;color:var(--dim);white-space:nowrap}
+.chip-attn{background:#f59e0b22;color:var(--amber)}
+.chip-open{background:#4f8cff22;color:var(--accent)}
+
+.jrn-list{max-height:60vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.jrn{background:var(--card);border:1px solid var(--border);border-left:3px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:8px}
+.jrn-win{border-left-color:var(--green)}
+.jrn-loss{border-left-color:var(--red)}
+.jrn-open{border-left-color:var(--accent)}
+.jrn-attn{border-left-color:var(--amber)}
+.jrn-legacy{border-left-color:var(--dim);opacity:.72}
+.jrn-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.jrn-sym{font-weight:700;font-size:15px}
+.jrn-dir{font-size:11px;font-weight:600;color:var(--dim);margin-left:5px}
+.jrn-pnl{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.jrn-sub{font-size:11px;color:var(--dim);margin-top:3px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.jrn-badge{display:inline-block;font-size:10px;font-weight:600;padding:1px 6px;border-radius:3px;text-transform:uppercase;margin-top:5px}
+.badge-win{background:#22c55e22;color:var(--green)}
+.badge-loss{background:#ef444422;color:var(--red)}
+.badge-open{background:#4f8cff22;color:var(--accent)}
+.badge-attn{background:#f59e0b22;color:var(--amber)}
+.badge-legacy{background:#7a7a8f22;color:var(--dim)}
+.jrn-det{margin-top:6px}
+.jrn-det summary{font-size:11px;color:var(--accent);cursor:pointer;list-style:none;padding:2px 0}
+.jrn-det summary::-webkit-details-marker{display:none}
+.jrn-det summary::after{content:' \25BE'}
+.jrn-det[open] summary::after{content:' \25B4'}
+.jrn-kv{font-size:11px;color:var(--dim);margin-top:4px;display:flex;justify-content:space-between;gap:10px}
+.jrn-kv span:last-child{color:var(--text);font-variant-numeric:tabular-nums;text-align:right;overflow-wrap:anywhere}
+.jrn-empty{font-size:13px;color:var(--dim);padding:6px 0}
+
 .hidden{display:none !important}
 </style>
 </head>
@@ -183,6 +225,15 @@ body{padding-top:var(--safe-top);padding-bottom:var(--safe-bottom)}
     <button class="btn btn-secondary" style="flex:1" onclick="exportJSON()">Export JSON</button>
     <button class="btn btn-secondary" style="flex:1" onclick="exportMD()">Export Report</button>
   </div>
+</div>
+
+<!-- Journal (persisted history — works with the bot stopped) -->
+<div id="journal-section" class="section">
+  <div class="section-title">Journal</div>
+  <div id="perf-cards" class="perf-grid"></div>
+  <div id="perf-note" class="perf-note"></div>
+  <div id="perf-counters" class="perf-counters"></div>
+  <div id="journal-list" class="jrn-list"><div class="jrn-empty">Loading…</div></div>
 </div>
 
 <!-- Settings -->
@@ -504,6 +555,220 @@ function updateSession(d) {
 function exportJSON() { window.open(API + '/api/session/export.json', '_blank'); }
 function exportMD() { window.open(API + '/api/session/export.md', '_blank'); }
 
+// ── Journal ────────────────────────────────────────────────────────
+// Everything here is display only. Every number comes straight from
+// /api/trades; nothing is recomputed in the browser, and a value the
+// backend could not determine renders as an em dash, never as 0.
+const EMPTY = '\u2014';
+
+function esc(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function isNum(v) { return typeof v === 'number' && isFinite(v); }
+
+// P&L is only ever shown when the backend actually persisted one.
+function fmtPnl(v) {
+  if (!isNum(v)) return {text: EMPTY, cls: 'pnl-none'};
+  const sign = v > 0 ? '+' : v < 0 ? '\u2212' : '';
+  return {
+    text: sign + '$' + Math.abs(v).toFixed(2),
+    cls: v > 0 ? 'pnl-pos' : v < 0 ? 'pnl-neg' : 'pnl-none',
+  };
+}
+
+// null means "nothing decided yet" — distinct from a 0% win rate.
+function fmtRate(v) { return isNum(v) ? Math.round(v * 100) + '%' : EMPTY; }
+
+function fmtPrice(v) {
+  if (isNum(v)) return v.toFixed(2);
+  // PriceTicks contract: {ticks, tick_size}
+  if (v && isNum(v.ticks)) {
+    const ts = parseFloat(v.tick_size);
+    if (isFinite(ts)) return (v.ticks * ts).toFixed(2);
+  }
+  return EMPTY;
+}
+
+function fmtTime(ms, tz) {
+  if (!isNum(ms)) return EMPTY;
+  try {
+    return new Date(ms).toLocaleTimeString('en-GB', {
+      hour: '2-digit', minute: '2-digit', hour12: false,
+      timeZone: tz || 'America/New_York',
+    });
+  } catch (e) { return EMPTY; }
+}
+
+function fmtDate(ms, tz) {
+  if (!isNum(ms)) return EMPTY;
+  try {
+    return new Date(ms).toLocaleDateString('en-CA', {
+      timeZone: tz || 'America/New_York',
+    });
+  } catch (e) { return EMPTY; }
+}
+
+function tradeSession(t) {
+  const sess = (t.setup_snapshot || {}).session || {};
+  const tz = sess.market_timezone || 'America/New_York';
+  return {tz, date: sess.date || fmtDate(t.entry_timestamp_ms, tz)};
+}
+
+// One record -> one visual state. Never inferred: a missing outcome
+// stays missing.
+function tradeKind(t) {
+  const state = t.state || '';
+  if (state === 'REQUIRES_ATTENTION') return 'attn';
+  if (state === 'OPEN') {
+    return t.history_status === 'LEGACY_OPEN' ? 'legacy' : 'open';
+  }
+  if (state === 'CLOSED') {
+    const r = (t.outcome || {}).result;
+    if (r === 'WIN') return 'win';
+    if (r === 'LOSS') return 'loss';
+    return 'closed';
+  }
+  return 'open';
+}
+
+const KIND_LABEL = {
+  win: 'Closed \u00b7 Win', loss: 'Closed \u00b7 Loss', closed: 'Closed',
+  open: 'Open', attn: 'Requires attention', legacy: 'Legacy \u00b7 not migrated',
+};
+const KIND_BADGE = {
+  win: 'badge-win', loss: 'badge-loss', closed: 'badge-open',
+  open: 'badge-open', attn: 'badge-attn', legacy: 'badge-legacy',
+};
+
+function perfCard(label, p) {
+  p = p || {};
+  const pnl = fmtPnl(p.gross_pnl);
+  const closed = isNum(p.closed_trades) ? p.closed_trades : 0;
+  const w = isNum(p.wins) ? p.wins : 0;
+  const l = isNum(p.losses) ? p.losses : 0;
+  const unpriced = isNum(p.closed_without_pnl) ? p.closed_without_pnl : 0;
+  const note = unpriced ? ' \u00b7 ' + unpriced + ' unpriced' : '';
+  return `<div class="perf-card">
+    <div class="perf-period">${esc(label)}</div>
+    <div class="perf-pnl ${pnl.cls}">${pnl.text}</div>
+    <div class="perf-meta">${closed} closed${esc(note)}</div>
+    <div class="perf-meta">${w}W / ${l}L \u00b7 ${fmtRate(p.win_rate)}</div>
+  </div>`;
+}
+
+function renderPerformance(perf) {
+  const cards = document.getElementById('perf-cards');
+  const noteEl = document.getElementById('perf-note');
+  const counters = document.getElementById('perf-counters');
+  if (!perf) {
+    // Older backend without the performance block: show the journal
+    // list rather than fabricating zeros.
+    cards.innerHTML = '';
+    noteEl.textContent = '';
+    counters.innerHTML = '';
+    return;
+  }
+  cards.innerHTML = perfCard('Today', perf.today)
+    + perfCard('This week', perf.week)
+    + perfCard('This month', perf.month);
+
+  const note = perf.gross_pnl_note ? ' \u00b7 ' + perf.gross_pnl_note : '';
+  noteEl.textContent = 'Gross P&L' + note;
+
+  const chips = [];
+  if (isNum(perf.open_count) && perf.open_count > 0)
+    chips.push(`<span class="chip chip-open">${perf.open_count} open</span>`);
+  if (isNum(perf.attention_count) && perf.attention_count > 0)
+    chips.push(`<span class="chip chip-attn">${perf.attention_count} requires attention</span>`);
+  if (isNum(perf.legacy_open_count) && perf.legacy_open_count > 0)
+    chips.push(`<span class="chip">${perf.legacy_open_count} legacy open</span>`);
+  counters.innerHTML = chips.join('');
+}
+
+function tradeDetails(t) {
+  const snap = t.setup_snapshot;
+  if (!snap) {
+    return '<div class="jrn-kv"><span>Setup details unavailable for legacy record</span><span></span></div>';
+  }
+  const tz = tradeSession(t).tz;
+  const rows = [
+    ['Level', esc(snap.level_source || EMPTY) + ' @ ' + fmtPrice(snap.level_price)],
+    ['Break bar', fmtTime((snap.break_bar || {}).bar_utc_ms, tz)],
+    ['Displacement', isNum(snap.displacement_bar_count) ? snap.displacement_bar_count + ' bars' : EMPTY],
+    ['Retest', isNum(snap.retest_bar_count) ? snap.retest_bar_count + ' bars' : EMPTY],
+    ['Entry candle', fmtTime((snap.confirmation_bar || {}).bar_utc_ms, tz)],
+    ['Pattern', esc(snap.entry_pattern_type || EMPTY)],
+  ];
+  return rows.map(r =>
+    `<div class="jrn-kv"><span>${r[0]}</span><span>${r[1]}</span></div>`).join('');
+}
+
+function tradeCard(t) {
+  const kind = tradeKind(t);
+  const sess = tradeSession(t);
+  const snap = t.setup_snapshot || {};
+  const outcome = t.outcome || {};
+
+  // A trade without a confirmed exit has no P&L — show nothing, not $0.
+  const pnl = (kind === 'win' || kind === 'loss' || kind === 'closed')
+    ? fmtPnl(outcome.gross_pnl) : {text: '', cls: ''};
+
+  const levels = [
+    ['E', t.underlying_entry], ['S', t.stop], ['T', t.target],
+  ].map(x => x[0] + ' ' + fmtPrice(x[1])).join('  \u00b7  ');
+
+  const src = snap.level_source ? ' \u00b7 ' + esc(snap.level_source) : '';
+  const pat = snap.entry_pattern_type
+    ? ' \u00b7 ' + esc(String(snap.entry_pattern_type).replace(/_/g, ' ').toLowerCase())
+    : '';
+
+  return `<div class="jrn jrn-${kind}">
+    <div class="jrn-top">
+      <div><span class="jrn-sym">${esc(t.symbol || '?')}</span><span class="jrn-dir">${esc(t.direction || '')}</span></div>
+      <div class="jrn-pnl ${pnl.cls}">${pnl.text}</div>
+    </div>
+    <div class="jrn-sub">${esc(sess.date)}${src}${pat}</div>
+    <div class="jrn-sub">${levels}</div>
+    <span class="jrn-badge ${KIND_BADGE[kind]}">${KIND_LABEL[kind]}</span>
+    <details class="jrn-det"><summary>Details</summary>${tradeDetails(t)}</details>
+  </div>`;
+}
+
+function renderJournal(d) {
+  d = d || {};
+  renderPerformance(d.performance);
+  const list = document.getElementById('journal-list');
+  const trades = Array.isArray(d.trades) ? d.trades : [];
+  if (!trades.length) {
+    list.innerHTML = '<div class="jrn-empty">No trades recorded yet.</div>';
+    return;
+  }
+  // Backend already returns newest-first; order is not recomputed here.
+  list.innerHTML = trades.map(t => {
+    try { return tradeCard(t); } catch (e) { return ''; }
+  }).join('');
+}
+
+let journalLoaded = false;
+
+// Deliberately NOT gated on botState: persisted history is exactly what
+// must stay readable while the bot is stopped.
+async function pollTrades() {
+  try {
+    const r = await fetch(API + '/api/trades');
+    if (!r.ok) throw new Error('trades ' + r.status);
+    renderJournal(await r.json());
+    journalLoaded = true;
+  } catch (e) {
+    if (!journalLoaded) {
+      document.getElementById('journal-list').innerHTML =
+        '<div class="jrn-empty">Journal unavailable \u2014 retrying\u2026</div>';
+    }
+  }
+}
+
 // Service worker
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 
@@ -512,7 +777,11 @@ setInterval(pollStatus, 2000);
 setInterval(pollSymbols, 2000);
 setInterval(pollEvents, 1000);
 setInterval(pollSession, 3000);
+// Historical data: slower cadence, and it runs whether or not the bot
+// is running.
+setInterval(pollTrades, 8000);
 pollStatus();
+pollTrades();
 </script>
 </body>
 </html>
