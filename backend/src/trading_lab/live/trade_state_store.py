@@ -56,6 +56,19 @@ def persist_open_trade(record: dict, base_dir: Path | str = DEFAULT_TRADE_STATE_
     harmless, easily-ignored leftover .tmp file, never a corrupt
     "real" record.
     """
+    return _atomic_write(record, base_dir)
+
+
+def _atomic_write(record: dict, base_dir: Path | str) -> Path:
+    """Write one trade-state record atomically. Shared by open/closed.
+
+    Temp file in the same directory (same filesystem, so os.replace()
+    is guaranteed atomic), flushed and fsynced before the replace — a
+    reader never observes a partial file, and a crash mid-write leaves
+    at most a harmless .tmp leftover, never a corrupt record. Writing
+    the CLOSED update through this same path means an in-flight close
+    can never destroy the OPEN record.
+    """
     base_dir = Path(base_dir)
     base_dir.mkdir(parents=True, exist_ok=True)
 
@@ -70,6 +83,92 @@ def persist_open_trade(record: dict, base_dir: Path | str = DEFAULT_TRADE_STATE_
     os.replace(tmp_path, final_path)
 
     return final_path
+
+
+def persist_terminal_trade(
+    trade_id: str,
+    state: str,
+    terminal: dict,
+    base_dir: Path | str = DEFAULT_TRADE_STATE_DIR,
+) -> Path:
+    """Mark a trade whose automatic management ended WITHOUT a
+    confirmed exit fill.
+
+    Same file, same atomic rewrite, same preservation rules as
+    persist_closed_trade() — only the state value and the block name
+    differ. The distinction matters operationally:
+
+        OPEN               position under normal management
+        CLOSED             exit fill confirmed, outcome known
+        REQUIRES_ATTENTION automatic management stopped; the position
+                           may still be open at the broker
+
+    `terminal` is stored verbatim under "terminal". It deliberately
+    carries no exit fill price and no P&L: none exists, and inventing
+    either would make an unresolved position look settled.
+    """
+    return _persist_final(trade_id, state, "terminal", terminal, base_dir)
+
+
+def persist_closed_trade(
+    trade_id: str,
+    outcome: dict,
+    base_dir: Path | str = DEFAULT_TRADE_STATE_DIR,
+) -> Path:
+    """Close out an existing trade-state record in place.
+
+    Rewrites the SAME "<trade_id>.json" the entry fill created, through
+    the same atomic write: one file per trade for its whole life, never
+    a second file and never an append. Everything already in the record
+    is carried over untouched — in particular ``setup_snapshot``, which
+    is the only durable copy of why the trade was taken — and only
+    ``state`` flips to "CLOSED" with an ``outcome`` block added.
+
+    `outcome` is stored verbatim under that key. Callers pass values the
+    system already produced (the TRADE_COMPLETED summary plus the exit
+    order id); nothing is computed or inferred here.
+
+    If no prior record exists — the entry-fill write failed, or the file
+    was removed — a CLOSED record is still written from what is known,
+    so an outcome is never silently dropped. Such a record simply has no
+    setup_snapshot, which is visible rather than hidden.
+    """
+    return _persist_final(trade_id, "CLOSED", "outcome", outcome, base_dir)
+
+
+def _persist_final(
+    trade_id: str,
+    state: str,
+    block_key: str,
+    block: dict,
+    base_dir: Path | str,
+) -> Path:
+    """Rewrite an existing record with its final state. Shared by
+    persist_closed_trade() and persist_terminal_trade().
+
+    Everything already on disk is carried over untouched — in
+    particular ``setup_snapshot``, the only durable copy of why the
+    trade was taken. Only ``state`` and the one final block are set.
+    """
+    base_dir = Path(base_dir)
+    existing_path = base_dir / f"{trade_id}.json"
+
+    record: dict = {}
+    if existing_path.exists():
+        try:
+            loaded = json.loads(existing_path.read_text())
+            if isinstance(loaded, dict):
+                record = loaded
+        except (OSError, ValueError):
+            # Unreadable prior record: prefer writing the final state we
+            # do have over losing it. Never raise on the read side.
+            record = {}
+
+    record["trade_id"] = trade_id
+    record["state"] = state
+    record[block_key] = block
+
+    return _atomic_write(record, base_dir)
 
 
 # ── Setup snapshot ───────────────────────────────────────────────────────────

@@ -42,11 +42,31 @@ from trading_lab.live.trade_state_store import (
     DEFAULT_TRADE_STATE_DIR,
     build_setup_snapshot,
     build_trade_id,
+    persist_closed_trade,
     persist_open_trade,
+    persist_terminal_trade,
 )
 from trading_lab.live.underlying_exit_monitor import ExitState, UnderlyingExitMonitor
 
 log = logging.getLogger("maxbot")
+
+
+# Keys lifted from the TRADE_COMPLETED summary into the CLOSED record's
+# "outcome" block. Deliberately excludes what the OPEN record already
+# holds (symbol, direction, underlying_*, option_*, entry_*) so the file
+# does not carry the same value twice under two names.
+_OUTCOME_SUMMARY_FIELDS = (
+    "result",
+    "exit_reason",
+    "trigger_time_ms",
+    "exit_fill_time_ms",
+    "exit_fill_premium",
+    "gross_pnl",
+    "gross_pnl_note",
+    "premium_return_pct",
+    "duration_entry_to_exit_ms",
+    "duration_signal_to_exit_ms",
+)
 
 
 # ── Lifecycle state ──────────────────────────────────────────────────────────
@@ -179,6 +199,12 @@ class MaxBotTradeOrchestrator:
         self._exit_max_retries: int = 3
         self._exit_retry_cooldown_secs: float = 30.0
         self._exit_last_retry_time: float = 0.0  # monotonic
+        # Last broker-side exit failure, kept for the audit record.
+        # The value is already produced (broker_status on a cancel/
+        # reject, the exception text on a failed retry) but was only
+        # logged and emitted, never retained — so by the time retries
+        # were exhausted nothing could say WHY.
+        self._exit_last_error: str | None = None
 
         # Pending signal (set by _check_for_signal, consumed by execute_pending_signal)
         self._pending_signal = None
@@ -403,6 +429,11 @@ class MaxBotTradeOrchestrator:
                 )
                 self._do_emit("TRADE_COMPLETED", direction=self._resolved_direction, data=summary)
 
+                # Close out the on-disk record while the active-trade
+                # fields are still populated — _clear_active_trade()
+                # below wipes setup_key and the rest.
+                self._persist_closed_trade_state(summary)
+
             saved_direction = self._resolved_direction
             self._exit_reason = exit_fill.exit_reason
             self._clear_active_trade()
@@ -424,6 +455,10 @@ class MaxBotTradeOrchestrator:
                 f"retry={self._exit_retry_count}/{self._exit_max_retries}"
             )
             cancel_type = "EXIT_CANCELLED" if exit_fill.state == ExitFillState.CANCELLED else "EXIT_REJECTED"
+            self._exit_last_error = (
+                f"{cancel_type}: broker_status={exit_fill.broker_status} "
+                f"exit_order_id={exit_fill.exit_order_id}"
+            )
             if self._emit_once(cancel_type):
                 self._do_emit(cancel_type, direction=self._resolved_direction, data={
                     "broker_status": exit_fill.broker_status,
@@ -454,13 +489,19 @@ class MaxBotTradeOrchestrator:
                     f"con_id={self._entry_con_id} "
                     f"entry_order_id={self._entry_order_id}"
                 )
-                self._do_emit("EXIT_RETRIES_EXHAUSTED", direction=self._resolved_direction, data={
+                ev = self._do_emit("EXIT_RETRIES_EXHAUSTED", direction=self._resolved_direction, data={
                     "con_id": self._entry_con_id,
                     "entry_order_id": self._entry_order_id,
                     "retry_count": self._exit_retry_count,
                     "symbol": self._symbol,
                 })
                 self._lifecycle = LifecycleState.REQUIRES_ATTENTION
+                # Record the terminal state while the active-trade
+                # fields are still populated. This path never calls
+                # _clear_active_trade() — the position may still be
+                # open at the broker — but the on-disk record must
+                # stop claiming the trade is under normal management.
+                self._persist_terminal_trade_state(ev)
             return self.status
 
         # Cooldown check
@@ -516,6 +557,7 @@ class MaxBotTradeOrchestrator:
                 f"FAILED: {e}"
             )
             # Stay in EXIT_FAILED for next retry attempt
+            self._exit_last_error = f"EXIT_RETRY_FAILED: {e}"
             self._do_emit("EXIT_RETRY_FAILED", direction=self._resolved_direction, data={
                 "retry_count": self._exit_retry_count,
                 "error": str(e),
@@ -897,6 +939,103 @@ class MaxBotTradeOrchestrator:
         except Exception as e:
             log.error(f"[{self._symbol}] Failed to persist OPEN trade state: {e}")
 
+    def _persist_closed_trade_state(self, summary: dict) -> None:
+        """Flip the on-disk trade-state record to CLOSED.
+
+        Called exactly once per completed trade, from inside the
+        _emit_once("EXIT_FILLED") block that also emits
+        TRADE_COMPLETED, and BEFORE _clear_active_trade() — which is
+        the only window where the trade id can still be derived.
+
+        Best-effort audit, mirroring _persist_open_trade_state(): a
+        failure here is logged and swallowed. The trade is already
+        closed at the broker; this must never change its outcome, never
+        submit an order, and never push the lifecycle to
+        REQUIRES_ATTENTION. Losing the audit record is strictly better
+        than acting on a persistence error.
+
+        Values are copied from `summary` (the TRADE_COMPLETED payload
+        build_trade_summary() already produced) plus the exit order id
+        the orchestrator is holding. Nothing is recomputed.
+        """
+        if not self._active_setup_key:
+            log.error(
+                f"[{self._symbol}] Cannot persist CLOSED trade state — "
+                f"missing setup_key"
+            )
+            return
+        try:
+            trade_id = build_trade_id(self._symbol, self._active_setup_key)
+            outcome = {k: summary[k]
+                       for k in _OUTCOME_SUMMARY_FIELDS if k in summary}
+            if self._exit_order_id is not None:
+                outcome["exit_order_id"] = self._exit_order_id
+            path = persist_closed_trade(trade_id, outcome,
+                                        base_dir=self._trade_state_dir)
+            log.info(
+                f"[{self._symbol}] TRADE_STATE_CLOSED trade_id={trade_id} "
+                f"path={path}"
+            )
+        except Exception as e:
+            log.error(
+                f"[{self._symbol}] Failed to persist CLOSED trade state: {e}"
+            )
+
+    def _persist_terminal_trade_state(self, event=None) -> None:
+        """Write the REQUIRES_ATTENTION terminal state to disk.
+
+        Called exactly once per trade, from inside the
+        `_lifecycle != REQUIRES_ATTENTION` guard that also emits
+        EXIT_RETRIES_EXHAUSTED, so repeated refresh_exit_status() calls
+        cannot rewrite it.
+
+        Deliberately writes NO exit fill price and NO P&L: the exit was
+        never confirmed, so neither exists. A CLOSED record would claim
+        a settled trade that may still be open at the broker.
+
+        Best-effort audit, same isolation as the OPEN and CLOSED
+        writes: on failure the error is logged and swallowed. It must
+        never submit an order, never reset the retry counter, and never
+        move the lifecycle away from REQUIRES_ATTENTION — the runtime
+        decision has already been made and stands regardless of whether
+        the audit record could be written.
+        """
+        if not self._active_setup_key:
+            log.error(
+                f"[{self._symbol}] Cannot persist terminal trade state — "
+                f"missing setup_key"
+            )
+            return
+        try:
+            trade_id = build_trade_id(self._symbol, self._active_setup_key)
+            ts = getattr(event, "timestamp_ms", None)
+            if ts is None:
+                ts = int(datetime.now(timezone.utc).timestamp() * 1000)
+            terminal = {
+                "runtime_state": str(LifecycleState.REQUIRES_ATTENTION),
+                "reason": "EXIT_RETRIES_EXHAUSTED",
+                "exit_reason": self._exit_reason,
+                "retry_count": self._exit_retry_count,
+                "max_retries": self._exit_max_retries,
+                "exit_order_id": self._exit_order_id,
+                "entry_order_id": self._entry_order_id,
+                "con_id": self._entry_con_id,
+                "last_error": self._exit_last_error,
+                "terminal_timestamp_ms": ts,
+            }
+            path = persist_terminal_trade(
+                trade_id, str(LifecycleState.REQUIRES_ATTENTION), terminal,
+                base_dir=self._trade_state_dir,
+            )
+            log.info(
+                f"[{self._symbol}] TRADE_STATE_TERMINAL trade_id={trade_id} "
+                f"state=REQUIRES_ATTENTION path={path}"
+            )
+        except Exception as e:
+            log.error(
+                f"[{self._symbol}] Failed to persist terminal trade state: {e}"
+            )
+
     def _clear_active_trade(self) -> None:
         self._entry_submission = None
         self._entry_con_id = None
@@ -920,6 +1059,7 @@ class MaxBotTradeOrchestrator:
         self._emitted_terminal = set()
         self._exit_retry_count = 0
         self._exit_last_retry_time = 0.0
+        self._exit_last_error = None
 
     def _do_emit(self, event_type, direction=None, data=None):
         """Emit an event via the injected callback, if present."""
