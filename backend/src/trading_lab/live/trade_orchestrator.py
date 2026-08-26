@@ -708,6 +708,30 @@ class MaxBotTradeOrchestrator:
                 f"entry_candle_time_ms={result.entry_timestamp_ms} "
                 f"current_bar_time_ms={current_bar_time_ms} — skipping"
             )
+            # Archive for SCANNING purposes only — the same treatment
+            # SIGNAL_STALE above already gets, and for the same reason.
+            # The edge-trigger gate is what prevents execution, and it is
+            # unconditional; but without also marking this setup consumed
+            # the detector re-derives and re-reports this identical setup
+            # on every subsequent bar, so its scan cursor never advances
+            # past this break and any genuinely new setup formed later is
+            # masked (observed live on AAPL SHORT from 10:09 ET onwards,
+            # 2026-08-25 audit).
+            #
+            # This can never suppress a distinct future setup. Stage 5
+            # returns the FIRST qualifying candle in the retest window,
+            # scanning chronologically, so once a break has produced
+            # entry candle E that pairing is fixed — later bars only
+            # extend the window's end, never insert an earlier
+            # qualifier. An entry candle that is historical now is
+            # therefore historical forever, and a structurally different
+            # sequence necessarily has a different break_time_ms, hence
+            # a different setup_key. Both properties are asserted in
+            # test_detector_scan_cursor.py.
+            if result.setup_key:
+                self._consumed_setups.add(result.setup_key)
+            if result.signal_key:
+                self._consumed_signals.add(result.signal_key)
             return
 
         # Consume setup_key and signal_key IMMEDIATELY when a signal

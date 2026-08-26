@@ -243,6 +243,53 @@ class LiveSignalDetector:
         # set_previous_sessions() once available (fetched at bot boot).
         self._previous_sessions: list | None = None
 
+        # Persistent scan cursor (2026-08-25 session audit). evaluate()'s
+        # skip loop already establishes, within a single call, that a
+        # break is permanently unusable — consumed, invalidated, or
+        # structurally terminal at the displacement stage. Before this
+        # cursor existed that verdict was thrown away at the end of every
+        # call, so each new bar re-derived and re-skipped the same
+        # archived history from index 0 and spent the loop's fixed
+        # 10-attempt budget on it. Once a session accumulated more than
+        # ~10 archived breaks the budget was exhausted before reaching
+        # anything new and the detector went blind for the rest of the
+        # day (observed live on AMD LONG from 11:08 ET and SOFI LONG
+        # from 09:49 ET, 2026-08-25). Remembering the floor changes no
+        # verdict — every break below it was already being skipped — it
+        # only stops paying for that skip again on every bar.
+        self._archived_before_index: int = 0
+        self._archived_session_date: str | None = None
+
+    # ── Persistent scan cursor ────────────────────────────────────────────
+
+    def _archived_scan_floor(self, session: object) -> int:
+        """Scan floor inherited from earlier calls on THIS session.
+
+        Scoped to a single session by keying on the session date: a
+        rollover — or any session whose identity cannot be established —
+        resets the cursor to 0, restoring the previous scan-from-scratch
+        behavior rather than trusting an index whose base may have moved.
+        A restarted bot builds a new detector, so nothing carries over
+        there either.
+        """
+        date = session.get("date") if isinstance(session, dict) else None
+        if not isinstance(date, str) or not date:
+            self._archived_session_date = None
+            self._archived_before_index = 0
+        elif date != self._archived_session_date:
+            self._archived_session_date = date
+            self._archived_before_index = 0
+        return self._archived_before_index
+
+    def _archive_through(self, skip_before: int) -> None:
+        """Remember for the rest of the session that every break below
+        ``skip_before`` is archived.  Monotonic, and a no-op when the
+        session carries no stable identity to key the cursor on."""
+        if self._archived_session_date is None:
+            return
+        if skip_before > self._archived_before_index:
+            self._archived_before_index = skip_before
+
     @property
     def last_result(self) -> SignalResult | None:
         """The result of the most recent evaluate() call."""
@@ -296,7 +343,7 @@ class LiveSignalDetector:
              prerequisite for abandoning these two failed_stage values.
         """
         consumed = consumed_setup_keys or set()
-        skip_before = 0
+        skip_before = self._archived_scan_floor(session)
 
         # Loop to skip consumed/dead setups and find the next valid one.
         result = None
@@ -311,6 +358,7 @@ class LiveSignalDetector:
                 brk_idx = ctx.get("break_bar_index")
                 if brk_idx is not None:
                     skip_before = brk_idx + 1
+                    self._archive_through(skip_before)
                     continue
                 break
 
@@ -324,6 +372,7 @@ class LiveSignalDetector:
                 brk_idx = ctx.get("break_bar_index")
                 if brk_idx is not None:
                     skip_before = brk_idx + 1
+                    self._archive_through(skip_before)
                     continue
 
             elif result.status == SignalStatus.NO_SETUP and result.failed_stage in (
@@ -349,6 +398,7 @@ class LiveSignalDetector:
                 brk_idx = ctx.get("break_bar_index")
                 if brk_idx is not None:
                     skip_before = brk_idx + 1
+                    self._archive_through(skip_before)
                     continue
 
             # Not a dead break — return as-is

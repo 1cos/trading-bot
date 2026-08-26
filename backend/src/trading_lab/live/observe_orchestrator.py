@@ -264,6 +264,16 @@ class ObserveOrchestrator:
                 f"entry_candle_time_ms={result.entry_timestamp_ms} "
                 f"current_bar_time_ms={current_bar_time_ms} — skipping"
             )
+            # Archive for SCANNING purposes only, exactly as
+            # MaxBotTradeOrchestrator._check_for_signal now does — see
+            # there for why this can never suppress a distinct future
+            # setup. Without it the detector re-derives this same
+            # historical setup on every later bar and its scan cursor
+            # never advances past this break.
+            if result.setup_key:
+                self._consumed_setups.add(result.setup_key)
+            if result.signal_key:
+                self._consumed_signals.add(result.signal_key)
             return None
 
         # Store pending signal — execution deferred outside callback

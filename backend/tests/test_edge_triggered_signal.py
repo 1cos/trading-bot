@@ -228,9 +228,21 @@ class TestHistoricalRejectionNotReplayed:
         orch.on_bar(later)
 
         assert not orch.has_pending_signal
-        # Crucially: the setup must NOT be burned by the rejected replay,
-        # since it never produced a real trade.
-        assert not orch._consumed_setups
+        # Crucially: the rejected replay must not cost us a LATER,
+        # genuinely different setup. That is the property this test
+        # guards. It used to be checked via the proxy
+        # `not orch._consumed_setups`; that proxy became wrong when the
+        # non-current branch started archiving its own setup_key for
+        # scanning purposes (2026-08-25 audit — without it the detector
+        # re-derives this same historical setup on every later bar and
+        # never advances). The property itself is asserted directly
+        # below, and end-to-end in test_detector_scan_cursor.py::
+        # TestT2SignalNotCurrentDoesNotFreeze.
+        replayed_key = f"LONG:ORB_HIGH:{bars[5]['time_ms']}"
+        assert orch._consumed_setups <= {replayed_key}, (
+            "only the replayed setup itself may be archived — never a "
+            "setup belonging to a different break"
+        )
 
     def test_replayed_signal_still_blocked_on_further_bars(self):
         """Requirement 7: the SAME historical entry candle cannot execute
@@ -267,7 +279,9 @@ class TestHistoricalRejectionThenInsideOrbBar:
         orch.on_bar(inside_bar)
 
         assert not orch.has_pending_signal
-        assert not orch._consumed_setups
+        # See test_ordinary_later_bar_does_not_execute_long for why the
+        # old `not orch._consumed_setups` proxy was replaced.
+        assert orch._consumed_setups <= {f"LONG:ORB_HIGH:{bars[5]['time_ms']}"}
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -417,10 +431,27 @@ class TestSetupAndSignalKeyProtectionsIntact:
         assert pending.setup_key in orch._consumed_setups
         assert pending.signal_key in orch._consumed_signals
 
-    def test_non_current_replay_does_not_consume_keys(self):
-        """The flip side: a REJECTED (non-current) replay must NOT burn
-        the setup_key — otherwise a legitimate future entry on a
-        genuinely new break could be starved by a phantom consumption."""
+    def test_non_current_replay_only_burns_its_own_key(self):
+        """A REJECTED (non-current) replay archives its OWN setup_key —
+        and nothing else.
+
+        The original concern behind this test was that burning a key on
+        a rejected replay could starve "a legitimate future entry on a
+        genuinely new break". That cannot happen: setup_key is
+        ``direction:level_source:break_time_ms``, so a genuinely new
+        break carries a different key by construction. The only thing
+        archiving forfeits is a later entry on THIS same break — and
+        that is provably nothing, because a break's entry candle is
+        immutable once found (asserted in test_detector_scan_cursor.py::
+        TestT2SignalNotCurrentDoesNotFreeze::
+        test_a_breaks_entry_candle_never_changes).
+
+        Archiving is required: without it the detector re-derives this
+        identical historical setup on every subsequent bar, its scan
+        cursor never advances past this break, and any genuinely new
+        setup formed later is masked (observed live on AAPL SHORT,
+        2026-08-25).
+        """
         orch = _make_real_orchestrator("LONG")
         bars = _bars_through_rejection("LONG")
         for bar in bars[:-1]:
@@ -429,9 +460,12 @@ class TestSetupAndSignalKeyProtectionsIntact:
 
         orch.on_bar(_ordinary_later_bar_long(10))
 
+        replayed_setup = f"LONG:ORB_HIGH:{bars[5]['time_ms']}"
+        replayed_signal = f"{replayed_setup}:{bars[-1]['time_ms']}"
+
         assert not orch.has_pending_signal
-        assert orch._consumed_setups == set()
-        assert orch._consumed_signals == set()
+        assert orch._consumed_setups == {replayed_setup}
+        assert orch._consumed_signals == {replayed_signal}
 
     def test_same_setup_still_blocked_via_mock(self):
         """Existing T19C protection composes correctly: once a setup_key
