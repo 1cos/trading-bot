@@ -95,6 +95,7 @@ def persist_terminal_trade(
     state: str,
     terminal: dict,
     base_dir: Path | str = DEFAULT_TRADE_STATE_DIR,
+    exit_chart_context: dict | None = None,
 ) -> Path:
     """Mark a trade whose automatic management ended WITHOUT a
     confirmed exit fill.
@@ -112,13 +113,15 @@ def persist_terminal_trade(
     carries no exit fill price and no P&L: none exists, and inventing
     either would make an unresolved position look settled.
     """
-    return _persist_final(trade_id, state, "terminal", terminal, base_dir)
+    return _persist_final(trade_id, state, "terminal", terminal, base_dir,
+                         exit_chart_context=exit_chart_context)
 
 
 def persist_closed_trade(
     trade_id: str,
     outcome: dict,
     base_dir: Path | str = DEFAULT_TRADE_STATE_DIR,
+    exit_chart_context: dict | None = None,
 ) -> Path:
     """Close out an existing trade-state record in place.
 
@@ -138,7 +141,8 @@ def persist_closed_trade(
     so an outcome is never silently dropped. Such a record simply has no
     setup_snapshot, which is visible rather than hidden.
     """
-    return _persist_final(trade_id, "CLOSED", "outcome", outcome, base_dir)
+    return _persist_final(trade_id, "CLOSED", "outcome", outcome, base_dir,
+                         exit_chart_context=exit_chart_context)
 
 
 def _persist_final(
@@ -147,6 +151,7 @@ def _persist_final(
     block_key: str,
     block: dict,
     base_dir: Path | str,
+    exit_chart_context: dict | None = None,
 ) -> Path:
     """Rewrite an existing record with its final state. Shared by
     persist_closed_trade() and persist_terminal_trade().
@@ -172,6 +177,11 @@ def _persist_final(
     record["trade_id"] = trade_id
     record["state"] = state
     record[block_key] = block
+    # Additive and separate from chart_context, which must keep showing
+    # exactly what was known at the entry. None leaves any existing
+    # block untouched rather than erasing it.
+    if exit_chart_context is not None:
+        record["exit_chart_context"] = exit_chart_context
 
     return _atomic_write(record, base_dir)
 

@@ -59,6 +59,11 @@ CHART_BARS_BEFORE_BREAK = 5
 # is acceptable, losing the setup is not.
 CHART_MAX_BARS = 120
 
+# The exit window must never lose the path from entry to exit just to
+# respect a cap, and a trade can run most of the session. 390 is one
+# full RTH day of 1m bars, so in practice nothing is ever trimmed.
+CHART_MAX_BARS_EXIT = 390
+
 _CHART_LEVEL_KEYS = ("orb_high", "orb_low", "pdh", "pdl", "pmh", "pml")
 
 
@@ -213,6 +218,9 @@ class MaxBotTradeOrchestrator:
         # above: it lives only inside execute_pending_signal()'s local
         # `result` unless captured here.
         self._active_setup_snapshot: dict | None = None
+        # Start of the entry chart window, so the exit chart can open on
+        # the same bar and the two images are directly comparable.
+        self._active_chart_start_ms: int | None = None
 
         # Exit retry state
         self._exit_retry_count: int = 0
@@ -992,24 +1000,92 @@ class MaxBotTradeOrchestrator:
         except Exception as e:
             log.error(f"[{self._symbol}] Failed to persist OPEN trade state: {e}")
 
+    def _chart_levels_now(self) -> dict:
+        """Structural levels as they stand right now, or nulls.
+
+        Copied from the injected provider, never recomputed from the
+        candles and never guessed: a chart can render "not drawn" for a
+        null, but a wrong price is worse than a missing one.
+        """
+        levels = {k: None for k in _CHART_LEVEL_KEYS}
+        if self._chart_levels_provider is None:
+            return levels
+        try:
+            provided = self._chart_levels_provider()
+        except Exception as e:
+            log.debug(f"[{self._symbol}] chart levels unavailable: {e}")
+            return levels
+        if isinstance(provided, dict):
+            for k in _CHART_LEVEL_KEYS:
+                v = provided.get(k)
+                # bool is an int subclass — never a price.
+                if isinstance(v, (int, float)) and not isinstance(v, bool):
+                    levels[k] = float(v)
+        return levels
+
+    def _index_of_bar(self, candles: list, time_ms: int | None) -> int | None:
+        if time_ms is None:
+            return None
+        for i, c in enumerate(candles):
+            if c.get("time_ms") == time_ms:
+                return i
+        return None
+
+    def _default_window_start(self, candles: list, end: int) -> int:
+        """CHART_BARS_BEFORE_BREAK bars before the break candle.
+
+        Anchored to the setup rather than a flat "last N bars": the
+        structure is what makes a chart readable, and a setup can be 8
+        bars long or 60. Fewer bars before the break than asked for
+        simply means the session started there.
+        """
+        snapshot = self._active_setup_snapshot or {}
+        break_ms = (snapshot.get("break_bar") or {}).get("bar_utc_ms")
+        i = self._index_of_bar(candles[:end], break_ms)
+        return max(0, i - CHART_BARS_BEFORE_BREAK) if i is not None else 0
+
+    def _freeze_chart(self, session: dict, window: list, cap: int,
+                      extra_window: dict) -> dict:
+        """Build one chart block from a slice of candles.
+
+        Trims from the OLDEST end so the most recent action always
+        survives — losing lead-in context is acceptable, losing the
+        entry or the exit move is not. Candles are rebuilt as fresh
+        dicts: the session builder keeps growing after this point.
+        """
+        if len(window) > cap:
+            window = window[-cap:]
+        frozen = [
+            {"time_ms": c.get("time_ms"), "open": c.get("open"),
+             "high": c.get("high"), "low": c.get("low"),
+             "close": c.get("close"), "volume": c.get("volume")}
+            for c in window
+        ]
+        block = {
+            "timeframe_seconds": 60,
+            "market_timezone": session.get("market_timezone"),
+            "candles": frozen,
+            "levels": self._chart_levels_now(),
+            "window": {
+                "start_time_ms": frozen[0]["time_ms"] if frozen else None,
+                "end_time_ms": frozen[-1]["time_ms"] if frozen else None,
+            },
+        }
+        block["window"].update(extra_window)
+        return block
+
     def _build_chart_context(self) -> dict | None:
-        """Freeze what the entry chart will need, from memory only.
+        """Freeze what the ENTRY chart will need, from memory only.
 
         The candles and the structural levels live solely in the
         runner's memory: after a restart they are gone, and the trade
         record alone cannot show what MaxBot was looking at. This
         copies them into the record while they still exist.
 
-        Reads only session_builder (already owned) and the injected
-        levels provider. Never calls IBKR, never recomputes a level
-        from the candles, never invents a missing one — an unavailable
-        level is null, which a chart can render as "not drawn" but a
-        wrong number cannot.
-
         Window: CHART_BARS_BEFORE_BREAK bars before the break candle
-        through the entry candle inclusive, capped at CHART_MAX_BARS by
-        dropping the oldest bars first. Fewer bars before the break than
-        asked for simply means the session started there.
+        through the entry candle inclusive. There are no bars after the
+        entry candle by construction — the edge-trigger gate requires
+        the entry candle to BE the current bar.
 
         Deliberately carries no break/displacement/retest/confirmation
         data: that is setup_snapshot's job, and duplicating it would
@@ -1021,60 +1097,64 @@ class MaxBotTradeOrchestrator:
         candles = session.get("candles") or []
 
         entry_ms = self._active_entry_timestamp_ms
-        end = len(candles)
-        if entry_ms is not None:
-            for i, c in enumerate(candles):
-                if c.get("time_ms") == entry_ms:
-                    end = i + 1
-                    break
+        i = self._index_of_bar(candles, entry_ms)
+        end = i + 1 if i is not None else len(candles)
+        start = self._default_window_start(candles, end)
 
-        start = 0
-        snapshot = self._active_setup_snapshot or {}
-        break_bar = snapshot.get("break_bar") or {}
-        break_ms = break_bar.get("bar_utc_ms")
-        if break_ms is not None:
-            for i, c in enumerate(candles[:end]):
-                if c.get("time_ms") == break_ms:
-                    start = max(0, i - CHART_BARS_BEFORE_BREAK)
-                    break
+        block = self._freeze_chart(
+            session, candles[start:end], CHART_MAX_BARS,
+            {"entry_time_ms": entry_ms},
+        )
+        # Remembered so the exit chart can open on the same bar.
+        self._active_chart_start_ms = block["window"]["start_time_ms"]
+        return block
 
-        window = candles[start:end]
-        if len(window) > CHART_MAX_BARS:
-            window = window[-CHART_MAX_BARS:]
+    def _build_exit_chart_context(self) -> dict | None:
+        """Freeze the path from entry to exit, from memory only.
 
-        levels = {k: None for k in _CHART_LEVEL_KEYS}
-        if self._chart_levels_provider is not None:
-            try:
-                provided = self._chart_levels_provider()
-            except Exception as e:
-                log.debug(f"[{self._symbol}] chart levels unavailable: {e}")
-                provided = None
-            if isinstance(provided, dict):
-                for k in _CHART_LEVEL_KEYS:
-                    v = provided.get(k)
-                    # bool is an int subclass — never a price.
-                    if isinstance(v, (int, float)) and not isinstance(v, bool):
-                        levels[k] = float(v)
+        Opens on the SAME bar as the entry chart, so the two images
+        share an origin and can be read side by side. When that start
+        is unknown — a legacy trade, or a record whose entry context
+        was never built — it falls back to the same break-anchored rule
+        the entry chart uses.
 
-        # Fresh dicts, not references: the session builder keeps growing
-        # and the levels keep changing after this point.
-        frozen = [
-            {"time_ms": c.get("time_ms"), "open": c.get("open"),
-             "high": c.get("high"), "low": c.get("low"),
-             "close": c.get("close"), "volume": c.get("volume")}
-            for c in window
-        ]
-        return {
-            "timeframe_seconds": 60,
-            "market_timezone": session.get("market_timezone"),
-            "candles": frozen,
-            "levels": levels,
-            "window": {
-                "start_time_ms": frozen[0]["time_ms"] if frozen else None,
-                "end_time_ms": frozen[-1]["time_ms"] if frozen else None,
-                "entry_time_ms": entry_ms,
-            },
-        }
+        Ends on the TRIGGER BAR, not on the fill: trigger_time_ms and
+        exit_fill_time_ms in the outcome are event wall clocks, while
+        the chart needs the bar whose movement actually caused the
+        exit. On REQUIRES_ATTENTION there is no fill at all, and the
+        window simply runs to the last completed bar.
+        """
+        session = self._session_builder.current_session()
+        if session is None:
+            return None
+        candles = session.get("candles") or []
+        if not candles:
+            return None
+
+        trigger_bar_ms = getattr(
+            self._last_exit_trigger, "trigger_bar_time_ms", None)
+        i = self._index_of_bar(candles, trigger_bar_ms)
+        end = i + 1 if i is not None else len(candles)
+
+        start = self._index_of_bar(candles, self._active_chart_start_ms)
+        if start is None:
+            start = self._default_window_start(candles, end)
+
+        return self._freeze_chart(
+            session, candles[start:end], CHART_MAX_BARS_EXIT,
+            {"entry_time_ms": self._active_entry_timestamp_ms,
+             "exit_time_ms": trigger_bar_ms},
+        )
+
+    def _exit_chart_block(self) -> dict | None:
+        """Best-effort exit chart capture, shared by both terminal
+        paths. A chart is an audit nicety and must never change how a
+        trade ends."""
+        try:
+            return self._build_exit_chart_context()
+        except Exception as e:
+            log.error(f"[{self._symbol}] exit chart context failed: {e}")
+            return None
 
     def _persist_closed_trade_state(self, summary: dict) -> None:
         """Flip the on-disk trade-state record to CLOSED.
@@ -1108,7 +1188,8 @@ class MaxBotTradeOrchestrator:
             if self._exit_order_id is not None:
                 outcome["exit_order_id"] = self._exit_order_id
             path = persist_closed_trade(trade_id, outcome,
-                                        base_dir=self._trade_state_dir)
+                                        base_dir=self._trade_state_dir,
+                                        exit_chart_context=self._exit_chart_block())
             log.info(
                 f"[{self._symbol}] TRADE_STATE_CLOSED trade_id={trade_id} "
                 f"path={path}"
@@ -1163,6 +1244,7 @@ class MaxBotTradeOrchestrator:
             path = persist_terminal_trade(
                 trade_id, str(LifecycleState.REQUIRES_ATTENTION), terminal,
                 base_dir=self._trade_state_dir,
+                exit_chart_context=self._exit_chart_block(),
             )
             log.info(
                 f"[{self._symbol}] TRADE_STATE_TERMINAL trade_id={trade_id} "
@@ -1192,6 +1274,7 @@ class MaxBotTradeOrchestrator:
         self._active_signal_key = None
         self._active_entry_timestamp_ms = None
         self._active_setup_snapshot = None
+        self._active_chart_start_ms = None
         self._trade_events = {}
         self._emitted_terminal = set()
         self._exit_retry_count = 0
