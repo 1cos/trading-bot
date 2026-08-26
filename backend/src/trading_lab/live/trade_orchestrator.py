@@ -898,11 +898,53 @@ class MaxBotTradeOrchestrator:
         self._resolved_direction = resolved_direction
         self._lifecycle = LifecycleState.ENTRY_SUBMITTED
 
+    def on_price(self, price: float) -> None:
+        """Live underlying price while a position is open — the primary
+        exit path.
+
+        Setup detection stays candle-close based; only the exit becomes
+        price-event based, and only once the position is open. Called
+        from the runner's existing bar-update callback on every price
+        update, so a level crossing fires when it is observed instead of
+        at the next bar close (the MU trade of 2026-08-26 waited 100.9s
+        for a target that had already been reached).
+
+        Safe to call on every update: the monitor is terminal and
+        idempotent, and this returns immediately unless a position is
+        actually open.
+        """
+        if self._lifecycle != LifecycleState.POSITION_OPEN:
+            return
+        if self._exit_monitor is None:
+            return
+        result = self._exit_monitor.evaluate_price(price)
+        self._submit_exit_for(result)
+
     def _check_exit_trigger(self, bar: dict) -> None:
+        """Completed-bar backstop for the live price path above.
+
+        Retained for a crossing the live feed never delivered (a gap, a
+        dropped update, a stale tick). It shares the monitor's single
+        terminal result, so it can never produce a second exit for a
+        trigger the price path already fired.
+        """
         if self._exit_monitor is None:
             return
 
         result = self._exit_monitor.evaluate_bar(bar)
+        self._submit_exit_for(result)
+
+    def _submit_exit_for(self, result) -> None:
+        """Submit the exit for a terminal trigger, whatever produced it.
+
+        Shared by the live-price and completed-bar paths so both go
+        through exactly one submission route. Idempotent at four
+        independent layers: the monitor is terminal, _emit_once guards
+        the event, the lifecycle leaves POSITION_OPEN, and the executor
+        refuses a duplicate for the same entry_order_id.
+        """
+        if self._lifecycle != LifecycleState.POSITION_OPEN:
+            return
 
         if result.state in (ExitState.STOP_TRIGGERED, ExitState.TARGET_TRIGGERED):
             trigger_type = "TARGET_TRIGGERED" if result.state == ExitState.TARGET_TRIGGERED else "STOP_TRIGGERED"
@@ -913,6 +955,8 @@ class MaxBotTradeOrchestrator:
                     "bar_open": result.trigger_bar_open, "bar_high": result.trigger_bar_high,
                     "bar_low": result.trigger_bar_low, "bar_close": result.trigger_bar_close,
                     "same_bar_ambiguity": result.same_bar_ambiguity,
+                    "trigger_source": result.trigger_source,
+                    "trigger_price": result.trigger_price,
                 }
                 ev = self._do_emit(trigger_type, direction=self._resolved_direction, data=trigger_data)
                 self._trade_events["trigger"] = ev

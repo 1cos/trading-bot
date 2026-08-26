@@ -1042,6 +1042,29 @@ class MaxBotRunner:
         placeOrder) are deferred to _process_execution_queue in the main loop.
         """
         try:
+            # ── LIVE EXIT PRICE (before the has_new_bar gate) ────────
+            # updateEvent fires on every price update to the forming
+            # bar, roughly every 5s, not only when a bar closes. Those
+            # updates used to be discarded by the return below, which
+            # is why a TP/SL could only ever be seen at the next bar
+            # close. Feeding them to the orchestrator makes the exit
+            # react when the level is actually crossed.
+            #
+            # bars[-1] is the forming bar and its close is the last
+            # traded price. Only the close is used: the forming bar's
+            # high/low accumulate from its open and can predate the
+            # entry fill.
+            #
+            # Entry/setup detection is untouched — it still runs only
+            # on completed bars, below.
+            if bars:
+                try:
+                    live_close = bars[-1].close
+                    if live_close is not None and rt.orchestrator is not None:
+                        rt.orchestrator.on_price(float(live_close))
+                except Exception as e:
+                    log.error(f"[{rt.symbol}] live exit price failed: {e}")
+
             if not has_new_bar:
                 return
             if len(bars) < 2:
