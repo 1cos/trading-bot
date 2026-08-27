@@ -414,6 +414,20 @@ class MaxBotRunner:
         self._emit(EventType.PAPER_VERIFIED, data={"account": self._paper_account[:3] + "***"})
 
     def _shutdown(self) -> None:
+        # End every R-multiple observation first, while the orchestrators
+        # still hold them. Session end is the probe's terminal condition,
+        # and this is the one place that reliably marks it.
+        for sym, rt in self._runtimes.items():
+            if rt.orchestrator is None:
+                continue
+            closer = getattr(rt.orchestrator, "close_r_probes", None)
+            if closer is None:
+                continue                      # OBSERVE_ONLY orchestrator
+            try:
+                closer("SESSION_END")
+            except Exception as e:
+                log.error(f"[{sym}] closing r_probes failed: {e}")
+
         unresolved = []
         for sym, rt in self._runtimes.items():
             if not rt.enabled or rt.orchestrator is None:

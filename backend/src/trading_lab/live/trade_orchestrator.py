@@ -39,6 +39,7 @@ from trading_lab.live.exit_fill_monitor import (
 from trading_lab.live.option_order_builder import build_option_entry_order
 from trading_lab.live.signal_detector import SignalStatus
 from trading_lab.live.trade_state_store import (
+    persist_r_probe,
     DEFAULT_TRADE_STATE_DIR,
     build_setup_snapshot,
     build_trade_id,
@@ -46,6 +47,7 @@ from trading_lab.live.trade_state_store import (
     persist_open_trade,
     persist_terminal_trade,
 )
+from trading_lab.live.r_probe import RProbe
 from trading_lab.live.underlying_exit_monitor import ExitState, UnderlyingExitMonitor
 
 log = logging.getLogger("maxbot")
@@ -222,6 +224,13 @@ class MaxBotTradeOrchestrator:
         # the same bar and the two images are directly comparable.
         self._active_chart_start_ms: int | None = None
 
+        # R-multiple probes, keyed by trade_id. Deliberately NOT reset
+        # by _clear_active_trade(): a probe outlives the trade it
+        # belongs to — it exists precisely to watch what happens after
+        # the position is gone. Keyed by trade_id so a second trade on
+        # the same symbol gets its own, independent observation.
+        self._r_probes: dict[str, RProbe] = {}
+
         # Exit retry state
         self._exit_retry_count: int = 0
         self._exit_max_retries: int = 3
@@ -287,6 +296,12 @@ class MaxBotTradeOrchestrator:
         date = self._session_builder.current_date
         if date:
             self._trade_manager.ensure_date(date)
+
+        # Observation only, and deliberately before the lifecycle
+        # branch: a probe must keep seeing bars once its trade has
+        # closed and this orchestrator has moved on — possibly into a
+        # whole new trade on the same symbol.
+        self._observe_r_probes(bar)
 
         # State-dependent processing
         if self._lifecycle == LifecycleState.WAITING_FOR_SIGNAL:
@@ -377,6 +392,9 @@ class MaxBotTradeOrchestrator:
                 activation_time_ms=activation_ms,
             )
             self._lifecycle = LifecycleState.POSITION_OPEN
+            # Observation only — see _start_r_probe. Never gates the
+            # trade: a probe that cannot be built simply is not built.
+            self._start_r_probe(activation_ms or None)
             log.info(
                 f"[{self._symbol}] ENTRY_STATUS_CHECK → POSITION_OPEN "
                 f"order={fill_result.order_id} "
@@ -898,6 +916,95 @@ class MaxBotTradeOrchestrator:
         self._resolved_direction = resolved_direction
         self._lifecycle = LifecycleState.ENTRY_SUBMITTED
 
+    # ── R-multiple probe (observation only) ──────────────────────────────
+
+    def _start_r_probe(self, fill_time_ms: int | None = None) -> None:
+        """Arm a probe for the trade that just opened.
+
+        Started at ENTRY, not at exit, so one structure holds the whole
+        excursion: MFE and every first-touch are measured from the entry
+        price, and joining two half-paths afterwards is never needed.
+        """
+        trade_id = self._active_setup_key
+        if not trade_id or trade_id in self._r_probes:
+            return
+        triggers = self._underlying_triggers
+        if triggers is None:
+            return
+        probe = RProbe.create(
+            trade_id=build_trade_id(self._symbol, trade_id),
+            symbol=self._symbol,
+            direction=self._resolved_direction or self._direction,
+            entry_price=float(triggers.entry_price),
+            stop_price=float(triggers.stop_price),
+            target_price=float(triggers.target_price),
+            entry_timestamp_ms=self._active_entry_timestamp_ms or 0,
+            # The actual fill, not the entry candle's open. The probe
+            # must describe the path the position really experienced,
+            # and those differ by up to a full bar.
+            fill_timestamp_ms=fill_time_ms,
+        )
+        if probe is not None:
+            self._r_probes[trade_id] = probe
+
+    def _observe_r_probes(self, bar: dict) -> None:
+        """Feed one completed bar to every still-open probe.
+
+        Never raises into the caller: an observation is an audit nicety
+        and must not be able to disturb a live trade.
+        """
+        for probe in list(self._r_probes.values()):
+            if not probe.is_open:
+                continue
+            try:
+                before = probe.bars_observed
+                probe.observe(bar)
+                if probe.bars_observed != before:
+                    self._persist_r_probe(probe)
+            except Exception as e:
+                log.error(f"[{self._symbol}] r_probe observe failed: {e}")
+
+    def _observe_r_probes_price(self, price: float) -> None:
+        """Feed one live price to every probe still inside its fill
+        minute. Each probe filters by its own fill timestamp, so a
+        second trade on the same symbol is unaffected."""
+        if not self._r_probes:
+            return
+        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        for probe in list(self._r_probes.values()):
+            if not probe.is_open:
+                continue
+            if not (probe.fill_timestamp_ms <= now_ms < probe.fill_minute_end_ms):
+                continue
+            try:
+                before = probe.live_samples
+                probe.observe_price(price, now_ms)
+                if probe.live_samples != before:
+                    self._persist_r_probe(probe)
+            except Exception as e:
+                log.error(f"[{self._symbol}] r_probe price observe failed: {e}")
+
+    def _persist_r_probe(self, probe) -> None:
+        try:
+            persist_r_probe(probe.trade_id, probe.to_block(),
+                            base_dir=self._trade_state_dir)
+        except Exception as e:
+            log.error(f"[{self._symbol}] r_probe persist failed: {e}")
+
+    def close_r_probes(self, reason: str = "SESSION_END") -> None:
+        """End every observation and write it out one last time.
+
+        Called by the runner at shutdown. Idempotent.
+        """
+        for probe in list(self._r_probes.values()):
+            if not probe.is_open:
+                continue
+            try:
+                probe.close(reason)
+                self._persist_r_probe(probe)
+            except Exception as e:
+                log.error(f"[{self._symbol}] r_probe close failed: {e}")
+
     def on_price(self, price: float) -> None:
         """Live underlying price while a position is open — the primary
         exit path.
@@ -913,6 +1020,12 @@ class MaxBotTradeOrchestrator:
         idempotent, and this returns immediately unless a position is
         actually open.
         """
+        # Observation first, and before the lifecycle gate: the probe
+        # needs the fill minute, which the bar path cannot cover
+        # honestly, and it must keep getting samples even if the trade
+        # closes inside that same minute.
+        self._observe_r_probes_price(price)
+
         if self._lifecycle != LifecycleState.POSITION_OPEN:
             return
         if self._exit_monitor is None:

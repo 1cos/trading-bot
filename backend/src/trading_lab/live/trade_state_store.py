@@ -145,6 +145,40 @@ def persist_closed_trade(
                          exit_chart_context=exit_chart_context)
 
 
+def persist_r_probe(
+    trade_id: str,
+    r_probe: dict,
+    base_dir: Path | str = DEFAULT_TRADE_STATE_DIR,
+) -> Path | None:
+    """Merge the R-probe observation into an existing trade record.
+
+    Additive and strictly non-destructive: the record is re-read first,
+    so a probe update landing after the trade closed can never overwrite
+    the outcome, the setup snapshot or either chart block. The probe
+    keeps writing long after the trade is CLOSED — that is the whole
+    point of it — so every write has to assume the rest of the record
+    already exists and belongs to someone else.
+
+    Returns None when there is no record to merge into: the probe is an
+    observation about a trade, never a reason to create one.
+    """
+    base_dir = Path(base_dir)
+    path = base_dir / f"{trade_id}.json"
+    if not path.exists():
+        return None
+    try:
+        record = json.loads(path.read_text())
+        if not isinstance(record, dict):
+            return None
+    except (OSError, ValueError):
+        # Unreadable record: leave it alone. Losing an observation is
+        # acceptable; corrupting a trade record is not.
+        return None
+
+    record["r_probe"] = r_probe
+    return _atomic_write(record, base_dir)
+
+
 def _persist_final(
     trade_id: str,
     state: str,
