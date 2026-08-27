@@ -119,6 +119,9 @@ body{padding-top:var(--safe-top);padding-bottom:var(--safe-bottom)}
 .jrn{background:var(--card);border:1px solid var(--border);border-left:3px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:8px}
 .jrn-win{border-left-color:var(--green)}
 .jrn-loss{border-left-color:var(--red)}
+/* Session-end exits are deliberately neither green nor red:
+   the strategy never got its answer. */
+.jrn-sessionend{border-left-color:var(--dim)}
 .jrn-open{border-left-color:var(--accent)}
 .jrn-attn{border-left-color:var(--amber)}
 .jrn-legacy{border-left-color:var(--dim);opacity:.72}
@@ -133,6 +136,7 @@ body{padding-top:var(--safe-top);padding-bottom:var(--safe-bottom)}
 .badge-open{background:#4f8cff22;color:var(--accent)}
 .badge-attn{background:#f59e0b22;color:var(--amber)}
 .badge-legacy{background:#7a7a8f22;color:var(--dim)}
+.badge-sessionend{background:#7a7a8f22;color:var(--fg)}
 .jrn-det{margin-top:6px}
 .jrn-det summary{font-size:11px;color:var(--accent);cursor:pointer;list-style:none;padding:2px 0}
 .jrn-det summary::-webkit-details-marker{display:none}
@@ -683,6 +687,10 @@ function tradeKind(t) {
     const r = (t.outcome || {}).result;
     if (r === 'WIN') return 'win';
     if (r === 'LOSS') return 'loss';
+    // Closed because the session was ending, not because the setup
+    // resolved. Real P&L, but neither a win nor a loss — shown neutral
+    // so it is never mistaken for a strategy result.
+    if (r === 'SESSION_END') return 'sessionend';
     return 'closed';
   }
   return 'open';
@@ -691,10 +699,12 @@ function tradeKind(t) {
 const KIND_LABEL = {
   win: 'Closed \u00b7 Win', loss: 'Closed \u00b7 Loss', closed: 'Closed',
   open: 'Open', attn: 'Requires attention', legacy: 'Legacy \u00b7 not migrated',
+  sessionend: 'Closed \u00b7 Session end',
 };
 const KIND_BADGE = {
   win: 'badge-win', loss: 'badge-loss', closed: 'badge-open',
   open: 'badge-open', attn: 'badge-attn', legacy: 'badge-legacy',
+  sessionend: 'badge-sessionend',
 };
 
 function perfCard(label, p) {
@@ -767,7 +777,8 @@ function tradeCard(t) {
   const outcome = t.outcome || {};
 
   // A trade without a confirmed exit has no P&L — show nothing, not $0.
-  const pnl = (kind === 'win' || kind === 'loss' || kind === 'closed')
+  const pnl = (kind === 'win' || kind === 'loss' || kind === 'closed'
+               || kind === 'sessionend')
     ? fmtPnl(outcome.gross_pnl) : {text: '', cls: ''};
 
   const levels = [

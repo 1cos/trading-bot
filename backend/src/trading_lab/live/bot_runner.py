@@ -31,6 +31,11 @@ from zoneinfo import ZoneInfo
 from ib_insync import IB, Stock
 
 from trading_lab.live.session_builder_live import LiveSessionBuilder
+from trading_lab.live.session_policy import (
+    forced_exit_due,
+    minutes_to_close,
+    shutdown_allowed,
+)
 from trading_lab.live.signal_detector import LiveSignalDetector, SignalStatus
 from trading_lab.live.dual_signal_detector import DualSignalDetector
 from trading_lab.live.trade_manager import DailyTradeManager
@@ -413,6 +418,36 @@ class MaxBotRunner:
         log.info(f"PAPER VERIFIED — account: {self._paper_account}")
         self._emit(EventType.PAPER_VERIFIED, data={"account": self._paper_account[:3] + "***"})
 
+    def _minutes_to_close(self) -> float | None:
+        """Minutes to today's session close, in market time."""
+        return minutes_to_close(datetime.now(self._tz), self._session_close,
+                                str(self._tz))
+
+    def _force_session_end_exits(self) -> int:
+        """Close every still-open position because the session is ending.
+
+        Uses each orchestrator's own exit path — no new order route.
+        Idempotent: a symbol already exiting is skipped by the
+        orchestrator itself.
+        """
+        forced = 0
+        for sym, rt in self._runtimes.items():
+            if not rt.enabled or rt.orchestrator is None:
+                continue
+            forcer = getattr(rt.orchestrator, "force_session_end_exit", None)
+            if forcer is None:
+                continue                       # OBSERVE_ONLY holds nothing
+            try:
+                if forcer():
+                    forced += 1
+                    self._emit(EventType.ERROR, symbol=sym, data={
+                        "error": "FORCED_SESSION_EXIT",
+                        "minutes_to_close": self._minutes_to_close(),
+                    })
+            except Exception as e:
+                log.error(f"[{sym}] forced session-end exit failed: {e}")
+        return forced
+
     def _shutdown(self) -> None:
         # End every R-multiple observation first, while the orchestrators
         # still hold them. Session end is the probe's terminal condition,
@@ -557,6 +592,9 @@ class MaxBotRunner:
                 # A closure over this runtime keeps the orchestrator
                 # free of any runner dependency.
                 chart_levels_provider=lambda rt=rt: _chart_levels(rt),
+                # Read lazily, so one clock serves every symbol and
+                # the orchestrator needs no timezone of its own.
+                minutes_to_close_provider=self._minutes_to_close,
             )
 
     def _qualify_all(self) -> None:
@@ -590,10 +628,20 @@ class MaxBotRunner:
 
         Matching (per position):
           - position.position != 0        (zero/closed positions ignored)
-          - contract.secType == "OPT"     (non-option positions, e.g. a
-            plain stock position, are intentionally NOT treated as a
-            block — MaxBot only ever holds options, so a stock position
-            in the account is not evidence of an untracked MaxBot trade)
+          - contract.secType in ("OPT", "STK")
+
+            Stock used to be ignored here, on the reasoning that MaxBot
+            only ever holds options. 2026-08-26 disproved it: a 0DTE
+            call left open at the bell expired in the money and IBKR
+            auto-exercised it into 100 shares of QQQ. Those shares are
+            the direct residue of a MaxBot trade, carry no stop, and
+            under the old rule would not have blocked a new entry on the
+            same symbol — the bot could have opened a fresh position on
+            top of an unmanaged one it could not see.
+
+            Blocking is all that happens. MaxBot does not adopt, hedge
+            or liquidate the position: it refuses to trade that symbol
+            and says so.
           - contract.symbol is a symbol in this runner's watchlist
 
         For each match: marks the SymbolRuntime and (for PAPER_EXECUTE)
@@ -614,7 +662,8 @@ class MaxBotRunner:
             quantity = getattr(pos, "position", 0)
             if contract is None or quantity == 0:
                 continue
-            if getattr(contract, "secType", None) != "OPT":
+            sec_type = getattr(contract, "secType", None)
+            if sec_type not in ("OPT", "STK"):
                 continue
 
             underlying_symbol = getattr(contract, "symbol", None)
@@ -623,6 +672,7 @@ class MaxBotRunner:
                 continue  # not a symbol this runner manages
 
             info = {
+                "secType": sec_type,
                 "conId": getattr(contract, "conId", None),
                 "localSymbol": getattr(contract, "localSymbol", None),
                 "right": getattr(contract, "right", None),
@@ -638,9 +688,13 @@ class MaxBotRunner:
                 rt.orchestrator._lifecycle = LifecycleState.EXISTING_BROKER_POSITION
 
             log.warning(
-                f"[{underlying_symbol}] EXISTING BROKER POSITION — "
-                f"new entries blocked contract={info['localSymbol']} "
+                f"[{underlying_symbol}] EXISTING BROKER POSITION "
+                f"({sec_type}) — new entries blocked "
+                f"contract={info['localSymbol'] or underlying_symbol} "
                 f"qty={info['quantity']}"
+                + (" — likely assignment/exercise residue of a previous "
+                   "MaxBot trade; NOT managed automatically"
+                   if sec_type == "STK" else "")
             )
             self._emit(EventType.ERROR, symbol=underlying_symbol,
                        data={"error": "EXISTING_BROKER_POSITION", **info})
@@ -1542,6 +1596,9 @@ class MaxBotRunner:
         )
 
         loop_count = 0
+        self._forced_exit_done = False
+        self._close_reached_at = None
+        self._last_close_warn_at = None
         while self._running:
             self._ib.sleep(1)
             loop_count += 1
@@ -1618,25 +1675,65 @@ class MaxBotRunner:
                 self._running = False
                 break
 
-            now_et = datetime.now(self._tz)
-            close_h, close_m = int(self._session_close[:2]), int(self._session_close[3:])
-            if now_et.hour * 60 + now_et.minute >= close_h * 60 + close_m:
-                has_active = any(
-                    rt.enabled and rt.orchestrator and
-                    (rt.orchestrator.lifecycle if self._execution_mode == ExecutionMode.OBSERVE_ONLY
-                     else rt.orchestrator.lifecycle) in (
-                        LifecycleState.POSITION_OPEN,
-                        LifecycleState.ENTRY_SUBMITTED,
-                        LifecycleState.EXIT_SUBMITTED,
-                    )
-                    for rt in self._runtimes.values()
+            # ── Session end ──────────────────────────────────────────
+            # Before 2026-08-26 this branch could only log and loop: a
+            # position still open at the close kept the runner spinning
+            # (once per second, for six hours) until TWS hung up, so
+            # _shutdown() was never reached, no session log was written
+            # and the option was left to expire and be exercised.
+            #
+            # Now the close is a deadline, not a wish. Positions are
+            # forced out via the ordinary exit path a few minutes early,
+            # and the runner always gets to shut down: either because
+            # nothing is active, or because the grace period ran out and
+            # what remains is reported as unresolved.
+            mins_left = self._minutes_to_close()
+            has_active = any(
+                rt.enabled and rt.orchestrator and rt.orchestrator.lifecycle in (
+                    LifecycleState.POSITION_OPEN,
+                    LifecycleState.ENTRY_SUBMITTED,
+                    LifecycleState.EXIT_SUBMITTED,
                 )
-                if not has_active:
-                    log.info("Session close reached — stopping")
-                    self._running = False
-                    break
+                for rt in self._runtimes.values()
+            )
+
+            if has_active and forced_exit_due(mins_left) and not self._forced_exit_done:
+                self._forced_exit_done = True
+                forced = self._force_session_end_exits()
+                log.warning(
+                    f"FORCED SESSION EXIT — {forced} position(s) closed "
+                    f"({mins_left:.1f} min to close)"
+                )
+
+            if mins_left is not None and mins_left <= 0 and self._close_reached_at is None:
+                self._close_reached_at = _time.monotonic()
+            secs_since_close = (
+                None if self._close_reached_at is None
+                else _time.monotonic() - self._close_reached_at
+            )
+
+            if shutdown_allowed(mins_left, has_active, secs_since_close):
+                if has_active:
+                    log.warning(
+                        "Session close grace elapsed — stopping with "
+                        "positions still unresolved"
+                    )
                 else:
-                    log.warning("Session close reached but active positions remain")
+                    log.info("Session close reached — stopping")
+                self._running = False
+                break
+
+            if has_active and secs_since_close is not None:
+                # Throttled to once a minute. This used to log every
+                # second and produced ~21,600 identical lines in one
+                # night.
+                if (self._last_close_warn_at is None
+                        or _time.monotonic() - self._last_close_warn_at >= 60):
+                    self._last_close_warn_at = _time.monotonic()
+                    log.warning(
+                        f"Session close reached, waiting for "
+                        f"{int(secs_since_close)}s — active positions remain"
+                    )
 
 
 # ── CLI entry point ──────────────────────────────────────────────────────────

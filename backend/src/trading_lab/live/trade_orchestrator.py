@@ -48,7 +48,20 @@ from trading_lab.live.trade_state_store import (
     persist_terminal_trade,
 )
 from trading_lab.live.r_probe import RProbe
-from trading_lab.live.underlying_exit_monitor import ExitState, UnderlyingExitMonitor
+from trading_lab.live.session_policy import (
+    EXIT_REASON_SESSION_END,
+    REASON_ENTRY_CUTOFF,
+    REASON_LATE_0DTE,
+    REASON_STRATEGY_CUTOFF,
+    entry_allowed,
+    strategy_entry_allowed,
+    zero_dte_execution_allowed,
+)
+from trading_lab.live.underlying_exit_monitor import (
+    ExitState,
+    ExitTriggerResult,
+    UnderlyingExitMonitor,
+)
 
 log = logging.getLogger("maxbot")
 
@@ -162,6 +175,7 @@ class MaxBotTradeOrchestrator:
         emit=None,
         trade_state_dir: object | None = None,
         chart_levels_provider=None,
+        minutes_to_close_provider=None,
     ):
         self._symbol = underlying_symbol
         self._direction = direction
@@ -230,6 +244,13 @@ class MaxBotTradeOrchestrator:
         # the position is gone. Keyed by trade_id so a second trade on
         # the same symbol gets its own, independent observation.
         self._r_probes: dict[str, RProbe] = {}
+
+        # Minutes remaining to session close, read lazily. Injected the
+        # same way chart_levels_provider is, so the orchestrator needs
+        # no clock or timezone of its own and a test can hand it a
+        # number. None means "unknown", which the policy treats as
+        # permissive on purpose — see session_policy.entry_allowed.
+        self._minutes_to_close_provider = minutes_to_close_provider
 
         # Exit retry state
         self._exit_retry_count: int = 0
@@ -457,10 +478,22 @@ class MaxBotTradeOrchestrator:
                 self._trade_events["exit_filled"] = ev
 
                 # WIN/LOSS
-                result_str = "WIN" if exit_fill.exit_reason == "TARGET" else "LOSS"
-                result_type = "TRADE_WIN" if result_str == "WIN" else "TRADE_LOSS"
-                self._do_emit(result_type, direction=self._resolved_direction,
-                              data={"result": result_str, "exit_reason": exit_fill.exit_reason})
+                # A session-end exit is neither: the setup never got its
+                # answer. Recorded under its own name so the journal
+                # counts it as a closed trade with real P&L, but never
+                # as a win or a loss (see build_trade_performance_summary,
+                # which keys wins/losses off this exact string).
+                if exit_fill.exit_reason == "TARGET":
+                    result_str = "WIN"
+                elif exit_fill.exit_reason == "STOP":
+                    result_str = "LOSS"
+                else:
+                    result_str = EXIT_REASON_SESSION_END
+                if result_str in ("WIN", "LOSS"):
+                    result_type = "TRADE_WIN" if result_str == "WIN" else "TRADE_LOSS"
+                    self._do_emit(result_type, direction=self._resolved_direction,
+                                  data={"result": result_str,
+                                        "exit_reason": exit_fill.exit_reason})
 
                 # TRADE_COMPLETED summary
                 from trading_lab.live.event_stream import build_trade_summary
@@ -856,6 +889,31 @@ class MaxBotTradeOrchestrator:
         sig_event = self._do_emit("SIGNAL", direction=resolved_direction, data=triggers_data)
         self._trade_events = {"signal": sig_event}
 
+        # ── Gates 1 and 2 ────────────────────────────────────────────
+        # Both placed after the SIGNAL event on purpose: the setup stays
+        # in the journal and the audit as an opportunity that was seen,
+        # and only its EXECUTION is refused. Both also sit before option
+        # selection, so a refused setup costs no IBKR round trip.
+        #
+        # Order matters. The strategy cutoff is the rule a trader would
+        # state — no new trades after 14:00 CT — and on a normal day it
+        # is the only one that ever fires. The safety floor below it is
+        # unreachable through this path as a result, and is kept for the
+        # day something goes wrong above it. Their reasons are distinct
+        # so the journal never conflates a closed trading window with a
+        # near-miss on the bell.
+        minutes_left = self._minutes_to_close()
+
+        if not strategy_entry_allowed(minutes_left):
+            self._refuse_execution(REASON_STRATEGY_CUTOFF, resolved_direction,
+                                   {"minutes_to_close": minutes_left})
+            return
+
+        if not entry_allowed(minutes_left):
+            self._refuse_execution(REASON_ENTRY_CUTOFF, resolved_direction,
+                                   {"minutes_to_close": minutes_left})
+            return
+
         # Select option contract — IBKR SYNC
         sess = self._session_builder.current_session()
         if sess is None:
@@ -880,6 +938,22 @@ class MaxBotTradeOrchestrator:
         }
         opt_event = self._do_emit("OPTION_SELECTED", direction=resolved_direction, data=opt_data)
         self._trade_events["option"] = opt_event
+
+        # ── Gate 3: late 0DTE ────────────────────────────────────────
+        # Only decidable here — the expiry is not known until the
+        # contract is chosen. A 0DTE held at the bell stops being a
+        # position and becomes an assignment: on 2026-08-26 a QQQ call
+        # opened at 15:56 expired in the money and was auto-exercised
+        # into 100 shares. Contracts expiring later are untouched.
+        if not zero_dte_execution_allowed(
+                selection.expiration, trading_date_yyyymmdd, minutes_left):
+            self._refuse_execution(REASON_LATE_0DTE, resolved_direction, {
+                "minutes_to_close": minutes_left,
+                "expiration": selection.expiration,
+                "trading_date": trading_date_yyyymmdd,
+                "con_id": selection.con_id,
+            })
+            return
 
         # Build entry order spec (pure computation)
         order_spec = build_option_entry_order(selection)
@@ -915,6 +989,67 @@ class MaxBotTradeOrchestrator:
         self._underlying_triggers = intent.underlying_triggers
         self._resolved_direction = resolved_direction
         self._lifecycle = LifecycleState.ENTRY_SUBMITTED
+
+    # ── Session-end / expiry execution gates ─────────────────────────────
+
+    def _minutes_to_close(self) -> float | None:
+        """Minutes to session close, or None when it cannot be read."""
+        if self._minutes_to_close_provider is None:
+            return None
+        try:
+            value = self._minutes_to_close_provider()
+        except Exception as e:
+            log.debug(f"[{self._symbol}] minutes_to_close unavailable: {e}")
+            return None
+        return None if value is None else float(value)
+
+    def _refuse_execution(self, reason: str, direction, data: dict) -> None:
+        """Abandon a signal that must not be executed.
+
+        The setup keeps its SIGNAL event, so the journal still shows
+        what was found and why it was not taken. The keys stay consumed
+        so the detector does not re-derive the same refused setup on
+        every later bar, and the lifecycle returns to WAITING_FOR_SIGNAL
+        — a refusal is not a failure, and a genuinely different setup
+        later in the session is still allowed.
+        """
+        log.warning(f"[{self._symbol}] EXECUTION REFUSED {reason} {data}")
+        self._do_emit("ERROR", direction=direction,
+                      data={"error": reason, **data})
+        self._trade_events = {}
+        self._clear_active_trade()
+        self._lifecycle = LifecycleState.WAITING_FOR_SIGNAL
+
+    def force_session_end_exit(self) -> bool:
+        """Close an open position because the session is ending.
+
+        Reuses the ordinary exit path end to end — same executor, same
+        SELL MARKET, same retry and fill monitoring. Only the reason
+        differs, and it is deliberately neither TARGET nor STOP: neither
+        was reached, and recording either would put a fiction into the
+        win rate.
+
+        Returns True if a forced exit was submitted by this call.
+        Idempotent: a position already exiting is left alone.
+        """
+        if self._lifecycle != LifecycleState.POSITION_OPEN:
+            return False
+        trigger = ExitTriggerResult(
+            state=ExitState.SESSION_END_TRIGGERED,
+            direction=self._resolved_direction or self._direction,
+            stop_price=float(self._underlying_triggers.stop_price)
+            if self._underlying_triggers else 0.0,
+            target_price=float(self._underlying_triggers.target_price)
+            if self._underlying_triggers else 0.0,
+            trigger_source="SESSION_END",
+        )
+        if self._exit_monitor is not None:
+            # Keep the monitor terminal too, so a late price tick or bar
+            # cannot raise a second, competing trigger.
+            self._exit_monitor._terminal_result = trigger
+        log.warning(f"[{self._symbol}] SESSION END — forcing exit of open position")
+        self._submit_exit_for(trigger)
+        return self._lifecycle == LifecycleState.EXIT_SUBMITTED
 
     # ── R-multiple probe (observation only) ──────────────────────────────
 
@@ -1059,9 +1194,18 @@ class MaxBotTradeOrchestrator:
         if self._lifecycle != LifecycleState.POSITION_OPEN:
             return
 
-        if result.state in (ExitState.STOP_TRIGGERED, ExitState.TARGET_TRIGGERED):
-            trigger_type = "TARGET_TRIGGERED" if result.state == ExitState.TARGET_TRIGGERED else "STOP_TRIGGERED"
-            if self._emit_once(trigger_type):
+        if result.state in (ExitState.STOP_TRIGGERED, ExitState.TARGET_TRIGGERED,
+                            ExitState.SESSION_END_TRIGGERED):
+            # SESSION_END has no trigger event of its own: nothing in the
+            # market triggered it, and inventing a STOP_TRIGGERED or
+            # TARGET_TRIGGERED here would put a price event in the
+            # timeline that never happened. The runner emits its own
+            # FORCED_SESSION_EXIT instead.
+            trigger_type = {
+                ExitState.TARGET_TRIGGERED: "TARGET_TRIGGERED",
+                ExitState.STOP_TRIGGERED: "STOP_TRIGGERED",
+            }.get(result.state)
+            if trigger_type is not None and self._emit_once(trigger_type):
                 trigger_data = {
                     "exit_reason": "TARGET" if result.state == ExitState.TARGET_TRIGGERED else "STOP",
                     "bar_time_ms": result.trigger_bar_time_ms,

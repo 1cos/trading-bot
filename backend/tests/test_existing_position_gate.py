@@ -171,18 +171,48 @@ class TestZeroPositionDoesNotBlock:
 
 
 class TestNonOptionPositionNotAdopted:
-    def test_stock_position_does_not_block(self):
-        """Documented chosen behavior: MaxBot only ever holds options, so
-        a STK position in the account is not evidence of an untracked
-        MaxBot trade and must not trigger the block."""
+    def test_stock_position_blocks_but_is_not_adopted(self):
+        """A stock position blocks the symbol — it is not adopted.
+
+        This test previously asserted the opposite, on the stated
+        reasoning that "MaxBot only ever holds options, so a STK
+        position is not evidence of an untracked MaxBot trade". The
+        premise was disproved on 2026-08-26: a 0DTE QQQ call left open
+        at the bell expired in the money, IBKR auto-exercised it, and
+        the account woke up holding 100 shares that were the direct
+        residue of a MaxBot trade. Under the old rule those shares
+        would not have blocked anything, and the bot could have opened
+        a fresh position on top of an unmanaged one it could not see.
+
+        What has NOT changed, and is asserted below, is that MaxBot
+        does not adopt the position: no stop, no target, no exit
+        monitor, no liquidation. It refuses to trade the symbol and
+        says so — which is the whole difference between blocking and
+        managing.
+        """
         runner = _ready_runner(
             ["TSLA"], [_make_stock_position("TSLA", quantity=100)],
         )
         runner._reconcile_existing_positions()
 
         rt = runner._runtimes["TSLA"]
-        assert rt.broker_position_blocked is False
-        assert rt.orchestrator.lifecycle == LifecycleState.WAITING_FOR_SIGNAL
+        assert rt.broker_position_blocked is True
+        assert rt.orchestrator.lifecycle == LifecycleState.EXISTING_BROKER_POSITION
+        assert rt.broker_position_info["secType"] == "STK"
+
+        # Not adopted: nothing was turned into a managed trade.
+        assert rt.orchestrator._exit_monitor is None
+        assert rt.orchestrator._underlying_triggers is None
+        assert rt.orchestrator._qualified_contract is None
+
+    def test_unrelated_sec_types_are_still_ignored(self):
+        """Only OPT and STK are treated as MaxBot residue. A future or
+        anything else in the account is somebody else's business."""
+        pos = _make_stock_position("TSLA", quantity=100)
+        pos.contract.secType = "FUT"
+        runner = _ready_runner(["TSLA"], [pos])
+        runner._reconcile_existing_positions()
+        assert runner._runtimes["TSLA"].broker_position_blocked is False
 
 
 # ═════════════════════════════════════════════════════════════════════════

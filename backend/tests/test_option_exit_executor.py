@@ -235,11 +235,25 @@ class TestNotFilled:
 
 class TestHoldRejected:
     def test_hold(self):
+        """A non-terminal trigger must never reach the broker.
+
+        The assertion used to pin the exact wording "STOP_TRIGGERED or
+        TARGET_TRIGGERED". That wording became wrong when
+        SESSION_END_TRIGGERED joined the valid set, while the property
+        being guarded — HOLD is refused and no order is placed — did
+        not change. Now the property is asserted directly.
+        """
         ib = _mock_ib()
         ex = OptionExitExecutor(ib)
-        with pytest.raises(ValueError, match="STOP_TRIGGERED or TARGET_TRIGGERED"):
+        with pytest.raises(ValueError, match="HOLD"):
             ex.submit_exit(_mock_contract(), _hold_trigger(), entry_order_id=42)
         ib.placeOrder.assert_not_called()
+
+    def test_session_end_is_accepted(self):
+        """The counterpart: the new terminal state IS valid."""
+        from trading_lab.live.option_exit_executor import _TRIGGER_TO_REASON
+        from trading_lab.live.underlying_exit_monitor import ExitState
+        assert _TRIGGER_TO_REASON[ExitState.SESSION_END_TRIGGERED] == "SESSION_END"
 
 
 # ── Test 16: Missing contract rejected ───────────────────────────────────────

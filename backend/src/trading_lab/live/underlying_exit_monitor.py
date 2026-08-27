@@ -54,6 +54,11 @@ class ExitState(StrEnum):
     HOLD = "HOLD"
     STOP_TRIGGERED = "STOP_TRIGGERED"
     TARGET_TRIGGERED = "TARGET_TRIGGERED"
+    # Not produced by this monitor: the runner raises it when the
+    # session is ending and a position is still open. It exists so a
+    # forced exit travels the ordinary exit path with an honest label,
+    # instead of being disguised as a stop that never happened.
+    SESSION_END_TRIGGERED = "SESSION_END_TRIGGERED"
 
 
 # ── Exit result ──────────────────────────────────────────────────────────────

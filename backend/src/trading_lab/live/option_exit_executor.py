@@ -95,6 +95,9 @@ class ExitSubmissionResult:
 _TRIGGER_TO_REASON = {
     ExitState.STOP_TRIGGERED: "STOP",
     ExitState.TARGET_TRIGGERED: "TARGET",
+    # Session ending with the position still open. Same SELL MARKET, no
+    # new order path — only the reason differs.
+    ExitState.SESSION_END_TRIGGERED: "SESSION_END",
 }
 
 _VALID_EXIT_STATES = frozenset(_TRIGGER_TO_REASON.keys())
@@ -172,7 +175,8 @@ class OptionExitExecutor:
         # ── Validation ───────────────────────────────────────────────
         if exit_trigger.state not in _VALID_EXIT_STATES:
             raise ValueError(
-                f"Exit trigger must be STOP_TRIGGERED or TARGET_TRIGGERED, "
+                f"Exit trigger must be one of "
+                f"{sorted(str(s) for s in _VALID_EXIT_STATES)}, "
                 f"got {exit_trigger.state!r}"
             )
 

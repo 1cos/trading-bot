@@ -58,6 +58,14 @@ _EXIT_REASON_MAP = {
     "STOP": TradeResult.LOSS,
 }
 
+# Known reasons that are deliberately neither a win nor a loss. A
+# position closed because the session was ending says nothing about the
+# setup: the strategy never got its answer. Counting it either way would
+# corrupt the win rate, and counting a win would also end the trading
+# day under Rule B. Listed explicitly so a genuinely unknown reason
+# still raises.
+_NEUTRAL_EXIT_REASONS = frozenset({"SESSION_END"})
+
 
 # ── Exit fill result ─────────────────────────────────────────────────────────
 
@@ -203,6 +211,12 @@ class ExitResultActivator:
             return False
 
         if fill_result.exit_order_id in self._applied_exit_ids:
+            return False
+
+        if fill_result.exit_reason in _NEUTRAL_EXIT_REASONS:
+            # Consumed, so a retry cannot double-apply it, but no
+            # result is recorded.
+            self._applied_exit_ids.add(fill_result.exit_order_id)
             return False
 
         trade_result = _EXIT_REASON_MAP.get(fill_result.exit_reason)
