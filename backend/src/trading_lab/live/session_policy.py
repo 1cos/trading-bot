@@ -204,8 +204,8 @@ def shutdown_allowed(minutes_left: float | None, has_active: bool,
                      grace: int = SESSION_END_GRACE_SECONDS) -> bool:
     """Whether the runner may stop now.
 
-    Before the close, only when nothing is active. After it, when
-    nothing is active OR the grace period has elapsed — the runner
+    Never before the close. After it, when nothing is active OR the
+    grace period has elapsed — the runner
     always gets to shut down, so the session log is written, the R
     probes are closed, and whatever is still unresolved is reported
     instead of being spun on until the broker hangs up.
@@ -213,7 +213,12 @@ def shutdown_allowed(minutes_left: float | None, has_active: bool,
     if minutes_left is None:
         return not has_active
     if minutes_left > 0:
-        return not has_active
+        # Before the close the runner never stops on its own. Being idle
+        # with no position is the NORMAL state of a bot waiting for a
+        # setup, not a reason to end the day — an earlier version
+        # returned `not has_active` here and killed the 2026-08-27
+        # session sixteen seconds after it opened.
+        return False
     if not has_active:
         return True
     return (seconds_since_close or 0) >= grace

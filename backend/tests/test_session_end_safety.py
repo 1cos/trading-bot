@@ -135,8 +135,43 @@ class TestShutdownAlwaysReachable:
     def test_blocked_before_close_while_active(self):
         assert shutdown_allowed(30, True, None) is False
 
-    def test_allowed_before_close_when_idle(self):
-        assert shutdown_allowed(30, False, None) is True
+    def test_never_stops_before_the_close_even_when_idle(self):
+        """This assertion used to read `is True`, and that was the bug.
+
+        Being idle with no position is the NORMAL state of a bot waiting
+        for a setup. Answering "yes, you may stop" to that made the
+        runner exit on its very first loop iteration: the 2026-08-27
+        session opened at 08:00:37 CT and stopped at 08:00:53, sixteen
+        seconds later, with zero trades. The predicate was unit-tested in
+        isolation against a wrong mental model, so the whole suite passed.
+        """
+        assert shutdown_allowed(420, False, None) is False   # market open
+        assert shutdown_allowed(30, False, None) is False
+        assert shutdown_allowed(0.5, False, None) is False   # one minute to go
+
+    def test_loop_does_not_exit_on_its_first_iteration(self):
+        """The test that was missing.
+
+        shutdown_allowed() was unit-tested in isolation and passed; what
+        nobody exercised was the caller. _run_loop evaluates it on EVERY
+        iteration, so a predicate that says True at 09:00 ET with no
+        position ends the session before the first bar arrives. This
+        reproduces the loop's own call with realistic startup state.
+        """
+        market_open_minutes_left = 420.0      # 09:00 ET vs a 16:00 close
+        nothing_open = False                  # normal at the bell
+        never_reached_close = None
+        assert shutdown_allowed(market_open_minutes_left, nothing_open,
+                                never_reached_close) is False, (
+            "the runner must not stop on its first loop iteration"
+        )
+
+    def test_the_runner_survives_a_full_idle_session(self):
+        """Walk the whole day with nothing open: it must never stop
+        until the close actually arrives."""
+        for mins in (420, 300, 180, 60, 15, 5, 1, 0.1):
+            assert shutdown_allowed(mins, False, None) is False, mins
+        assert shutdown_allowed(-0.1, False, 0) is True
 
     def test_allowed_after_close_when_idle(self):
         assert shutdown_allowed(-1, False, 5) is True
