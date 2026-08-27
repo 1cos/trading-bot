@@ -32,3 +32,4 @@ tools/output/
 -e 
 # Runtime logs
 logs/
+logs/maxbot/trade_charts/
