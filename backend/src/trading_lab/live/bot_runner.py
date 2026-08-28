@@ -51,6 +51,8 @@ from trading_lab.live.observe_orchestrator import (
     ObserveOrchestrator,
     ObserveLifecycle,
 )
+from trading_lab import strategy_lab
+from trading_lab.live.strategy_lab_recorder import StrategyLabRecorder
 from trading_lab.live.watchlist import SymbolRuntime, parse_symbols
 from trading_lab.live.event_stream import EventFactory, SessionEventLog, EventType
 from trading_lab.live.execution_queue import (
@@ -294,6 +296,13 @@ class MaxBotRunner:
         self._runtimes: dict[str, SymbolRuntime] = {}
         self._running = False
         self._paper_account: str | None = None
+
+        # Strategy Lab (observation only — never read by any trading
+        # path, and its failures are swallowed at every entry point).
+        # It writes completed bars and shadow entry candidates so the
+        # weekly comparison has a sample to work with; nothing it
+        # produces can reach the execution queue.
+        self._strategy_lab = StrategyLabRecorder(market_timezone=market_timezone)
 
         # PD_AUDIT emission bookkeeping (observation only — never read
         # by any trading path). (symbol, direction) -> (state_key,
@@ -1215,6 +1224,8 @@ class MaxBotRunner:
 
             # Record decision trace for PWA
             self._record_trace(rt, candle, time_str)
+            # Observation only — see _record_strategy_lab().
+            self._record_strategy_lab(rt, candle)
         except Exception as e:
             log.error(f"[{rt.symbol}] Bar callback error: {e}", exc_info=True)
 
@@ -1428,6 +1439,50 @@ class MaxBotRunner:
         except Exception as e:
             log.debug(f"[{rt.symbol}] Trace error: {e}")
 
+    def _record_strategy_lab(self, rt: SymbolRuntime, candle: dict) -> None:
+        """Write the bar tape and any shadow entry candidate this bar closes.
+
+        Runs after the decision is already made and the work item is
+        already queued, so nothing it computes can influence what the
+        bot does. It reads only settled state — the completed candle
+        series, the ORB edges — and writes to its own directory. Every
+        failure is swallowed: an instrumentation bug must cost a debug
+        line, never a session.
+
+        The candidate is anchored on the *previous* bar, because a
+        TWO_CANDLE pair is only knowable once its second candle has
+        closed — which is this one.
+        """
+        try:
+            self._strategy_lab.record_bar(rt.symbol, candle)
+
+            if rt.orb_high is None or rt.orb_low is None:
+                return
+            if rt.session_builder is None:
+                return
+            session = rt.session_builder.current_session()
+            if not session:
+                return
+            candles = session.get("candles") or []
+            if len(candles) < 2 or candles[-1]["time_ms"] != candle["time_ms"]:
+                return
+
+            index = len(candles) - 2                 # candle 1 of the pair
+            sides = (("LONG", rt.orb_high, rt.orb_low, "ORB_HIGH"),
+                     ("SHORT", rt.orb_low, rt.orb_high, "ORB_LOW"))
+            for direction, level, far_edge, source in sides:
+                if self._direction != "BOTH" and self._direction != direction:
+                    continue
+                record = strategy_lab.scan_pair(
+                    candles, index, direction=direction, level_price=level,
+                    level_source=source, far_edge=far_edge,
+                    tick_size=self._tick_size,
+                )
+                if record is not None:
+                    self._strategy_lab.record_candidate(rt.symbol, record)
+        except Exception as e:                              # noqa: BLE001
+            log.debug(f"[{rt.symbol}] Strategy lab error: {e}")
+
     # ── Bar polling fallback ───────────────────────────────────────────
 
     def _poll_bars_fallback(self) -> None:
@@ -1546,6 +1601,8 @@ class MaxBotRunner:
 
                     # Record decision trace for PWA
                     self._record_trace(rt, candle, time_str)
+                    # Observation only — see _record_strategy_lab().
+                    self._record_strategy_lab(rt, candle)
             except Exception as e:
                 log.error(f"[{sym}] Poll fallback error: {e}", exc_info=True)
 

@@ -33,3 +33,4 @@ tools/output/
 # Runtime logs
 logs/
 logs/maxbot/trade_charts/
+logs/maxbot/strategy_lab/

@@ -38,6 +38,9 @@ from trading_lab.live.exit_fill_monitor import (
 )
 from trading_lab.live.option_order_builder import build_option_entry_order
 from trading_lab.live.signal_detector import SignalStatus
+from trading_lab.live.strategy_lab_recorder import (
+    build_from_setup_snapshot as build_strategy_lab_block,
+)
 from trading_lab.live.trade_state_store import (
     persist_r_probe,
     DEFAULT_TRADE_STATE_DIR,
@@ -1296,6 +1299,15 @@ class MaxBotTradeOrchestrator:
                 chart_context = None
             if chart_context is not None:
                 record["chart_context"] = chart_context
+            # Additive, best-effort, observation only: shadow metrics
+            # must never cost a trade its OPEN record.
+            try:
+                lab = self._strategy_lab_block()
+            except Exception as e:
+                log.error(f"[{self._symbol}] strategy lab capture failed: {e}")
+                lab = None
+            if lab is not None:
+                record["strategy_lab"] = lab
             path = persist_open_trade(record, base_dir=self._trade_state_dir)
             log.info(f"[{self._symbol}] TRADE_STATE_PERSISTED trade_id={trade_id} path={path}")
         except Exception as e:
@@ -1374,6 +1386,27 @@ class MaxBotTradeOrchestrator:
         }
         block["window"].update(extra_window)
         return block
+
+    def _strategy_lab_block(self) -> dict | None:
+        """Shadow metrics for the entry that was just taken.
+
+        Observation only, and deliberately thin: everything that needs
+        to know what a level *is* lives in the recorder, so this class
+        stays level-source agnostic. Built after the fill from settled
+        state, written into its own key, and read by nothing here.
+        """
+        session = self._session_builder.current_session()
+        if session is None:
+            return None
+        candles = session.get("candles") or []
+        index = self._index_of_bar(candles, self._active_entry_timestamp_ms)
+        stop = (float(self._underlying_triggers.stop_price)
+                if self._underlying_triggers else None)
+        return build_strategy_lab_block(
+            self._active_setup_snapshot, candles, index,
+            direction=self._resolved_direction,
+            levels=self._chart_levels_now(), stop_price=stop,
+        )
 
     def _build_chart_context(self) -> dict | None:
         """Freeze what the ENTRY chart will need, from memory only.
